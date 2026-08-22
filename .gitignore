@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+bin/
+build/
+coverage/
+dist/
+node_modules/
+playwright-report/
+test-results/
+web/src/api/generated.ts
+tailpath.db*
+*.log
