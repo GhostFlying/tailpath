@@ -54,6 +54,44 @@ func (s *LocalSource) Snapshot(ctx context.Context) (collector.Snapshot, error) 
 	return snapshot, nil
 }
 
+func (s *LocalSource) Diagnostic(ctx context.Context) (collector.Diagnostic, error) {
+	status, err := s.client.Status(ctx)
+	if err != nil {
+		return collector.Diagnostic{}, err
+	}
+	if status.Self == nil {
+		return collector.Diagnostic{}, fmt.Errorf("tailscale status does not include self")
+	}
+	peerCount := 0
+	for _, peer := range status.Peer {
+		if peer != nil {
+			peerCount++
+		}
+	}
+	return collector.Diagnostic{
+		Self:      peerIdentity(status.Self),
+		OS:        normalizeOS(status.Self.OS),
+		PeerCount: peerCount,
+	}, nil
+}
+
+func normalizeOS(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "linux":
+		return "linux"
+	case "darwin", "macos":
+		return "macos"
+	case "windows":
+		return "windows"
+	case "ios":
+		return "ios"
+	case "android":
+		return "android"
+	default:
+		return value
+	}
+}
+
 func peerIdentity(peer *ipnstate.PeerStatus) domain.NodeIdentity {
 	ips := make([]string, 0, len(peer.TailscaleIPs))
 	for _, ip := range peer.TailscaleIPs {
