@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,7 +25,6 @@ import (
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/collector"
-	"github.com/GhostFlying/tailpath/internal/domain"
 	"github.com/GhostFlying/tailpath/internal/fixtures"
 	"github.com/GhostFlying/tailpath/internal/httpapi"
 	"github.com/GhostFlying/tailpath/internal/store"
@@ -356,33 +354,15 @@ func parseCollectorConfig(arguments []string, getenv func(string) string) (colle
 	return collectorConfig{serverURL: *serverURL, socket: *socket, check: *check}, nil
 }
 
-type collectorCheckResult struct {
-	Self      domain.NodeIdentity `json:"self"`
-	OS        string              `json:"os"`
-	PeerCount int                 `json:"peerCount"`
-}
-
-func checkCollector(ctx context.Context, source collector.Source, output io.Writer) error {
-	snapshot, err := source.Snapshot(ctx)
+func checkCollector(ctx context.Context, source collector.DiagnosticSource, output io.Writer) error {
+	result, err := source.Diagnostic(ctx)
 	if err != nil {
 		return fmt.Errorf("read local status: %w", err)
-	}
-	result := collectorCheckResult{
-		Self:      snapshot.Observer,
-		OS:        collectorRuntimeOS(runtime.GOOS),
-		PeerCount: len(snapshot.Peers),
 	}
 	if err := json.NewEncoder(output).Encode(result); err != nil {
 		return fmt.Errorf("write collector check: %w", err)
 	}
 	return nil
-}
-
-func collectorRuntimeOS(value string) string {
-	if value == "darwin" {
-		return "macos"
-	}
-	return value
 }
 
 func runHealthcheck(arguments []string) error {
