@@ -9,6 +9,15 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for HistoryWindow.
+const (
+	N15m HistoryWindow = "15m"
+	N1h  HistoryWindow = "1h"
+	N24h HistoryWindow = "24h"
+	N6h  HistoryWindow = "6h"
+	N7d  HistoryWindow = "7d"
+)
+
 // Defines values for PathKind.
 const (
 	Derp      PathKind = "derp"
@@ -34,10 +43,52 @@ const (
 
 // EdgeHistory defines model for EdgeHistory.
 type EdgeHistory struct {
-	EdgeId     string          `json:"edgeId"`
-	PathEvents []PathEvent     `json:"pathEvents"`
-	Traffic    []TrafficBucket `json:"traffic"`
+	BucketDurationMs    int64                `json:"bucketDurationMs"`
+	EdgeId              string               `json:"edgeId"`
+	From                time.Time            `json:"from"`
+	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
+	PathEvents          []PathEvent          `json:"pathEvents"`
+	PathEventsTruncated bool                 `json:"pathEventsTruncated"`
+	Source              HistoryNodeReference `json:"source"`
+	Target              HistoryNodeReference `json:"target"`
+	To                  time.Time            `json:"to"`
+	Traffic             []TrafficBucket      `json:"traffic"`
+	TrafficTruncated    bool                 `json:"trafficTruncated"`
 }
+
+// HistoryEdgePage defines model for HistoryEdgePage.
+type HistoryEdgePage struct {
+	Edges      []HistoryEdgeSummary `json:"edges"`
+	NextCursor *string              `json:"nextCursor,omitempty"`
+}
+
+// HistoryEdgeSummary defines model for HistoryEdgeSummary.
+type HistoryEdgeSummary struct {
+	AToBBytes     int64                `json:"aToBBytes"`
+	BToABytes     int64                `json:"bToABytes"`
+	EdgeId        string               `json:"edgeId"`
+	LastTrafficAt time.Time            `json:"lastTrafficAt"`
+	Paths         []PathKind           `json:"paths"`
+	Source        HistoryNodeReference `json:"source"`
+	Target        HistoryNodeReference `json:"target"`
+}
+
+// HistoryNodeReference defines model for HistoryNodeReference.
+type HistoryNodeReference struct {
+	DnsName  *string `json:"dnsName,omitempty"`
+	Hostname *string `json:"hostname,omitempty"`
+	Id       string  `json:"id"`
+	Label    string  `json:"label"`
+	Os       *string `json:"os,omitempty"`
+}
+
+// HistoryNodes defines model for HistoryNodes.
+type HistoryNodes struct {
+	Nodes []HistoryNodeReference `json:"nodes"`
+}
+
+// HistoryWindow defines model for HistoryWindow.
+type HistoryWindow string
 
 // NodeIdentity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 type NodeIdentity struct {
@@ -221,6 +272,27 @@ type TrafficBucket struct {
 	AToBBytes   int64     `json:"aToBBytes"`
 	BToABytes   int64     `json:"bToABytes"`
 	BucketStart time.Time `json:"bucketStart"`
+}
+
+// ListHistoryEdgesParams defines parameters for ListHistoryEdges.
+type ListHistoryEdgesParams struct {
+	Window HistoryWindow `form:"window" json:"window"`
+	NodeId *string       `form:"nodeId,omitempty" json:"nodeId,omitempty"`
+
+	// Path Match when the path appeared at any point in the window.
+	Path   *PathKind `form:"path,omitempty" json:"path,omitempty"`
+	Cursor *string   `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int      `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetEdgeHistoryParams defines parameters for GetEdgeHistory.
+type GetEdgeHistoryParams struct {
+	Window HistoryWindow `form:"window" json:"window"`
+}
+
+// GetHistoryNodesParams defines parameters for GetHistoryNodes.
+type GetHistoryNodesParams struct {
+	Window HistoryWindow `form:"window" json:"window"`
 }
 
 // SubmitReportJSONRequestBody defines body for SubmitReport for application/json ContentType.
