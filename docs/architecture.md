@@ -25,11 +25,13 @@ The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from
 peer counters, and excluded from user activity.
 
-Current topology is served from memory and committed to SQLite as durable
-runtime state after every accepted report. Ingest clones and validates the next
-state, persists the report, runtime state, traffic buckets, and logical path
-transitions in one transaction, then publishes the committed state to SSE.
-Storage failure therefore cannot advance in-memory sequence or inventory state.
+Current topology is served from memory. Every accepted report, traffic bucket,
+and logical path transition is committed in one SQLite transaction. A typed
+candidate state is checkpointed immediately once and then at most once per
+second; the checkpoint records the last represented report rowid. Only after a
+successful transaction does ingest transfer candidate ownership and publish an
+SSE invalidation. Storage failure therefore cannot advance in-memory sequence
+or inventory state.
 
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
@@ -40,8 +42,9 @@ it.
 
 Restart restores current reporter sequences, observer-owned inventory
 generations and memberships, reporter-to-observer ownership, identity aliases,
-nodes, observations, and edge lifecycle directly. A new reporter process claims
-an observer with a complete hello; ordinary messages from an old session cannot
-take ownership back. Raw report retention is not the recovery mechanism. SQLite
-also stores ten-second traffic buckets and aggregated path transitions with the
-provenance supporting each transition.
+nodes, observations, and edge lifecycle from the latest checkpoint, then
+replays only reports with a later rowid and writes a new checkpoint. A new
+reporter process claims an observer with a complete hello; ordinary messages
+from an old session cannot take ownership back. Minute maintenance removes only
+raw reports covered by a committed checkpoint. SQLite also stores ten-second
+traffic buckets and aggregated path transitions with their provenance.

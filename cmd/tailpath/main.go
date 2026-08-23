@@ -174,6 +174,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if err != nil {
 		return err
 	}
+	go application.RunMaintenance(ctx)
 	server := httpapi.New(application, httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger})
 	if fixture {
 		if *scaleFixture {
