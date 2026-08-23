@@ -1,0 +1,19 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|refactor|test|build|ci|chore|perf)(\([a-z0-9-]+\))?!?: .+'
+          printf '%s\n' "$TITLE" | grep -Eq "$pattern"

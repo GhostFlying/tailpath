@@ -1,0 +1,19 @@
+name: Feature request
+description: Propose an observable user outcome.
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed outcome
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Passive-observation impact
+      description: Explain whether this changes collection or trust boundaries.
+    validations:
+      required: true

@@ -21,8 +21,8 @@ and whether each active path is direct, DERP-relayed, peer-relayed, or unknown.
 
 The central server runs as a dedicated tsnet node by default. Collectors sample
 their local tailscaled status every two seconds and only submit traffic samples
-when non-control peer counters change. Idle liveness heartbeats default to five
-minutes.
+when non-control peer counters change. The server-owned idle heartbeat defaults
+to one minute and controls the related freshness windows.
 
 The release artifact is one `tailpath` binary and one OCI image with `server`,
 `collector`, and `healthcheck` subcommands. Linux deployments use Compose;

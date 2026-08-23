@@ -1,0 +1,19 @@
+name: Bug report
+description: Report a reproducible Tailpath defect.
+body:
+  - type: textarea
+    attributes:
+      label: Description
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Tailpath version, OS, Tailscale version, and deployment mode.
+    validations:
+      required: true

@@ -18,7 +18,8 @@ Tailpath 是面向 Tailscale 网络的被动式实时拓扑与流量路径查看
 ## 计划部署方式
 
 中央服务默认使用专用 tsnet 节点。Collector 每两秒读取一次本机 tailscaled 状态，
-只有非控制节点的流量计数发生变化时才提交 traffic sample。空闲心跳默认五分钟。
+只有非控制节点的流量计数发生变化时才提交 traffic sample。服务端统一下发默认一分钟
+的空闲心跳，并用它关联控制 freshness window。
 
 发布产物是一个 `tailpath` 多子命令二进制和一个 OCI image。Linux 通过 Compose
 部署，macOS 和 Windows collector 使用原生发布文件。

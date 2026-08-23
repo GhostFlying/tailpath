@@ -41,7 +41,12 @@ new ADR, not rewritten in place.
 - Use `~/WORKSPACE/tailpath-worktrees/<issue>-<slug>` and branch
   `issue/<issue>-<slug>` for assigned issue work.
 - Never overwrite another worktree, branch, plan, or uncommitted change.
-- Never force-push, merge, publish a release, or change repository settings.
+- Never force-push `main`, merge, publish a release, or change repository
+  settings.
+- PR and personal branches may be rewritten for history cleanup with
+  `--force-with-lease`, never plain `--force`. Record the expected remote head,
+  preserve a local backup ref, prove the replacement tree is equivalent, and
+  coordinate with reviewers before rewriting a branch under active review.
 - Use the existing user Git identity. Never use an agent/bot identity or add an
   agent/bot/tool co-author.
 
@@ -62,6 +67,12 @@ Keep one primary issue per PR. API plus generated types, migrations plus tests,
 and behavior plus required docs belong in the same atomic commit. Do not mix
 unrelated formatting or lockfile churn. Draft branches may use incremental
 commits, but a ready PR must not contain `WIP` or `fixup!` commits.
+
+Commit a coherent boundary after its focused checks pass and before entering a
+different subsystem. Do not leave an entire multi-subsystem issue as one
+uncommitted batch. Open a draft PR once the branch has its first compiling,
+reviewable implementation commit. Mark it ready only when acceptance criteria,
+the active plan, required docs, `make check`, and UI screenshots are complete.
 
 PR titles follow the same Conventional Commit format and become the human-made
 squash commit and changelog entry. Agents may open and update PRs for explicitly

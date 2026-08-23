@@ -10,6 +10,8 @@
 - [Deployment](deployment.md)
 - [Development](development.md)
 - [Testing](testing.md)
+- [v0.1 real-Tailnet container smoke](runbooks/v0.1-container-smoke.md)
+- [v0.1 passive dogfood runbook](runbooks/v0.1-dogfood.md)
 - [UI style guide](styleguide.md)
 - [Roadmap](roadmap.md)
 - [Architecture decisions](adr/README.md)
