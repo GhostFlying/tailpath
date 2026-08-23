@@ -30,6 +30,7 @@ type Options struct {
 	WebDir                string
 	Logger                *slog.Logger
 	TopologyEventInterval time.Duration
+	FixtureMutation       func(context.Context) (any, error)
 }
 
 type Server struct {
@@ -64,6 +65,17 @@ func New(application *app.App, options Options) *Server {
 	server.mux.HandleFunc("GET /api/v1/history/nodes", server.getHistoryNodes)
 	server.mux.HandleFunc("GET /api/v1/history/edges", server.listHistoryEdges)
 	server.mux.HandleFunc("GET /api/v1/history/edges/{edgeID}", server.getEdgeHistory)
+	if options.FixtureMutation != nil {
+		server.mux.HandleFunc("POST /api/v1/fixture/edge-update", func(response http.ResponseWriter, request *http.Request) {
+			value, err := options.FixtureMutation(request.Context())
+			if err != nil {
+				server.logger.Error("fixture edge mutation failed", "error", err)
+				writeProblem(response, http.StatusInternalServerError, "fixture mutation failed", "")
+				return
+			}
+			writeJSON(response, http.StatusAccepted, value)
+		})
+	}
 	server.mux.HandleFunc("GET /healthz", health)
 	server.mux.HandleFunc("/", server.serveWeb)
 	return server
@@ -280,15 +292,21 @@ func coalesceInvalidations(ctx context.Context, input <-chan struct{}, interval 
 				if !ok {
 					return
 				}
-				pending = true
 				if timer == nil {
+					select {
+					case output <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
 					timer = time.NewTimer(interval)
 					deadline = timer.C
+				} else {
+					pending = true
 				}
 			case <-deadline:
-				timer = nil
-				deadline = nil
 				if !pending {
+					timer = nil
+					deadline = nil
 					continue
 				}
 				pending = false
@@ -297,6 +315,8 @@ func coalesceInvalidations(ctx context.Context, input <-chan struct{}, interval 
 				case <-ctx.Done():
 					return
 				}
+				timer.Reset(interval)
+				deadline = timer.C
 			}
 		}
 	}()

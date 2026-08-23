@@ -150,6 +150,21 @@ func (s *ScaleScenario) SteadyReports(at time.Time, sequence int64) []domain.Rep
 	return reports
 }
 
+func (s *ScaleScenario) EdgeMutationReport(at time.Time, sequence int64) domain.ReportEnvelope {
+	edge := s.edges[1]
+	factor := 2 + sequence%7
+	return s.envelope(edge.source, sequence, domain.ReportTrafficSample, at.UTC(), []domain.PeerObservation{{
+		Peer:             s.nodes[edge.target],
+		RxBytes:          10_000_000 + edge.bToABytes*sequence,
+		TxBytes:          20_000_000 + edge.aToBBytes*sequence,
+		RxDelta:          edge.bToABytes * factor,
+		TxDelta:          edge.aToBBytes * factor,
+		SampleDurationMS: 2000,
+		Path:             s.pathForObserver(edge, edge.target),
+		LastActive:       at.UTC(),
+	}})
+}
+
 func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.Time) error {
 	for _, timed := range s.Reports(at) {
 		receipt, err := application.SubmitAt(ctx, timed.Report, timed.ReceivedAt)
