@@ -153,14 +153,6 @@ func TestServerRejectsScaleFixtureOutsideFixtureCommand(t *testing.T) {
 	}
 }
 
-func TestServerRejectsScaleFixtureOutsideFixtureCommand(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := runServer([]string{"--scale"}, logger, false)
-	if err == nil || err.Error() != "scale fixture is only available with fixture-server" {
-		t.Fatalf("runServer error = %v, want scale fixture validation", err)
-	}
-}
-
 func TestServeCancelsStreamingRequestsBeforeShutdown(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
