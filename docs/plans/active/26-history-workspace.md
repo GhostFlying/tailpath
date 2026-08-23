@@ -1,6 +1,6 @@
 # History workspace implementation plan
 
-Status: active
+Status: implemented; awaiting PR review
 Issue: https://github.com/GhostFlying/tailpath/issues/26
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -91,37 +91,46 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
 - Path timeline has at most 501 states including anchor. Selection is local UI
   state and reveals provenance. Color is always paired with path text and a
   distinct symbol.
-- Pagination appends pages only when query identity is unchanged. Changing
-  window/node/path clears cursor and list; URL holds filter state and selected
-  edge, not fetched data.
+- Pagination navigates keyset pages through the URL. Changing window/node/path
+  clears cursor and list; browser back returns to the prior page. URL holds
+  filter state and selected edge, not fetched data.
 
 ## Steps
 
-- [ ] Save accepted concepts and add router/lazy route scaffolding.
-- [ ] Add typed history API clients, URL state, loading/error/empty behavior,
+- [x] Save accepted concepts and add router/lazy route scaffolding.
+- [x] Add typed history API clients, URL state, loading/error/empty behavior,
   node autocomplete, path-seen filter, and pagination.
-- [ ] Implement accepted desktop split and mobile list/detail layouts.
-- [ ] Implement directional SVG traffic, tooltip, path timeline selection,
+- [x] Implement accepted desktop split and mobile list/detail layouts.
+- [x] Implement directional SVG traffic, tooltip, path timeline selection,
   provenance table, and clock-skew warnings.
-- [ ] Add fixture history depth sufficient for charts/transitions.
-- [ ] Add unit and Playwright coverage for deep links, URL filters, back,
+- [x] Add fixture history depth sufficient for charts/transitions.
+- [x] Add unit and Playwright coverage for deep links, URL filters, back,
   pagination, loading/error/empty, chart direction, and responsive layouts.
-- [ ] Run bundle inspection and verify History is lazy without increasing the
+- [x] Run bundle inspection and verify History is lazy without increasing the
   Live entry chunk materially.
-- [ ] Capture native-size desktop/mobile screenshots, compare all accepted
+- [x] Capture native-size desktop/mobile screenshots, compare all accepted
   concepts with `view_image`, and complete the fidelity ledger.
 
 ## Fidelity ledger
 
 | Comparison point | Concept evidence | Render evidence | Status |
 | --- | --- | --- | --- |
-| White app shell/topbar and teal active route | All accepted screens | Pending | Pending |
-| Desktop filter band and split list/detail geometry | Desktop concept | Pending | Pending |
-| Mobile list-only rows and compact filters | Mobile list concept | Pending | Pending |
-| Mobile full-screen detail and browser/back behavior | Mobile detail concept | Pending | Pending |
-| Symmetric traffic chart with direction labels | Desktop/mobile detail | Pending | Pending |
-| Path symbols/text, selection, provenance, clock warning | Desktop/mobile detail | Pending | Pending |
-| Typography, separators, flat container model | All accepted screens | Pending | Pending |
+| White app shell/topbar and teal active route | All accepted screens | Desktop and mobile screenshots; mobile reachable dot restored | Match |
+| Desktop filter band and split list/detail geometry | Desktop concept | 1586 x 992 Playwright screenshot | Match |
+| Mobile list-only rows and compact filters | Mobile list concept | 1118 x 2420 Pixel 7 screenshot | Match |
+| Mobile full-screen detail and browser/back behavior | Mobile detail concept | 1118 x 2420 screenshot plus browser/back assertions | Match |
+| Symmetric traffic chart with direction labels | Desktop/mobile detail | Non-empty mirrored SVG paths; non-negative tooltip rates | Match |
+| Path symbols/text, selection, provenance, clock warning | Desktop/mobile detail | Selectable Direct/DERP timeline and amber provenance warning | Match |
+| Typography, separators, flat container model | All accepted screens | Latest screenshots inspected at original resolution | Match |
+
+## Intentional concept differences
+
+- Platform glyphs use the shared Lucide-derived device vocabulary from #23
+  rather than vendor trademarks shown in the early concepts.
+- Rows say `2 paths seen` when the API returns multiple path kinds instead of
+  presenting the last path as if it were the only path in the selected window.
+- Screenshot fixture totals/timestamps and observer counts are deterministic
+  test values, not copied visual placeholders from the concepts.
 
 ## Tests
 
@@ -131,8 +140,14 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
   empty, pagination, path filter, and clock-skew states. It asserts routes and
   browser/mobile back behavior, chart directions, timeline selection, no
   overlap/overflow, and no console errors.
-- Existing Live desktop/mobile and 250/1,000 scale suites remain unchanged and
-  pass to prove routing/lazy loading did not regress Live.
+- A separate Playwright case opens seeded history through the real fixture API
+  on desktop and mobile. Existing Live desktop/mobile suites pass to prove
+  routing/lazy loading did not regress Live; scale remains a dedicated fixture
+  mode.
+- Browser/IAB was unavailable. Regular Playwright Chromium was the approved
+  fallback, using the pinned local executable documented by the repository.
+- Production build output keeps History in a dedicated 6.15 KiB gzip chunk;
+  the shared entry is 73.33 KiB gzip and Live remains isolated at 151.05 KiB.
 
 ## Risks
 
@@ -149,11 +164,13 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
 
 ## Current state
 
-The four accepted concepts, existing Live shell/style tokens, generated API
-types, fixture data, and Playwright setup have been inspected. Browser/IAB is
-not installed, so the approved fallback is regular Playwright Chromium.
+The workspace, real fixture history, URL behavior, responsive layouts, visual
+comparison, bundle inspection, unit tests, and full Live/History Playwright
+suite are complete. Concurrent browser validation also exposed and fixed the
+parent store's in-memory SQLite lifetime bug and canceled-request log noise in
+#25 before this branch was rebased.
 
 ## Next step
 
-Save the concepts and implement router/lazy route scaffolding without changing
-the Live workspace behavior.
+Push the rebased branch, refresh Draft PR #36, and run the repository-wide
+generated-file, race, build, and browser gates before marking it ready.
