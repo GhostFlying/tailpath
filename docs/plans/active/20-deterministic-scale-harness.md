@@ -55,11 +55,11 @@ scenario before any performance optimization.
 
 ## Steps
 
-- [x] Implement and unit-test deterministic scenario generation.
-- [x] Add app ingest/restart functional scale coverage.
-- [x] Expose the scale browser fixture and assert rendered data counts.
-- [x] Add a lightweight PR smoke target and manual benchmark workflow.
-- [x] Document the baseline, commands, and Playwright fallback.
+- [ ] Implement and unit-test deterministic scenario generation.
+- [ ] Add app ingest/restart functional scale coverage.
+- [ ] Expose the scale browser fixture and assert rendered data counts.
+- [ ] Add a lightweight PR smoke target and manual benchmark workflow.
+- [ ] Document the baseline, commands, and Playwright fallback.
 
 ## Tests
 
@@ -84,32 +84,17 @@ scenario before any performance optimization.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #19 governance branch.
+The issue and this active plan are open. Existing small fixture and test entry
+points have been inspected; implementation has not started.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, review the recorded baseline boundary,
-and mark the PR Ready after #19 is merged and the base is retargeted to `main`.
+Implement the domain-level scenario generator and its exact-count/digest tests.
 
 ## Verification
 
-- Fixed-seed contract tests pass with 250 nodes, 1,000 logical edges, 2,000
-  directed observations, four equally represented paths, 666 active edges, 334
-  recent edges, and nine clock-skewed observers.
-- Full app-to-SQLite ingest and restart passed in the Go 1.26.6 container. The
-  unoptimized baseline was about 23 seconds and 5.37 MB for one scale load.
-- `go test ./...` and `go vet ./...` passed in the Go 1.26.6 container.
-- `pnpm --dir web check`, unit tests, and production build passed with Node
-  24.19.0 and pnpm 10.15.0.
-- Default fixture Playwright passed four desktop/mobile tests. Scale Playwright
-  passed desktop and Pixel 7 with 1,000 logical edges and nonblank screenshots;
-  `data-ready` took about 17-19 seconds.
-- Browser plugin was unavailable, so repository Playwright Chromium was the
-  explicit fallback. The known SSE fetch-abort resource warning is captured in
-  the baseline and remains owned by #21.
+Pending.
 
 ## Completion summary
 
-The deterministic scale scenario, persistent smoke, browser fixture, and manual
-baseline workflow are implemented without optimizing production behavior.
+Pending.
