@@ -73,13 +73,13 @@ changing observer protocol version 1.
 
 ## Steps
 
-- [ ] Add environment precedence, passive check mode, and CLI tests.
-- [ ] Implement cancellable jittered exponential retry and transition logging.
-- [ ] Correct hello/resync behavior and cover reconnect, gaps, resets, skew,
+- [x] Add environment precedence, passive check mode, and CLI tests.
+- [x] Implement cancellable jittered exponential retry and transition logging.
+- [x] Correct hello/resync behavior and cover reconnect, gaps, resets, skew,
   cancellation, and offline baseline semantics.
-- [ ] Add typed HTTP status failures and timeout/auth/server tests.
-- [ ] Enforce and document the ten-second to ten-minute heartbeat range.
-- [ ] Run Go tests/vet and update project status and verification evidence.
+- [x] Add typed HTTP status failures and timeout/auth/server tests.
+- [x] Enforce and document the ten-second to ten-minute heartbeat range.
+- [x] Run Go tests/vet and update project status and verification evidence.
 
 ## Tests
 
@@ -106,10 +106,34 @@ changing observer protocol version 1.
 
 ## Current state
 
-Implementation has not started. Existing collector and CLI behavior has been
-traced and the state transitions above are fixed for implementation.
+Implementation and local verification are complete. The branch is ready for a
+stacked Draft PR based on the #21 incremental-checkpoints branch.
 
 ## Next step
 
-Implement and test CLI configuration plus passive check mode as the first
-behavioral commit.
+Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
+are rebase-merged.
+
+## Verification
+
+- CLI tests cover built-in defaults, environment values, flag overrides, one
+  passive diagnostic read, stable JSON output, and heartbeat range rejection.
+- Collector tests cover exponential cap and jitter bounds, LocalAPI and report
+  failure recovery, accepted-hello resync semantics, ordinary sample resync,
+  counter reset, clock rollback, cancellation, offline baseline replacement,
+  bounded degraded summaries, and one recovery log.
+- HTTP reporter tests cover 401, 403, 500, bounded diagnostic bodies, client
+  timeout, direct Tailnet transport, and custom-client preservation.
+- Existing aggregator tests retain reporter ownership-transfer and sequence-gap
+  coverage. Existing #21 app tests cover server restart and report replay; this
+  issue verifies the collector side of an outage as transport failure followed
+  by a newest-snapshot hello.
+- `go test ./...`, `go vet ./...`, and race-enabled tests for
+  `./internal/collector` plus `./cmd/tailpath` pass with Go 1.26.6.
+
+## Completion summary
+
+The collector now has passive diagnostics, explicit environment precedence,
+cancellable jittered backoff, fresh-hello recovery without offline delta
+reconstruction, state-transition logging, typed HTTP failures, and one bounded
+server heartbeat policy.
