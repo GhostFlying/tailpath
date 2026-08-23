@@ -84,6 +84,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	heartbeat := flags.Duration("heartbeat-interval", time.Minute, "observer freshness heartbeat interval")
 	unsafeBroadListen := flags.Bool("unsafe-allow-non-tailnet-listen", false, "allow tailscaled mode to bind a non-Tailscale address; API WhoIs remains required")
 	scaleFixture := flags.Bool("scale", false, "load the 250-node/1,000-edge test fixture")
+	emptyFixture := flags.Bool("empty", false, "start without generated reports (fixture-server only)")
 	if fixture {
 		*networkMode = "plain"
 		*databasePath = ":memory:"
@@ -93,6 +94,12 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	}
 	if *scaleFixture && !fixture {
 		return errors.New("scale fixture is only available with fixture-server")
+	}
+	if *emptyFixture && !fixture {
+		return errors.New("empty fixture is only available with fixture-server")
+	}
+	if *scaleFixture && *emptyFixture {
+		return errors.New("scale and empty fixtures are mutually exclusive")
 	}
 	if *scaleFixture && *heartbeat == time.Minute {
 		*heartbeat = 10 * time.Minute
@@ -191,7 +198,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 				return fmt.Errorf("refresh scale fixture: %w", err)
 			}
 			go runScaleRuntime(ctx, scenario, application.Aggregator, logger)
-		} else {
+		} else if !*emptyFixture {
 			if err := fixtures.New(application, logger).Start(ctx); err != nil {
 				return err
 			}
