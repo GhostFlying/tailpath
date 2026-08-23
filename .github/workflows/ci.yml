@@ -39,6 +39,83 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  native-platforms:
+    name: Native collector (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.6
+          cache: true
+      - run: go test ./...
+      - run: go build ./cmd/tailpath
+      - name: Validate POSIX packaging
+        if: runner.os != 'Windows'
+        run: |
+          sh -n packaging/linux/*.sh packaging/darwin/*.sh packaging/tests/*.sh
+      - name: Validate Linux installer fixtures
+        if: runner.os == 'Linux'
+        run: |
+          packaging/tests/linux-installer.sh
+          packaging/tests/darwin-installer.sh
+      - name: Validate LaunchAgent
+        if: runner.os == 'macOS'
+        run: plutil -lint packaging/darwin/com.tailpath.collector.plist
+      - name: Validate Windows packaging
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $Failed = $false
+          Get-ChildItem packaging/windows/*.ps1,packaging/tests/windows-runner.ps1 | ForEach-Object {
+            $Tokens = $null
+            $Errors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$Tokens,
+              [ref]$Errors
+            )
+            if ($Errors.Count -gt 0) {
+              $Errors | ForEach-Object { Write-Host $_ }
+              $Failed = $true
+            }
+          }
+          if ($Failed) { exit 1 }
+          $Fixture = Join-Path $env:RUNNER_TEMP "tailpath-fixture.exe"
+          go build -o $Fixture ./packaging/tests/fake-collector
+          & ./packaging/tests/windows-runner.ps1 -Binary $Fixture
+
+  native-archives:
+    name: Native collector archives
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.6
+          cache: true
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: v2.17.1
+          args: release --snapshot --clean
+      - run: packaging/tests/archive-layout.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-collector-archives
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 14
+
   image:
     runs-on: ubuntu-latest
     steps:
