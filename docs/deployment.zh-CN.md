@@ -3,14 +3,55 @@
 [English version](deployment.md)
 
 默认 Compose 服务运行 `tailpath server --network=tsnet`，将 tsnet state 和
-SQLite 保存到 `/var/lib/tailpath`，首次启动使用 `TS_AUTHKEY` 加入 Tailnet，注册
-完成后应移除该 key。
+SQLite 保存到 `/var/lib/tailpath`，首次启动使用 `TS_AUTHKEY` 加入 Tailnet。
+Production Compose model 把 `TAILPATH_AUTHKEY_FILE` 指定的宿主文件挂载为
+`/run/secrets/tailscale-authkey`，container environment 和展开后的 Compose model
+始终只有 `file:/run/secrets/tailscale-authkey`，不会包含 credential value。
 
-Linux collector 可原生运行或使用 host-network Compose profile，并只读挂载
-tailscaled LocalAPI socket。macOS 和 Windows collector 使用原生二进制。
+首次 enrollment 前，在私有目录中创建 secret source。Image 以 nonroot 用户运行，
+因此文件可以放在 mode-0700 的父目录中并设为 mode-0444：
+
+```sh
+install -d -m 0700 secrets
+install -m 0600 /dev/null secrets/tailscale-authkey
+read -r -s -p 'One-use tsnet auth key: ' tailpath_authkey
+printf '\n'
+printf '%s\n' "$tailpath_authkey" > secrets/tailscale-authkey
+unset tailpath_authkey
+chmod 0444 secrets/tailscale-authkey
+docker compose up -d server
+```
+
+Server healthy 后清零 key value，但保留空的 source file 供后续 Compose recreate：
+
+```sh
+chmod u+w secrets/tailscale-authkey
+: > secrets/tailscale-authkey
+chmod 0444 secrets/tailscale-authkey
+```
+
+唯一的 `tailpath-data` volume 同时保存 `tailpath.db` 和 `tsnet/` identity 目录，
+所以 `docker compose down` 后再 `docker compose up` 必须继续使用同一个已注册身份。
+除非明确要一起删除数据库和 Tailnet identity，否则不要执行 `down -v`。
+
+Linux collector 可原生运行或使用可选的 `collector` host-network Compose
+profile，并只读挂载 tailscaled LocalAPI socket。Collector 通过 Tailnet hostname
+或 Tailscale IP 访问 server，不使用 Docker service DNS；server 名称不是 `tailpath`
+时需要设置 `TAILPATH_SERVER_URL`。内置 reporter 会显式绕过进程的 HTTP proxy
+设置，以保留 WhoIs 所需的 Tailscale source identity。macOS 和 Windows collector
+使用原生二进制。
+
+tailscaled server 模式未填写 listen host 时会使用本机第一个 Tailscale IP。
+Wildcard、LAN 和其他非 Tailscale 地址默认被拒绝，只有显式传入
+`--unsafe-allow-non-tailnet-listen` 才能绑定；使用该 override 后 API WhoIs 仍然
+是强制的。
+
+由于不同 Linux 主机的 socket 组 ID 不一致，Compose 中仅 collector 以 root
+身份打开这个只读 socket，且没有可写宿主机挂载；server 仍使用镜像的
+`nonroot` 用户运行。
 
 服务端 identity 必须专用于 Tailpath。共用 identity 的 tailscaled 模式必须显式
 确认到该节点的所有流量都会隐藏为 system telemetry。
 
-生产环境需要在线备份 SQLite、持久化 tsnet state，并逐版本升级。Migration 在
-readiness 之前执行。
+生产环境需要在线备份 SQLite；备份或迁移 named volume 时还必须包含 `tsnet/`
+目录，并逐版本升级。Migration 在 readiness 之前执行。

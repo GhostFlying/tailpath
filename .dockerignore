@@ -1,0 +1,8 @@
+.git
+.github
+.devcontainer
+node_modules
+web/node_modules
+web/dist
+tailpath
+*.db

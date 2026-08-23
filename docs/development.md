@@ -7,7 +7,7 @@ not supported as a reproducibility contract.
 make bootstrap   # install locked frontend and tool dependencies
 make generate    # refresh OpenAPI-derived Go and TypeScript files
 make test        # Go and frontend unit tests
-make e2e         # Playwright
+make test-e2e    # Playwright
 make check       # generation, lint, test, build, docs, and container checks
 ```
 
