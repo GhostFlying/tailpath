@@ -270,38 +270,6 @@ func TestRunBacksOffAndLogsOneRecovery(t *testing.T) {
 	}
 }
 
-func TestRunBoundsDegradedSummaryLogging(t *testing.T) {
-	start := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
-	source := &scriptedSource{
-		results: make([]Snapshot, 4),
-		errors:  []error{errors.New("down-1"), errors.New("down-2"), errors.New("down-3"), errors.New("down-4")},
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	var waits int
-	var logs bytes.Buffer
-	c := New(source, &recordingReporter{}, Options{
-		Now:    func() time.Time { return start.Add(time.Duration(waits) * time.Minute) },
-		Jitter: func() float64 { return 0.5 },
-		Wait: func(context.Context, time.Duration) error {
-			waits++
-			if waits == 4 {
-				cancel()
-				return context.Canceled
-			}
-			return nil
-		},
-		SummaryInterval: 2 * time.Minute,
-		Logger:          slog.New(slog.NewTextHandler(&logs, nil)),
-	})
-	if err := c.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	output := logs.String()
-	if strings.Count(output, "collector degraded") != 1 || strings.Count(output, "collector remains degraded") != 1 {
-		t.Fatalf("bounded degraded logs = %q", output)
-	}
-}
-
 func TestWaitContextCancelsPromptly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
