@@ -1,0 +1,445 @@
+openapi: 3.1.0
+info:
+  title: Tailpath API
+  version: 0.1.0
+  description: Sparse observer ingest and live topology API.
+servers:
+  - url: /api/v1
+paths:
+  /reports:
+    post:
+      operationId: submitReport
+      summary: Submit a trusted observer report.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportEnvelope'
+      responses:
+        '202':
+          description: Report accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportReceipt'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /topology:
+    get:
+      operationId: getTopology
+      summary: Return the current reconciled topology.
+      responses:
+        '200':
+          description: Current topology.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topology'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /events:
+    get:
+      operationId: streamEvents
+      summary: Stream topology invalidations over server-sent events.
+      responses:
+        '200':
+          description: SSE event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Problem'
+  /history/edges/{edgeId}:
+    get:
+      operationId: getEdgeHistory
+      summary: Return recent traffic buckets and path events for an edge.
+      parameters:
+        - name: edgeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Edge history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeHistory'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+components:
+  responses:
+    Problem:
+      description: Request failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    ReportEnvelope:
+      type: object
+      required: [version, reportId, reporterInstanceId, sequence, collectedAt, kind]
+      description: >-
+        Normal observer messages contain observers. relay_session_update contains
+        relaySessions instead; the server rejects envelopes that mix the two forms.
+      properties:
+        version:
+          type: integer
+          const: 1
+        reportId:
+          type: string
+          format: uuid
+        reporterInstanceId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        collectedAt:
+          type: string
+          format: date-time
+        kind:
+          $ref: '#/components/schemas/ReportKind'
+        observers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ObserverReport'
+        relaySessions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RelaySessionObservation'
+    ReportKind:
+      type: string
+      enum: [observer_hello, inventory_update, traffic_sample, observer_heartbeat, relay_session_update]
+    ObserverReport:
+      type: object
+      required: [observer, inventoryGeneration]
+      description: >-
+        For hello and inventory_update, peers is the observer's complete current
+        runtime peer view. For traffic_sample it is sparse and contains only
+        peers with business byte deltas.
+      properties:
+        observer:
+          $ref: '#/components/schemas/NodeIdentity'
+        inventoryGeneration:
+          type: string
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerObservation'
+    NodeIdentity:
+      type: object
+      required: [hostname]
+      description: >-
+        At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is
+        required. Names are display fields and never merge nodes.
+      properties:
+        stableNodeId:
+          type: string
+        nodeId:
+          type: string
+        nodeKey:
+          type: string
+        discoKey:
+          type: string
+        hostname:
+          type: string
+        dnsName:
+          type: string
+        tailscaleIps:
+          type: array
+          items:
+            type: string
+    PeerObservation:
+      type: object
+      required: [peer, rxBytes, txBytes, rxDelta, txDelta, sampleDurationMs, path, lastActive]
+      properties:
+        peer:
+          $ref: '#/components/schemas/NodeIdentity'
+        rxBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        txBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        rxDelta:
+          type: integer
+          format: int64
+          minimum: 0
+        txDelta:
+          type: integer
+          format: int64
+          minimum: 0
+        sampleDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Zero for hello/inventory baselines; positive for traffic samples.
+        path:
+          $ref: '#/components/schemas/PathObservation'
+        lastActive:
+          type: string
+          format: date-time
+    RelaySessionObservation:
+      type: object
+      required:
+        - relay
+        - source
+        - target
+        - sessionId
+        - vni
+        - sourceToTargetBytes
+        - targetToSourceBytes
+        - sourceToTargetDelta
+        - targetToSourceDelta
+        - sampleDurationMs
+        - lastActive
+      description: >-
+        A Peer Relay observer's view of traffic between two Tailnet nodes. The
+        logical edge is source-target while relay supplies third-party provenance.
+      properties:
+        relay:
+          $ref: '#/components/schemas/NodeIdentity'
+          description: The relay observer; stableNodeId is required by the ingest contract.
+        source:
+          $ref: '#/components/schemas/NodeIdentity'
+        target:
+          $ref: '#/components/schemas/NodeIdentity'
+        sessionId:
+          type: string
+          minLength: 1
+        vni:
+          type: integer
+          format: int64
+          minimum: 0
+        sourceEndpoint:
+          type: string
+        targetEndpoint:
+          type: string
+        sourceToTargetBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        targetToSourceBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        sourceToTargetDelta:
+          type: integer
+          format: int64
+          minimum: 0
+        targetToSourceDelta:
+          type: integer
+          format: int64
+          minimum: 0
+        sampleDurationMs:
+          type: integer
+          format: int64
+          minimum: 1
+        lastActive:
+          type: string
+          format: date-time
+    PathObservation:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/PathKind'
+        directEndpoint:
+          type: string
+        derpRegion:
+          type: string
+        peerRelayStableNodeId:
+          type: string
+    PathKind:
+      type: string
+      enum: [direct, derp, peer_relay, unknown]
+    ReportReceipt:
+      type: object
+      required: [accepted, resyncRequired, controlStableNodeIds, heartbeatIntervalMs]
+      properties:
+        accepted:
+          type: boolean
+        resyncRequired:
+          type: boolean
+        controlStableNodeIds:
+          type: array
+          items:
+            type: string
+        heartbeatIntervalMs:
+          type: integer
+          format: int64
+          minimum: 1
+    Topology:
+      type: object
+      required: [generatedAt, nodes, edges, observers]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        nextChangeAt:
+          type: string
+          format: date-time
+          description: Earliest known lifecycle deadline that can change this snapshot.
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopologyEdge'
+        observers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObserverState'
+    TopologyNode:
+      allOf:
+        - $ref: '#/components/schemas/NodeIdentity'
+        - type: object
+          required: [id, observable, online, lastEvidenceAt, clockSkewed]
+          properties:
+            id:
+              type: string
+            observable:
+              type: boolean
+            online:
+              type: boolean
+            lastEvidenceAt:
+              type: string
+              format: date-time
+            clockSkewed:
+              type: boolean
+    TopologyEdge:
+      type: object
+      required: [id, source, target, path, state, aToBBytesPerSecond, bToABytesPerSecond, lastActive, observations]
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        target:
+          type: string
+        path:
+          $ref: '#/components/schemas/PathObservation'
+        state:
+          type: string
+          enum: [active, recent]
+        aToBBytesPerSecond:
+          type: number
+          format: double
+          minimum: 0
+        bToABytesPerSecond:
+          type: number
+          format: double
+          minimum: 0
+        lastActive:
+          type: string
+          format: date-time
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationProvenance'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathObservation'
+    ObservationProvenance:
+      type: object
+      required: [observerId, path, collectedAt, receivedAt, clockSkewed]
+      properties:
+        observerId:
+          type: string
+        path:
+          $ref: '#/components/schemas/PathObservation'
+        collectedAt:
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+        clockSkewed:
+          type: boolean
+    ObserverState:
+      type: object
+      required: [id, hostname, online, lastSeen, lastCollectedAt, clockSkewMs, clockSkewed]
+      properties:
+        id:
+          type: string
+        hostname:
+          type: string
+        online:
+          type: boolean
+        lastSeen:
+          type: string
+          format: date-time
+        lastCollectedAt:
+          type: string
+          format: date-time
+        clockSkewMs:
+          type: integer
+          format: int64
+        clockSkewed:
+          type: boolean
+    EdgeHistory:
+      type: object
+      required: [edgeId, traffic, pathEvents]
+      properties:
+        edgeId:
+          type: string
+        traffic:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrafficBucket'
+        pathEvents:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathEvent'
+    TrafficBucket:
+      type: object
+      required: [bucketStart, aToBBytes, bToABytes]
+      properties:
+        bucketStart:
+          type: string
+          format: date-time
+        aToBBytes:
+          type: integer
+          format: int64
+        bToABytes:
+          type: integer
+          format: int64
+    PathEvent:
+      type: object
+      required: [observedAt, path, observations]
+      properties:
+        observedAt:
+          type: string
+          format: date-time
+        path:
+          $ref: '#/components/schemas/PathObservation'
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationProvenance'
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
