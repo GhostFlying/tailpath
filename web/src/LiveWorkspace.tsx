@@ -5,7 +5,6 @@ import { GraphLegend } from "./components/GraphLegend";
 import { Inspector } from "./components/Inspector";
 import { TopologyFilters } from "./components/TopologyFilters";
 import { TopologyGraph } from "./components/TopologyGraph";
-import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
 import { useTopology } from "./hooks/useTopology";
 import {
   edgeIsVisible,
@@ -66,30 +65,35 @@ export default function LiveWorkspace() {
 
   return (
     <main className="app-shell">
-      <WorkspaceTopbar
-        connection={connection}
-        metrics={
-          <>
-            <span>
-              <strong>{topology?.nodes.length ?? 0}</strong> nodes
-            </span>
-            <span>
-              <strong>
-                {topology?.edges.filter((edge) => edge.state === "active")
-                  .length ?? 0}
-              </strong>{" "}
-              active edges
-            </span>
-            <span>
-              <strong>
-                {topology?.observers.filter((observer) => observer.online)
-                  .length ?? 0}
-              </strong>{" "}
-              live runtimes
-            </span>
-          </>
-        }
-      />
+      <header className="topbar">
+        <div className="brand">
+          <Waypoints size={22} />
+          <strong>Tailpath</strong>
+        </div>
+        <div className="headline-metrics">
+          <span>
+            <strong>{topology?.nodes.length ?? 0}</strong> nodes
+          </span>
+          <span>
+            <strong>
+              {topology?.edges.filter((edge) => edge.state === "active")
+                .length ?? 0}
+            </strong>{" "}
+            active edges
+          </span>
+          <span>
+            <strong>
+              {topology?.observers.filter((observer) => observer.online)
+                .length ?? 0}
+            </strong>{" "}
+            live runtimes
+          </span>
+        </div>
+        <div className={`live-state ${connection}`}>
+          <span />
+          {connection}
+        </div>
+      </header>
 
       <div className="workspace">
         <TopologyFilters
