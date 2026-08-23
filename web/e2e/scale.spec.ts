@@ -25,6 +25,9 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   await expect(graph).toHaveAttribute("data-ready", "true", {
     timeout: 120_000,
   });
+  await expect(graph).toHaveAttribute("data-device-nodes-square", "true");
+  await expect(graph).toHaveAttribute("data-layout-runs", "1");
+  const firstPositions = await graph.getAttribute("data-layout-positions");
 
   const topology = await page.evaluate(async () => {
     const response = await fetch("/api/v1/topology");
@@ -52,11 +55,22 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   expect(consoleErrors).toEqual([]);
 
   const readyElapsedMs = Date.now() - startedAt;
+  const reloadStartedAt = Date.now();
+  await page.reload();
+  await expect(graph).toHaveAttribute("data-ready", "true", {
+    timeout: 30_000,
+  });
+  const cachedReadyElapsedMs = Date.now() - reloadStartedAt;
+  await expect(graph).toHaveAttribute("data-layout-runs", "0");
+  expect(await graph.getAttribute("data-layout-positions")).toBe(
+    firstPositions,
+  );
   await testInfo.attach("scale-browser.json", {
     body: JSON.stringify(
       {
         project: testInfo.project.name,
         readyElapsedMs,
+        cachedReadyElapsedMs,
         topologyNodes: topology.nodes.length,
         logicalEdges: topology.edges.length,
         renderedNodes: 505,

@@ -199,6 +199,25 @@ describe("buildElements", () => {
     });
     expect(elements).toEqual([]);
   });
+
+  it("persists only canonical topology nodes", () => {
+    const fixture = topology();
+    fixture.edges = [edge("unknown", "a", "b", "unknown")];
+    const nodes = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter((element) => element.group === "nodes");
+    expect(
+      nodes
+        .filter((node) => node.data?.persistable)
+        .map((node) => node.data?.id),
+    ).toEqual(["a", "b"]);
+    expect(
+      nodes.find((node) => node.data?.id === "unknown-marker:unknown")?.data
+        ?.persistable,
+    ).toBeUndefined();
+  });
 });
 
 describe("trafficWidth", () => {
