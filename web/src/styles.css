@@ -326,7 +326,7 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #a43f3f;
+  color: #9a6500;
 }
 
 .graph-stage {
@@ -414,10 +414,16 @@ button {
   opacity: 0.5;
 }
 .legend-runtime-badge,
-.legend-clock {
+.legend-clock,
+.legend-device {
   display: inline-grid;
   place-items: center;
   flex: none;
+}
+.legend-device {
+  width: 14px;
+  height: 14px;
+  color: #33444b;
 }
 .legend-runtime-badge {
   width: 14px;
@@ -429,7 +435,7 @@ button {
 .legend-clock {
   width: 14px;
   height: 14px;
-  color: #c84d4d;
+  color: #bd7b00;
 }
 .center-state {
   position: absolute;
@@ -572,6 +578,9 @@ button {
   gap: 5px;
   align-items: center;
 }
+.details-list .clock-warning {
+  color: #bd7b00;
+}
 .details-list dd {
   margin: 0;
   text-align: right;
@@ -620,7 +629,7 @@ button {
   color: #6d7a81;
 }
 .evidence-row svg[aria-label] {
-  color: #c84d4d;
+  color: #bd7b00;
 }
 .evidence-row small {
   color: #69757b;

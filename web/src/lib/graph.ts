@@ -6,6 +6,7 @@ import type {
   TopologyNode,
 } from "../api/types";
 import { formatCompactRate, nodeLabel } from "./format";
+import { platformPresentation } from "./platform";
 
 export const minimumEdgeCenterDistance = 160;
 export const minimumTrafficWidth = 1.5;
@@ -32,26 +33,41 @@ export function buildElements(
     edgeIsVisible(edge, options.pathFilter, options.showRecent),
   );
   const nodeMap = new Map(topology.nodes.map((node) => [node.id, node]));
+  const stableNodeMap = new Map(
+    topology.nodes.flatMap((node) =>
+      node.stableNodeId ? [[node.stableNodeId, node] as const] : [],
+    ),
+  );
+  const intermediates = new Map(
+    visibleEdges.map((edge) => [edge.id, intermediateFor(edge, stableNodeMap)]),
+  );
   const relevantNodeIDs = new Set(
     visibleEdges.flatMap((edge) => [edge.source, edge.target]),
   );
   for (const edge of visibleEdges) {
-    const intermediate = intermediateFor(edge, topology.nodes);
+    const intermediate = intermediates.get(edge.id);
     if (intermediate?.nodeID) relevantNodeIDs.add(intermediate.nodeID);
   }
+  const peerRelayNodeIDs = new Set(
+    [...intermediates.values()]
+      .map((intermediate) => intermediate?.nodeID)
+      .filter((id): id is string => Boolean(id)),
+  );
   const elements: ElementDefinition[] = topology.nodes
     .filter((node) => relevantNodeIDs.has(node.id))
-    .map((node) => nodeElement(node, options.query));
+    .map((node) =>
+      nodeElement(node, options.query, peerRelayNodeIDs.has(node.id)),
+    );
   const virtualNodes = new Set<string>();
   const activeIntermediateIDs = new Set(
     visibleEdges
       .filter((edge) => edge.state === "active")
-      .map((edge) => intermediateFor(edge, topology.nodes)?.id)
+      .map((edge) => intermediates.get(edge.id)?.id)
       .filter((id): id is string => Boolean(id)),
   );
 
   for (const edge of visibleEdges) {
-    const intermediate = intermediateFor(edge, topology.nodes);
+    const intermediate = intermediates.get(edge.id);
     if (!intermediate) {
       elements.push(edgeElement(edge, edge.source, edge.target, "main"));
       continue;
@@ -77,11 +93,17 @@ export function buildElements(
   return elements;
 }
 
-function nodeElement(node: TopologyNode, query: string): ElementDefinition {
+function nodeElement(
+  node: TopologyNode,
+  query: string,
+  isPeerRelay: boolean,
+): ElementDefinition {
   const label = nodeLabel(node);
+  const platform = platformPresentation(node.os);
+  const iconLayers = nodeIconLayers(node, platform.asset, isPeerRelay);
   const matches =
     !query ||
-    `${label} ${node.dnsName ?? ""} ${node.tailscaleIps?.join(" ") ?? ""}`
+    `${label} ${node.dnsName ?? ""} ${node.os ?? ""} ${node.tailscaleIps?.join(" ") ?? ""}`
       .toLowerCase()
       .includes(query.toLowerCase());
   return {
@@ -89,12 +111,15 @@ function nodeElement(node: TopologyNode, query: string): ElementDefinition {
     data: {
       id: node.id,
       label,
-      kind: "tailnet",
+      kind: isPeerRelay ? "peer-relay" : "tailnet",
       observable: node.observable,
       online: node.online,
       dimmed: !matches,
+      os: node.os ?? "",
+      ...iconLayers,
     },
     classes: [
+      isPeerRelay ? "relay-node peer-relay" : "device-node",
       node.observable ? "runtime-telemetry" : "peer-only",
       node.observable && !node.online ? "offline" : "",
       node.clockSkewed ? "clock-skewed" : "",
@@ -103,7 +128,55 @@ function nodeElement(node: TopologyNode, query: string): ElementDefinition {
   };
 }
 
-function intermediateFor(edge: TopologyEdge, nodes: TopologyNode[]) {
+function nodeIconLayers(
+  node: TopologyNode,
+  platformIcon: string,
+  isPeerRelay: boolean,
+) {
+  const images: string[] = [];
+  const widths: string[] = [];
+  const heights: string[] = [];
+  const positionsX: string[] = [];
+  const positionsY: string[] = [];
+  const add = (image: string, size: string, x: string, y: string) => {
+    images.push(image);
+    widths.push(size);
+    heights.push(size);
+    positionsX.push(x);
+    positionsY.push(y);
+  };
+  if (!isPeerRelay) add(platformIcon, "24px", "50%", "46%");
+  if (node.observable) {
+    add(
+      "/runtime-telemetry.svg",
+      isPeerRelay ? "14px" : "15px",
+      isPeerRelay ? "88%" : "84%",
+      isPeerRelay ? "12%" : "16%",
+    );
+  }
+  if (node.clockSkewed) {
+    add(
+      "/clock-skew.svg",
+      isPeerRelay ? "15px" : "16px",
+      isPeerRelay ? "88%" : "84%",
+      isPeerRelay ? "88%" : "84%",
+    );
+  }
+  return images.length
+    ? {
+        backgroundImages: images,
+        backgroundWidths: widths,
+        backgroundHeights: heights,
+        backgroundPositionsX: positionsX,
+        backgroundPositionsY: positionsY,
+      }
+    : {};
+}
+
+function intermediateFor(
+  edge: TopologyEdge,
+  nodesByStableID: Map<string, TopologyNode>,
+) {
   if (edge.path.kind === "derp") {
     const region = edge.path.derpRegion || "unknown";
     return {
@@ -115,7 +188,7 @@ function intermediateFor(edge: TopologyEdge, nodes: TopologyNode[]) {
   }
   if (edge.path.kind === "peer_relay") {
     const stableID = edge.path.peerRelayStableNodeId;
-    const node = nodes.find((candidate) => candidate.stableNodeId === stableID);
+    const node = stableID ? nodesByStableID.get(stableID) : undefined;
     return {
       id: node?.id || `peer-relay:${stableID || "unknown"}`,
       label: node ? nodeLabel(node) : "Peer Relay",

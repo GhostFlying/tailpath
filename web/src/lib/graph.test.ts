@@ -151,6 +151,44 @@ describe("buildElements", () => {
     ).toContain("peer-only");
   });
 
+  it("adds platform and independent telemetry and skew semantics", () => {
+    const fixture = topology();
+    fixture.nodes[0].os = "linux";
+    fixture.nodes[0].clockSkewed = true;
+    const rendered = buildElements(fixture, {
+      pathFilter: "direct",
+      showRecent: true,
+      query: "",
+    }).find((item) => item.data?.id === "a");
+    expect(rendered?.data?.backgroundImages).toEqual([
+      "/device-linux.svg",
+      "/runtime-telemetry.svg",
+      "/clock-skew.svg",
+    ]);
+    expect(String(rendered?.classes)).toContain("device-node");
+    expect(String(rendered?.classes)).toContain("runtime-telemetry");
+    expect(String(rendered?.classes)).toContain("clock-skewed");
+  });
+
+  it("uses path-specific peer relay anatomy without a platform glyph", () => {
+    const fixture = topology();
+    fixture.edges = [
+      {
+        ...edge("relay", "a", "b", "peer_relay"),
+        path: { kind: "peer_relay", peerRelayStableNodeId: "c" },
+      },
+    ];
+    const rendered = buildElements(fixture, {
+      pathFilter: "peer_relay",
+      showRecent: true,
+      query: "",
+    }).find((item) => item.data?.id === "c");
+    expect(rendered?.data?.kind).toBe("peer-relay");
+    expect(rendered?.data?.backgroundImages).toBeUndefined();
+    expect(String(rendered?.classes)).toContain("relay-node peer-relay");
+    expect(String(rendered?.classes)).not.toContain("device-node");
+  });
+
   it("does not render inventory-only nodes without a visible relationship", () => {
     const fixture = topology();
     fixture.edges = [];
@@ -218,6 +256,7 @@ function node(id: string): TopologyNode {
     id,
     stableNodeId: id,
     hostname: id.toUpperCase(),
+    os: "linux",
     observable: id === "a",
     online: id === "a",
     lastEvidenceAt: "2026-08-23T00:00:00Z",

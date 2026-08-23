@@ -1,10 +1,10 @@
 import {
+  Activity,
   ArrowDownLeft,
   ArrowUpRight,
   Clock3,
   Network,
   RadioTower,
-  Server,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -17,6 +17,7 @@ import type {
   TopologyNode,
 } from "../api/types";
 import { formatAgo, formatRate, nodeLabel, pathLabel } from "../lib/format";
+import { platformPresentation } from "../lib/platform";
 
 interface Props {
   topology: Topology;
@@ -170,18 +171,25 @@ function NodeDetails({
       ? "online"
       : "offline"
     : "runtime unknown";
+  const platform = platformPresentation(node.os);
+  const PlatformIcon = platform.Icon;
   return (
     <>
       <p className="panel-kicker">Tailnet node</p>
       <h2>{nodeLabel(node)}</h2>
       <div className="node-status">
-        <Server size={17} />
-        <span>{node.observable ? "Runtime telemetry" : "Peer only"}</span>
+        <PlatformIcon size={17} />
+        <span>{platform.label}</span>
         <span className={`state-badge ${node.online ? "active" : "recent"}`}>
           {status}
         </span>
       </div>
       <dl className="details-list">
+        <Detail
+          label="Telemetry"
+          value={node.observable ? "Runtime telemetry" : "Peer only"}
+          icon={<Activity size={15} />}
+        />
         {node.stableNodeId ? (
           <Detail label="Stable node ID" value={node.stableNodeId} />
         ) : null}
@@ -201,7 +209,7 @@ function NodeDetails({
           <Detail
             label="Collector clock"
             value={formatClockSkew(runtimeView.clockSkewMs)}
-            icon={<TriangleAlert size={15} />}
+            icon={<TriangleAlert className="clock-warning" size={15} />}
           />
         ) : null}
       </dl>
