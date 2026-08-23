@@ -41,11 +41,14 @@ type EdgeHistory struct {
 
 // NodeIdentity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 type NodeIdentity struct {
-	DiscoKey     *string   `json:"discoKey,omitempty"`
-	DnsName      *string   `json:"dnsName,omitempty"`
-	Hostname     *string   `json:"hostname,omitempty"`
-	NodeId       *string   `json:"nodeId,omitempty"`
-	NodeKey      *string   `json:"nodeKey,omitempty"`
+	DiscoKey *string `json:"discoKey,omitempty"`
+	DnsName  *string `json:"dnsName,omitempty"`
+	Hostname *string `json:"hostname,omitempty"`
+	NodeId   *string `json:"nodeId,omitempty"`
+	NodeKey  *string `json:"nodeKey,omitempty"`
+
+	// Os Reported operating system for display only; never identity evidence.
+	Os           *string   `json:"os,omitempty"`
 	StableNodeId *string   `json:"stableNodeId,omitempty"`
 	TailscaleIps *[]string `json:"tailscaleIps,omitempty"`
 }
@@ -206,8 +209,11 @@ type TopologyNode struct {
 	NodeKey        *string   `json:"nodeKey,omitempty"`
 	Observable     bool      `json:"observable"`
 	Online         bool      `json:"online"`
-	StableNodeId   *string   `json:"stableNodeId,omitempty"`
-	TailscaleIps   *[]string `json:"tailscaleIps,omitempty"`
+
+	// Os Reported operating system for display only; never identity evidence.
+	Os           *string   `json:"os,omitempty"`
+	StableNodeId *string   `json:"stableNodeId,omitempty"`
+	TailscaleIps *[]string `json:"tailscaleIps,omitempty"`
 }
 
 // TrafficBucket defines model for TrafficBucket.
