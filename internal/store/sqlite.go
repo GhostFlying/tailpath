@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -45,7 +46,7 @@ func Open(path string, retention time.Duration) (*SQLite, error) {
 	if memory {
 		path = fmt.Sprintf("file:tailpath-memory-%d?mode=memory&cache=shared", memoryDatabaseSequence.Add(1))
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +71,17 @@ func Open(path string, retention time.Duration) (*SQLite, error) {
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}
 	return &SQLite{db: db, anchor: anchor, retention: retention}, nil
+}
+
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator +
+		"_pragma=foreign_keys%281%29" +
+		"&_pragma=synchronous%28NORMAL%29" +
+		"&_pragma=temp_store%28MEMORY%29"
 }
 
 func (s *SQLite) Close() error {
