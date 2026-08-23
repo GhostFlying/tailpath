@@ -30,10 +30,8 @@ and logical path transition is committed in one SQLite transaction. A typed
 candidate state is checkpointed immediately once and then at most once per
 second; the checkpoint records the last represented report rowid. Only after a
 successful transaction does ingest transfer candidate ownership and publish an
-SSE invalidation. Per-client invalidations are coalesced into 250-millisecond
-windows, and the browser merges a refresh burst into one in-flight request plus
-one follow-up. Storage failure therefore cannot advance in-memory sequence or
-inventory state.
+SSE invalidation. Storage failure therefore cannot advance in-memory sequence
+or inventory state.
 
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
@@ -49,12 +47,4 @@ replays only reports with a later rowid and writes a new checkpoint. A new
 reporter process claims an observer with a complete hello; ordinary messages
 from an old session cannot take ownership back. Minute maintenance removes only
 raw reports covered by a committed checkpoint. SQLite also stores ten-second
-per-observer traffic for one hour, deduplicated logical minute traffic for 48
-hours, logical hour traffic for seven days, and aggregated path transitions
-with provenance. Rollup and source-tier deletion share one transaction and only
-process ended buckets.
-
-History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
-resolve persisted canonical redirects before grouping, use keyset pagination,
-and cap detail responses at 200 traffic points and 500 path transitions. A path
-anchor records the state at the start of a window without replaying topology.
+traffic buckets and aggregated path transitions with their provenance.
