@@ -1,0 +1,137 @@
+package fixtures
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/GhostFlying/tailpath/internal/aggregate"
+	"github.com/GhostFlying/tailpath/internal/domain"
+)
+
+func TestScaleScenarioContract(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scenario.NodeCount() != 250 || scenario.EdgeCount() != 1000 {
+		t.Fatalf("scale = %d nodes/%d edges, want 250/1000", scenario.NodeCount(), scenario.EdgeCount())
+	}
+
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	reports := scenario.Reports(at)
+	if len(reports) != 750 {
+		t.Fatalf("reports = %d, want 750", len(reports))
+	}
+	pathCounts := map[domain.PathKind]int{}
+	edgeObservers := map[string]int{}
+	directedTraffic := 0
+	for _, timed := range reports {
+		if err := timed.Report.Validate(); err != nil {
+			t.Fatalf("report %s: %v", timed.Report.ReportID, err)
+		}
+		if timed.Report.Kind != domain.ReportTrafficSample {
+			continue
+		}
+		observer := timed.Report.Observers[0].Observer.StableNodeID
+		for _, peer := range timed.Report.Observers[0].Peers {
+			edgeID, _, _ := domain.EdgeID(observer, peer.Peer.StableNodeID)
+			edgeObservers[edgeID]++
+			pathCounts[peer.Path.Kind]++
+			directedTraffic++
+		}
+	}
+	if directedTraffic != 2000 || len(edgeObservers) != 1000 {
+		t.Fatalf("traffic = %d directed/%d logical, want 2000/1000", directedTraffic, len(edgeObservers))
+	}
+	for edgeID, count := range edgeObservers {
+		if count != 2 {
+			t.Fatalf("edge %s has %d observations, want 2", edgeID, count)
+		}
+	}
+	for _, kind := range []domain.PathKind{domain.PathDirect, domain.PathDERP, domain.PathPeerRelay, domain.PathUnknown} {
+		if pathCounts[kind] != 500 {
+			t.Fatalf("%s observations = %d, want 500", kind, pathCounts[kind])
+		}
+	}
+
+	payload, err := json.Marshal(reports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(payload)
+	const wantDigest = "cc7fc789729ce9e1e8ba6c1025f9ab9617938aca4f4a2da6f0b8d3b46b5e52bb"
+	if got := hex.EncodeToString(digest[:]); got != wantDigest {
+		t.Fatalf("digest = %s, want %s", got, wantDigest)
+	}
+}
+
+func TestScaleScenarioAggregatesExpectedTopology(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	nextID := 0
+	aggregator := aggregate.New(aggregate.Options{
+		Now: func() time.Time { return at },
+		NewNodeID: func() string {
+			nextID++
+			return scaleUUID(nextID)
+		},
+	})
+	for _, timed := range scenario.Reports(at) {
+		result, err := aggregator.ApplyAt(timed.Report, timed.ReceivedAt)
+		if err != nil {
+			t.Fatalf("apply %s: %v", timed.Report.ReportID, err)
+		}
+		if !result.Receipt.Accepted || result.Receipt.ResyncRequired {
+			t.Fatalf("receipt for %s = %#v", timed.Report.ReportID, result.Receipt)
+		}
+	}
+
+	topology := aggregator.Snapshot()
+	if len(topology.Nodes) != 250 || len(topology.Edges) != 1000 || len(topology.Observers) != 250 {
+		t.Fatalf("topology = %d nodes/%d edges/%d observers", len(topology.Nodes), len(topology.Edges), len(topology.Observers))
+	}
+	stateCounts := map[domain.EdgeState]int{}
+	pathCounts := map[domain.PathKind]int{}
+	for _, edge := range topology.Edges {
+		stateCounts[edge.State]++
+		pathCounts[edge.Path.Kind]++
+		if len(edge.Observations) != 2 {
+			t.Fatalf("edge %s has %d observations, want 2", edge.ID, len(edge.Observations))
+		}
+	}
+	if stateCounts[domain.EdgeActive] != 666 || stateCounts[domain.EdgeRecent] != 334 {
+		t.Fatalf("states = %#v, want 666 active/334 recent", stateCounts)
+	}
+	for _, kind := range []domain.PathKind{domain.PathDirect, domain.PathDERP, domain.PathPeerRelay, domain.PathUnknown} {
+		if pathCounts[kind] != 250 {
+			t.Fatalf("%s edges = %d, want 250", kind, pathCounts[kind])
+		}
+	}
+	skewed := 0
+	for _, observer := range topology.Observers {
+		if observer.ClockSkewed {
+			skewed++
+		}
+	}
+	if skewed != 9 {
+		t.Fatalf("clock-skewed observers = %d, want 9", skewed)
+	}
+}
+
+func TestScaleScenarioRejectsInvalidShape(t *testing.T) {
+	for _, config := range []ScaleConfig{
+		{NodeCount: 2, EdgeCount: 1},
+		{NodeCount: 250, EdgeCount: 999},
+		{NodeCount: 10, EdgeCount: 50},
+	} {
+		if _, err := NewScaleScenario(config); err == nil {
+			t.Fatalf("NewScaleScenario(%#v) succeeded", config)
+		}
+	}
+}
