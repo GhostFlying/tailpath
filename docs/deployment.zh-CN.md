@@ -53,5 +53,7 @@ Wildcard、LAN 和其他非 Tailscale 地址默认被拒绝，只有显式传入
 服务端 identity 必须专用于 Tailpath。共用 identity 的 tailscaled 模式必须显式
 确认到该节点的所有流量都会隐藏为 system telemetry。
 
-生产环境需要在线备份 SQLite；备份或迁移 named volume 时还必须包含 `tsnet/`
-目录，并逐版本升级。Migration 在 readiness 之前执行。
+Tailpath v0.2 不提供受支持的 backup/restore contract。只复制 `tailpath.db` 并不
+完整，因为 `tsnet/` 目录保存 server identity；同时也没有承诺复制 live SQLite
+文件是安全的。任何临时 volume copy 都属于 unsupported 操作。升级时应逐版本
+进行，migration 会在 readiness 之前执行。

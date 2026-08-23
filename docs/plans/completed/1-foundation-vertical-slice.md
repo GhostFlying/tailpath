@@ -1,6 +1,6 @@
 # M0 and v0.1 foundation implementation plan
 
-Status: review remediation complete; awaiting CI
+Status: completed and merged in PR #2
 Issue: https://github.com/GhostFlying/tailpath/issues/1
 Milestones: M0, v0.1
 Last updated: 2026-08-23

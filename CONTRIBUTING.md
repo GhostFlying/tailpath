@@ -10,7 +10,7 @@ and browser tooling remain reproducible.
 3. Add an implementation plan when required by `AGENTS.md`.
 4. Make focused commits and run `make check`.
 5. Open a pull request using the repository template.
-6. Wait for human review and squash merge.
+6. Wait for human review and rebase merge.
 
 Do not wait for the whole issue before opening a PR. Open it as a draft after
 the first compiling, reviewable implementation commit so API and architecture
@@ -36,8 +36,8 @@ docs(api): clarify observer heartbeat semantics
 ```
 
 The allowed types and scopes are documented in `AGENTS.md`. The PR title must
-also use this format because it becomes the squash commit and release-note
-entry. Do not use bot identities or bot/tool co-author trailers.
+also use this format and summarize the linearly rebased change. Do not use bot
+identities or bot/tool co-author trailers.
 
 Commit each coherent boundary once its focused tests pass and before moving to
 a different subsystem. Keep generated API types with the contract, migrations
