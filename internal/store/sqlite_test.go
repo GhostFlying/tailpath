@@ -221,6 +221,10 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
+	var version int
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != currentSchemaVersion {
+		t.Fatalf("schema version = %d, err=%v", version, err)
+	}
 	reports, err := database.RestoreReports(context.Background())
 	if err != nil || len(reports) != 1 || !reports[0].ReceivedAt.Equal(at) {
 		t.Fatalf("migrated reports = %#v, err=%v", reports, err)
@@ -229,6 +233,46 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	if err != nil || len(history.PathEvents) != 1 || history.PathEvents[0].Observations == nil ||
 		len(history.Traffic) != 1 || history.Traffic[0].AToBBytes != 120 || history.Traffic[0].BToABytes != 40 {
 		t.Fatalf("migrated path history = %#v, err=%v", history, err)
+	}
+}
+
+func TestOpenNumberedMigrationsAreIdempotent(t *testing.T) {
+	path := t.TempDir() + "/numbered.db"
+	for attempt := range 2 {
+		database, err := Open(path, 7*24*time.Hour)
+		if err != nil {
+			t.Fatalf("open attempt %d: %v", attempt, err)
+		}
+		var version int
+		if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+		if version != currentSchemaVersion {
+			database.Close()
+			t.Fatalf("schema version = %d, want %d", version, currentSchemaVersion)
+		}
+		if err := database.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestOpenRejectsFutureSchemaVersion(t *testing.T) {
+	path := t.TempDir() + "/future.db"
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 99`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if database, err := Open(path, 7*24*time.Hour); err == nil {
+		database.Close()
+		t.Fatal("future schema version was accepted")
 	}
 }
 
