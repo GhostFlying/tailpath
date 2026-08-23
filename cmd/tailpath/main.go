@@ -91,6 +91,9 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if *scaleFixture && !fixture {
 		return errors.New("scale fixture is only available with fixture-server")
 	}
+	if *scaleFixture && *heartbeat == time.Minute {
+		*heartbeat = 10 * time.Minute
+	}
 	if *heartbeat <= 0 {
 		return errors.New("heartbeat interval must be positive")
 	}
@@ -181,12 +184,34 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			if err := scenario.Load(ctx, application, time.Now().UTC()); err != nil {
 				return fmt.Errorf("load scale fixture: %w", err)
 			}
+			if err := scenario.RefreshRuntime(application.Aggregator, time.Now().UTC(), 4); err != nil {
+				return fmt.Errorf("refresh scale fixture: %w", err)
+			}
+			go runScaleRuntime(ctx, scenario, application.Aggregator, logger)
 		} else {
 			go fixtures.New(application, logger).Run(ctx)
 		}
 	}
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
 	return serve(ctx, listener, server.Handler(), *adminListen, logger)
+}
+
+func runScaleRuntime(ctx context.Context, scenario *fixtures.ScaleScenario, aggregator *aggregate.Aggregator, logger *slog.Logger) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	sequence := int64(5)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case at := <-ticker.C:
+			if err := scenario.RefreshRuntime(aggregator, at.UTC(), sequence); err != nil {
+				logger.Error("scale fixture refresh failed", "error", err)
+				return
+			}
+			sequence++
+		}
+	}
 }
 
 func resolveAuthKey(value string) (string, error) {
