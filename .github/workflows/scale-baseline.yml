@@ -1,0 +1,52 @@
+name: Scale baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.6
+          cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: make bootstrap
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - run: make build
+      - name: Record ingest and restart baseline
+        run: |
+          mkdir -p scale-artifacts
+          /usr/bin/time -v \
+            go test ./internal/fixtures \
+              -run TestScaleScenarioAppIngestAndRestart \
+              -count=1 -v -json -timeout=15m \
+              > scale-artifacts/scale-go.json \
+              2> scale-artifacts/scale-resource.txt
+      - name: Record browser baseline
+        env:
+          TAILPATH_SCALE_E2E: "1"
+          TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
+        run: ./scripts/e2e.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scale-baseline
+          path: |
+            scale-artifacts/
+            web/test-results/**/tailpath-scale.png
+            web/test-results/**/attachments/*.json
+          if-no-files-found: warn
+          retention-days: 30
