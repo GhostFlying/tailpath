@@ -41,6 +41,11 @@ profile，并只读挂载 tailscaled LocalAPI socket。Collector 通过 Tailnet 
 设置，以保留 WhoIs 所需的 Tailscale source identity。macOS 和 Windows collector
 使用原生二进制。
 
+原生 collector 支持 `TAILPATH_SERVER_URL` 和 `TAILPATH_SOCKET`，显式传入的
+`--server`、`--socket` flags 优先级更高。`tailpath collector --check` 只读取一次
+LocalAPI，以 JSON 输出 self identity、运行平台和 peer 数量；它不会连接 Tailpath
+server，也不会主动 probe 任何 peer。
+
 tailscaled server 模式未填写 listen host 时会使用本机第一个 Tailscale IP。
 Wildcard、LAN 和其他非 Tailscale 地址默认被拒绝，只有显式传入
 `--unsafe-allow-non-tailnet-listen` 才能绑定；使用该 override 后 API WhoIs 仍然
