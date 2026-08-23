@@ -43,7 +43,7 @@ type EdgeHistory struct {
 type NodeIdentity struct {
 	DiscoKey     *string   `json:"discoKey,omitempty"`
 	DnsName      *string   `json:"dnsName,omitempty"`
-	Hostname     string    `json:"hostname"`
+	Hostname     *string   `json:"hostname,omitempty"`
 	NodeId       *string   `json:"nodeId,omitempty"`
 	NodeKey      *string   `json:"nodeKey,omitempty"`
 	StableNodeId *string   `json:"stableNodeId,omitempty"`
@@ -199,7 +199,7 @@ type TopologyNode struct {
 	ClockSkewed    bool      `json:"clockSkewed"`
 	DiscoKey       *string   `json:"discoKey,omitempty"`
 	DnsName        *string   `json:"dnsName,omitempty"`
-	Hostname       string    `json:"hostname"`
+	Hostname       *string   `json:"hostname,omitempty"`
 	Id             string    `json:"id"`
 	LastEvidenceAt time.Time `json:"lastEvidenceAt"`
 	NodeId         *string   `json:"nodeId,omitempty"`
