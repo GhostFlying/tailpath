@@ -116,7 +116,6 @@ function nodeElement(
       online: node.online,
       dimmed: !matches,
       os: node.os ?? "",
-      persistable: true,
       ...iconLayers,
     },
     classes: [
