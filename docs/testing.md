@@ -41,6 +41,22 @@ The manual scale workflow also builds a steady seven-day history database with
 707,936,256 bytes in 67.7 seconds, below the 2 GiB target. This is a synthetic
 capacity gate rather than a production hardware performance claim.
 
+The first local ten-minute constrained gate exposed sustained SQLite and
+runtime-copy growth: although all 75,000 reports were accepted, ingest p95 was
+589 ms, scheduler lag reached 226 seconds, and a read-only-container history
+query failed while creating a disk temporary file. WAL/NORMAL connection
+settings, memory-backed SQLite temporary storage, bounded recent report-ID
+deduplication, rollup-backed history summaries, and edge-filtered detail queries
+fixed those causes. The 2026-08-24 rerun accepted 75,000 of 75,000 reports in
+599.996 seconds: ingest p95/p99 were 43.3/77.8 ms, scheduler lag 200.7 ms,
+topology/list/detail p95 were 16.1/81.2/11.1 ms, and peak process RSS was 45.3
+MiB with no 500, OOM, or restart.
+
+The same revision's scale browser run recorded desktop cold ready at 3,386 ms,
+visible edge-only SSE update at 464 ms, cached ready at 2,060 ms, and mobile
+cold ready at 4,138 ms. Both projects rendered 250 topology nodes, 1,000
+logical edges, and 505 graph elements with no console errors or layout movement.
+
 Manual milestone verification uses at least two real nodes and ordinary
 application traffic. Tailpath itself never invokes an active connectivity probe.
 Stage one uses the isolated

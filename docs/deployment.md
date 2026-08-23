@@ -121,3 +121,8 @@ only `tailpath.db` is insufficient because the `tsnet/` directory owns the
 server identity, and copying a live SQLite file is not documented as safe.
 Operators must treat ad hoc volume copies as unsupported. Upgrade one version
 at a time; the server runs migrations before readiness.
+
+SQLite uses WAL with `synchronous=NORMAL`. A process or operating-system crash
+must leave the database structurally consistent, but sudden power or storage
+loss can discard the newest committed observations. Collectors resynchronize
+current runtime state after recovery; a resulting history gap is not repaired.
