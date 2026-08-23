@@ -168,6 +168,42 @@ func TestScaleScenarioRejectsInvalidShape(t *testing.T) {
 	}
 }
 
+func TestScaleScenarioSteadyReportsCoverEveryEdgeBilaterally(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	hellos := scenario.HelloReports(at.Add(-time.Second))
+	steady := scenario.SteadyReports(at, 2)
+	if len(hellos) != 250 || len(steady) != 250 {
+		t.Fatalf("reports = %d hello/%d steady, want 250/250", len(hellos), len(steady))
+	}
+
+	edgeObservations := map[string]int{}
+	for node, report := range steady {
+		if report.Sequence != 2 || report.Kind != domain.ReportTrafficSample {
+			t.Fatalf("report %d has sequence %d and kind %s", node, report.Sequence, report.Kind)
+		}
+		if err := report.Validate(); err != nil {
+			t.Fatalf("report %d: %v", node, err)
+		}
+		observer := report.Observers[0].Observer.StableNodeID
+		for _, peer := range report.Observers[0].Peers {
+			edgeID, _, _ := domain.EdgeID(observer, peer.Peer.StableNodeID)
+			edgeObservations[edgeID]++
+		}
+	}
+	if len(edgeObservations) != 1000 {
+		t.Fatalf("logical edges = %d, want 1000", len(edgeObservations))
+	}
+	for edgeID, count := range edgeObservations {
+		if count != 2 {
+			t.Fatalf("edge %s has %d observations, want 2", edgeID, count)
+		}
+	}
+}
+
 func TestScaleScenarioAppIngestAndRestart(t *testing.T) {
 	scenario, err := NewScaleScenario(DefaultScaleConfig())
 	if err != nil {
