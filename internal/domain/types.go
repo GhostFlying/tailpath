@@ -328,14 +328,105 @@ type PathTransition struct {
 }
 
 type EdgeHistory struct {
-	EdgeID     string          `json:"edgeId"`
-	Traffic    []TrafficBucket `json:"traffic"`
-	PathEvents []PathEvent     `json:"pathEvents"`
+	EdgeID              string               `json:"edgeId"`
+	Source              HistoryNodeReference `json:"source"`
+	Target              HistoryNodeReference `json:"target"`
+	From                time.Time            `json:"from"`
+	To                  time.Time            `json:"to"`
+	BucketDurationMS    int64                `json:"bucketDurationMs"`
+	Traffic             []TrafficBucket      `json:"traffic"`
+	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
+	PathEvents          []PathEvent          `json:"pathEvents"`
+	TrafficTruncated    bool                 `json:"trafficTruncated"`
+	PathEventsTruncated bool                 `json:"pathEventsTruncated"`
 }
 
 type HistoryMetadata struct {
 	Nodes     []TopologyNode
 	Redirects map[string]string
+}
+
+type HistoryWindow string
+
+const (
+	History15Minutes HistoryWindow = "15m"
+	History1Hour     HistoryWindow = "1h"
+	History6Hours    HistoryWindow = "6h"
+	History24Hours   HistoryWindow = "24h"
+	History7Days     HistoryWindow = "7d"
+)
+
+func (window HistoryWindow) Duration() time.Duration {
+	switch window {
+	case History15Minutes:
+		return 15 * time.Minute
+	case History1Hour:
+		return time.Hour
+	case History6Hours:
+		return 6 * time.Hour
+	case History24Hours:
+		return 24 * time.Hour
+	case History7Days:
+		return 7 * 24 * time.Hour
+	default:
+		return 0
+	}
+}
+
+func (window HistoryWindow) Resolution() time.Duration {
+	switch window {
+	case History15Minutes:
+		return 10 * time.Second
+	case History1Hour:
+		return 30 * time.Second
+	case History6Hours:
+		return 3 * time.Minute
+	case History24Hours:
+		return 12 * time.Minute
+	case History7Days:
+		return time.Hour
+	default:
+		return 0
+	}
+}
+
+func (window HistoryWindow) Valid() bool {
+	return window.Duration() > 0
+}
+
+type HistoryNodeReference struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Hostname string `json:"hostname,omitempty"`
+	DNSName  string `json:"dnsName,omitempty"`
+	OS       string `json:"os,omitempty"`
+}
+
+type HistoryNodes struct {
+	Nodes []HistoryNodeReference `json:"nodes"`
+}
+
+type HistoryEdgeSummary struct {
+	EdgeID        string               `json:"edgeId"`
+	Source        HistoryNodeReference `json:"source"`
+	Target        HistoryNodeReference `json:"target"`
+	LastTrafficAt time.Time            `json:"lastTrafficAt"`
+	AToBBytes     int64                `json:"aToBBytes"`
+	BToABytes     int64                `json:"bToABytes"`
+	Paths         []PathKind           `json:"paths"`
+}
+
+type HistoryEdgePage struct {
+	Edges      []HistoryEdgeSummary `json:"edges"`
+	NextCursor string               `json:"nextCursor,omitempty"`
+}
+
+type HistoryEdgeQuery struct {
+	Window HistoryWindow
+	NodeID string
+	Path   PathKind
+	Cursor string
+	Limit  int
 }
 
 func EdgeID(a, b string) (id, source, target string) {

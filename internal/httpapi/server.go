@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
+	"github.com/GhostFlying/tailpath/internal/store"
 )
 
 type Authorizer interface {
@@ -59,6 +61,8 @@ func New(application *app.App, options Options) *Server {
 	server.mux.HandleFunc("POST /api/v1/reports", server.submitReport)
 	server.mux.HandleFunc("GET /api/v1/topology", server.getTopology)
 	server.mux.HandleFunc("GET /api/v1/events", server.streamEvents)
+	server.mux.HandleFunc("GET /api/v1/history/nodes", server.getHistoryNodes)
+	server.mux.HandleFunc("GET /api/v1/history/edges", server.listHistoryEdges)
 	server.mux.HandleFunc("GET /api/v1/history/edges/{edgeID}", server.getEdgeHistory)
 	server.mux.HandleFunc("GET /healthz", health)
 	server.mux.HandleFunc("/", server.serveWeb)
@@ -126,17 +130,87 @@ func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Requ
 		writeProblem(response, http.StatusBadRequest, "edge ID is required", "")
 		return
 	}
-	history, err := s.app.EdgeHistory(request.Context(), edgeID)
+	window, ok := parseHistoryWindow(response, request)
+	if !ok {
+		return
+	}
+	history, found, err := s.app.EdgeHistoryWindow(request.Context(), edgeID, window)
 	if err != nil {
 		s.logger.Error("edge history query failed", "edge_id", edgeID, "error", err)
 		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
 		return
 	}
-	if len(history.Traffic) == 0 && len(history.PathEvents) == 0 {
+	if !found {
 		writeProblem(response, http.StatusNotFound, "edge history not found", "")
 		return
 	}
 	writeJSON(response, http.StatusOK, history)
+}
+
+func (s *Server) getHistoryNodes(response http.ResponseWriter, request *http.Request) {
+	window, ok := parseHistoryWindow(response, request)
+	if !ok {
+		return
+	}
+	nodes, err := s.app.HistoryNodes(request.Context(), window)
+	if err != nil {
+		s.logger.Error("history nodes query failed", "window", window, "error", err)
+		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
+		return
+	}
+	writeJSON(response, http.StatusOK, nodes)
+}
+
+func (s *Server) listHistoryEdges(response http.ResponseWriter, request *http.Request) {
+	window, ok := parseHistoryWindow(response, request)
+	if !ok {
+		return
+	}
+	query := domain.HistoryEdgeQuery{
+		Window: window, NodeID: request.URL.Query().Get("nodeId"),
+		Path: domain.PathKind(request.URL.Query().Get("path")), Cursor: request.URL.Query().Get("cursor"), Limit: 50,
+	}
+	if query.Path != "" && !validPathKind(query.Path) {
+		writeProblem(response, http.StatusBadRequest, "invalid history path", "path must be direct, derp, peer_relay, or unknown")
+		return
+	}
+	if rawLimit := request.URL.Query().Get("limit"); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit < 1 || limit > 100 {
+			writeProblem(response, http.StatusBadRequest, "invalid history limit", "limit must be between 1 and 100")
+			return
+		}
+		query.Limit = limit
+	}
+	page, err := s.app.HistoryEdges(request.Context(), query)
+	if errors.Is(err, store.ErrInvalidHistoryCursor) {
+		writeProblem(response, http.StatusBadRequest, "invalid history cursor", "")
+		return
+	}
+	if err != nil {
+		s.logger.Error("history edge list query failed", "window", window, "error", err)
+		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
+		return
+	}
+	writeJSON(response, http.StatusOK, page)
+}
+
+func parseHistoryWindow(response http.ResponseWriter, request *http.Request) (domain.HistoryWindow, bool) {
+	window := domain.HistoryWindow(request.URL.Query().Get("window"))
+	if !window.Valid() {
+		writeProblem(response, http.StatusBadRequest, "invalid history window", "window must be 15m, 1h, 6h, 24h, or 7d")
+		return "", false
+	}
+	return window, true
+}
+
+func validPathKind(path domain.PathKind) bool {
+	switch path {
+	case domain.PathDirect, domain.PathDERP, domain.PathPeerRelay, domain.PathUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) streamEvents(response http.ResponseWriter, request *http.Request) {
