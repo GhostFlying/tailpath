@@ -48,7 +48,19 @@ heartbeat intervals, and otherwise hidden. Rates become zero when the active
 window ends; historical rates from one side are not reused when the other side
 reactivates the edge. System telemetry and heartbeats never advance lifecycle.
 
-Released migrations are append-only. Default report, traffic, and path-history
-retention is seven days by server receive time. Persisted canonical identity,
-current inventory generations, and latest runtime state outlive time-series
-retention.
+Released numbered migrations are append-only. Per-observer ten-second traffic
+is retained for one hour, deduplicated logical one-minute traffic for 48 hours,
+and logical one-hour traffic for seven days. Rollups process only ended buckets
+and apply directional observer preference before summing time buckets. All
+retention uses server receive time.
+
+Canonical merges persist a redirect from the removed opaque ID to the surviving
+ID. History resolves redirects before grouping nodes and edges, including
+direction reversal when a canonical endpoint order changes. Each edge with
+retained traffic keeps the latest path event before the seven-day cutoff as its
+window anchor; anchors disappear when the edge has no retained traffic.
+
+Persisted canonical identity, redirects, current inventory generations, and
+latest runtime state outlive time-series retention. A recorded history edge also
+outlives its series so a known edge can return an empty selected window without
+being confused with an unknown edge ID.

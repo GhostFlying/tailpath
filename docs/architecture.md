@@ -49,4 +49,12 @@ replays only reports with a later rowid and writes a new checkpoint. A new
 reporter process claims an observer with a complete hello; ordinary messages
 from an old session cannot take ownership back. Minute maintenance removes only
 raw reports covered by a committed checkpoint. SQLite also stores ten-second
-traffic buckets and aggregated path transitions with their provenance.
+per-observer traffic for one hour, deduplicated logical minute traffic for 48
+hours, logical hour traffic for seven days, and aggregated path transitions
+with provenance. Rollup and source-tier deletion share one transaction and only
+process ended buckets.
+
+History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
+resolve persisted canonical redirects before grouping, use keyset pagination,
+and cap detail responses at 200 traffic points and 500 path transitions. A path
+anchor records the state at the start of a window without replaying topology.
