@@ -65,6 +65,18 @@ func (s *SQLite) Record(
 	traffic []domain.AcceptedTraffic,
 	transitions []domain.PathTransition,
 ) (bool, error) {
+	return s.RecordWithMetadata(ctx, report, receivedAt, runtimeState, traffic, transitions, nil)
+}
+
+func (s *SQLite) RecordWithMetadata(
+	ctx context.Context,
+	report domain.ReportEnvelope,
+	receivedAt time.Time,
+	runtimeState []byte,
+	traffic []domain.AcceptedTraffic,
+	transitions []domain.PathTransition,
+	metadata *domain.HistoryMetadata,
+) (bool, error) {
 	payload, err := json.Marshal(report)
 	if err != nil {
 		return false, err
@@ -114,6 +126,11 @@ func (s *SQLite) Record(
 			return false, err
 		}
 	}
+	if metadata != nil {
+		if err := recordHistoryMetadata(ctx, tx, *metadata, receivedAt); err != nil {
+			return false, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return false, err
@@ -123,7 +140,7 @@ func (s *SQLite) Record(
 
 func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffic) error {
 	bucket := record.ReceivedAt.Truncate(10 * time.Second)
-	_, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO traffic_buckets(
 		  edge_id, bucket_start, source_id, target_id, observer_id,
 		  tx_bytes, rx_bytes, a_to_b_bytes, b_to_a_bytes)
@@ -132,8 +149,57 @@ func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffi
 		  a_to_b_bytes = a_to_b_bytes + excluded.a_to_b_bytes,
 		  b_to_a_bytes = b_to_a_bytes + excluded.b_to_a_bytes`,
 		record.EdgeID, formatTime(bucket), record.SourceID, record.TargetID, record.ObserverID,
-		record.AToBBytes, record.BToABytes)
+		record.AToBBytes, record.BToABytes); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(edge_id) DO UPDATE SET
+		  first_traffic_at = MIN(first_traffic_at, excluded.first_traffic_at),
+		  last_traffic_at = MAX(last_traffic_at, excluded.last_traffic_at)`,
+		record.EdgeID, record.SourceID, record.TargetID, formatTime(record.ReceivedAt), formatTime(record.ReceivedAt))
 	return err
+}
+
+func recordHistoryMetadata(ctx context.Context, tx *sql.Tx, metadata domain.HistoryMetadata, updatedAt time.Time) error {
+	for _, node := range metadata.Nodes {
+		identity, err := json.Marshal(node.NodeIdentity)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO nodes(node_id, identity, observable, last_seen) VALUES (?, ?, ?, ?)
+			ON CONFLICT(node_id) DO UPDATE SET identity = excluded.identity,
+			  observable = excluded.observable, last_seen = MAX(last_seen, excluded.last_seen)`,
+			node.ID, identity, node.Observable, formatTime(node.LastEvidenceAt)); err != nil {
+			return err
+		}
+	}
+	for fromID, toID := range metadata.Redirects {
+		if fromID == "" || toID == "" || fromID == toID {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO canonical_redirects(from_node_id, to_node_id, updated_at) VALUES (?, ?, ?)
+			ON CONFLICT(from_node_id) DO UPDATE SET to_node_id = excluded.to_node_id,
+			  updated_at = excluded.updated_at`, fromID, toID, formatTime(updatedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SQLite) SaveHistoryMetadata(ctx context.Context, metadata domain.HistoryMetadata, updatedAt time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := recordHistoryMetadata(ctx, tx, metadata, updatedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func recordPathTransition(ctx context.Context, tx *sql.Tx, transition domain.PathTransition) error {
