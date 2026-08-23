@@ -25,8 +25,13 @@ when non-control peer counters change. The server-owned idle heartbeat defaults
 to one minute and controls the related freshness windows.
 
 The release artifact is one `tailpath` binary and one OCI image with `server`,
-`collector`, and `healthcheck` subcommands. Linux deployments use Compose;
-macOS and Windows collectors use native release binaries.
+`collector`, and `healthcheck` subcommands. Linux server and collector support
+is the v0.2 target. The macOS collector is alpha pending real arm64-node
+validation; the Windows collector is an unverified preview. Server deployment
+is supported through Linux Compose only.
+
+See [deployment](docs/deployment.md) for the native collector installers and
+their platform-specific background-service behavior.
 
 ## Development
 
