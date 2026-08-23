@@ -21,18 +21,21 @@ Tailscale 类型只能存在于 `internal/tailscaleadapter`。协议、聚合、
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
 telemetry，不做 counter 扣减，也不进入用户 activity。
 
-当前拓扑由内存提供读取，但每个 accepted report 都会把完整 runtime state 持久化到
-SQLite。Ingest 先 clone 并验证候选状态，再在同一事务中保存 report、runtime
-state、traffic bucket 和逻辑路径变更，最后才提交内存并通知 SSE。存储失败不会推进
-内存中的 sequence 或 inventory。
+当前拓扑由内存提供读取。每个 accepted report、traffic bucket 和逻辑路径变更都在
+同一个 SQLite transaction 中提交。Typed candidate state 首次立即 checkpoint，之后
+最多每秒一次；checkpoint 同时记录其包含的最后 report rowid。只有 transaction 成功
+后，ingest 才转移 candidate ownership 并通知 SSE。存储失败不会推进内存中的
+sequence 或 inventory。
 
 路径变更按逻辑路径身份比较。Observer-local Direct endpoint 只属于 provenance
 属性；相反两侧 observer 报告同一条 Direct 连接的不同端点时不会产生新 transition。
 DERP region 或 Peer Relay node 的变化仍然是逻辑路径变更。只要新鲜 edge
 provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在可见拓扑中。
 
-重启直接恢复 reporter sequence、observer 自己持有的 inventory generation 和
-membership、reporter 到 observer 的 ownership、identity alias、节点、最新
-observation 和 edge lifecycle。新 reporter 进程只能通过完整 hello 接管 observer；
-旧 session 的普通消息不能重新取得 ownership。恢复不依赖有保留期限的 raw report
-重放。SQLite 还保存十秒 traffic bucket，以及带 supporting provenance 的聚合路径变更。
+重启从最新 checkpoint 恢复 reporter sequence、observer 自己持有的 inventory
+generation 和 membership、reporter 到 observer 的 ownership、identity alias、节点、
+最新 observation 和 edge lifecycle，再只重放 rowid 更大的 report 并写入新
+checkpoint。新 reporter 进程只能通过完整 hello 接管 observer；旧 session 的普通消息
+不能重新取得 ownership。每分钟的 maintenance 只删除已被 committed checkpoint 覆盖
+的 raw report。SQLite 还保存十秒 traffic bucket，以及带 supporting provenance 的
+聚合路径变更。

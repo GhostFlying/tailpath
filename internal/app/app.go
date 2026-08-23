@@ -15,9 +15,11 @@ import (
 type App struct {
 	mu sync.Mutex
 
-	Aggregator *aggregate.Aggregator
-	Store      *store.SQLite
-	logger     *slog.Logger
+	Aggregator      *aggregate.Aggregator
+	Store           *store.SQLite
+	logger          *slog.Logger
+	lastCheckpoint  time.Time
+	checkpointEvery time.Duration
 }
 
 func New(database *store.SQLite, options aggregate.Options, logger *slog.Logger) (*App, error) {
@@ -25,43 +27,46 @@ func New(database *store.SQLite, options aggregate.Options, logger *slog.Logger)
 		logger = slog.Default()
 	}
 	application := &App{
-		Aggregator: aggregate.New(options),
-		Store:      database,
-		logger:     logger,
+		Aggregator:      aggregate.New(options),
+		Store:           database,
+		logger:          logger,
+		checkpointEvery: time.Second,
 	}
-	state, err := database.RestoreState(context.Background())
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("restore runtime state: %w", err)
 	}
-	if len(state) > 0 {
-		if err := application.Aggregator.RestoreState(state); err != nil {
+	if len(checkpoint.Payload) > 0 {
+		if err := application.Aggregator.RestoreState(checkpoint.Payload); err != nil {
 			return nil, fmt.Errorf("decode runtime state: %w", err)
 		}
-		return application, nil
+		application.lastCheckpoint = checkpoint.UpdatedAt
 	}
 
-	reports, err := database.RestoreReports(context.Background())
+	reports, err := database.RestoreReportsAfter(context.Background(), checkpoint.LastReportRowID)
 	if err != nil {
-		return nil, fmt.Errorf("restore legacy reports: %w", err)
+		return nil, fmt.Errorf("restore reports after checkpoint: %w", err)
 	}
-	var latest time.Time
+	latest := checkpoint.UpdatedAt
+	lastReportRowID := checkpoint.LastReportRowID
 	for _, stored := range reports {
 		if _, err := application.Aggregator.ApplyAt(stored.Report, stored.ReceivedAt); err != nil {
 			logger.Warn("skipping invalid stored report", "report_id", stored.Report.ReportID, "error", err)
-			continue
 		}
 		if stored.ReceivedAt.After(latest) {
 			latest = stored.ReceivedAt
 		}
+		lastReportRowID = stored.RowID
 	}
 	if len(reports) > 0 {
 		payload, err := application.Aggregator.MarshalState()
 		if err != nil {
 			return nil, fmt.Errorf("encode restored runtime state: %w", err)
 		}
-		if err := database.SaveState(context.Background(), payload, latest); err != nil {
+		if err := database.SaveCheckpoint(context.Background(), payload, lastReportRowID, latest); err != nil {
 			return nil, fmt.Errorf("persist restored runtime state: %w", err)
 		}
+		application.lastCheckpoint = latest
 	}
 	return application, nil
 }
@@ -85,11 +90,14 @@ func (a *App) SubmitAt(ctx context.Context, report domain.ReportEnvelope, receiv
 	if !result.Changed {
 		return result.Receipt, nil
 	}
-	payload, err := candidate.MarshalState()
-	if err != nil {
-		return result.Receipt, fmt.Errorf("encode runtime state: %w", err)
+	var checkpoint []byte
+	if a.shouldCheckpoint(receivedAt) {
+		checkpoint, err = candidate.MarshalState()
+		if err != nil {
+			return result.Receipt, fmt.Errorf("encode runtime state: %w", err)
+		}
 	}
-	inserted, err := a.Store.Record(ctx, report, receivedAt, payload, result.Traffic, result.PathTransitions)
+	inserted, err := a.Store.Record(ctx, report, receivedAt, checkpoint, result.Traffic, result.PathTransitions)
 	if err != nil {
 		return result.Receipt, fmt.Errorf("persist report: %w", err)
 	}
@@ -99,7 +107,40 @@ func (a *App) SubmitAt(ctx context.Context, report domain.ReportEnvelope, receiv
 	if err := a.Aggregator.ReplaceWith(candidate); err != nil {
 		return result.Receipt, fmt.Errorf("commit runtime state: %w", err)
 	}
+	if checkpoint != nil {
+		a.lastCheckpoint = receivedAt.UTC()
+	}
 	return result.Receipt, nil
+}
+
+func (a *App) shouldCheckpoint(receivedAt time.Time) bool {
+	receivedAt = receivedAt.UTC()
+	if a.lastCheckpoint.IsZero() || receivedAt.Before(a.lastCheckpoint) {
+		return true
+	}
+	return !receivedAt.Before(a.lastCheckpoint.Add(a.checkpointEvery))
+}
+
+func (a *App) Maintain(ctx context.Context, now time.Time) error {
+	return a.Store.Maintain(ctx, now.UTC())
+}
+
+func (a *App) RunMaintenance(ctx context.Context) {
+	if err := a.Maintain(ctx, time.Now().UTC()); err != nil && ctx.Err() == nil {
+		a.logger.Warn("storage maintenance failed", "error", err)
+	}
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			if err := a.Maintain(ctx, now); err != nil && ctx.Err() == nil {
+				a.logger.Warn("storage maintenance failed", "error", err)
+			}
+		}
+	}
 }
 
 func (a *App) EdgeHistory(ctx context.Context, edgeID string) (domain.EdgeHistory, error) {

@@ -12,7 +12,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/store"
 )
 
-func TestRuntimeStateSurvivesRawReportRetention(t *testing.T) {
+func TestRuntimeStateSurvivesRawReportCleanup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tailpath.db")
 	retention := 7 * 24 * time.Hour
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
@@ -32,12 +32,15 @@ func TestRuntimeStateSurvivesRawReportRetention(t *testing.T) {
 	if _, err := application.SubmitAt(context.Background(), heartbeatReport(now), now); err != nil {
 		t.Fatal(err)
 	}
+	if err := application.Maintain(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
 	reports, err := database.RestoreReports(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reports) != 1 || reports[0].Report.Kind != domain.ReportObserverHeartbeat {
-		t.Fatalf("retained reports = %#v, want only heartbeat", reports)
+	if len(reports) != 0 {
+		t.Fatalf("checkpoint-covered reports remain: %#v", reports)
 	}
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
@@ -61,6 +64,134 @@ func TestRuntimeStateSurvivesRawReportRetention(t *testing.T) {
 	}
 	if got := len(application.Aggregator.Snapshot().Edges); got != 1 {
 		t.Fatalf("restored topology has %d edges, want 1", got)
+	}
+}
+
+func TestRestartReplaysReportsAfterCheckpoint(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	journaledAt := now.Add(500 * time.Millisecond)
+	journaled := trafficReport(journaledAt)
+	journaled.ReportID = "traffic-after-checkpoint"
+	journaled.Sequence = 2
+	if _, err := application.SubmitAt(context.Background(), journaled, journaledAt); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := database.RestoreReportsAfter(context.Background(), checkpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(later) != 1 || later[0].Report.ReportID != journaled.ReportID {
+		t.Fatalf("reports after checkpoint = %#v", later)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	restarted, err := New(database, testOptions(func() time.Time { return journaledAt }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err = database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err = database.RestoreReportsAfter(context.Background(), checkpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(later) != 0 {
+		t.Fatalf("replayed reports were not checkpointed: %#v", later)
+	}
+	if got := len(restarted.Aggregator.Snapshot().Edges); got != 1 {
+		t.Fatalf("restarted topology has %d edges, want journaled edge", got)
+	}
+	next := heartbeatReport(now.Add(time.Second))
+	next.ReportID = "heartbeat-after-replay"
+	next.Sequence = 3
+	receipt, err := restarted.SubmitAt(context.Background(), next, now.Add(time.Second))
+	if err != nil || !receipt.Accepted || receipt.ResyncRequired {
+		t.Fatalf("post-restart receipt = %#v, err=%v", receipt, err)
+	}
+}
+
+func TestCheckpointCadenceAndReceiveTimeRollback(t *testing.T) {
+	database, err := store.Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	first, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	journaledAt := now.Add(500 * time.Millisecond)
+	journaled := heartbeatReport(journaledAt)
+	if _, err := application.SubmitAt(context.Background(), journaled, journaledAt); err != nil {
+		t.Fatal(err)
+	}
+	stillFirst, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillFirst.LastReportRowID != first.LastReportRowID || !stillFirst.UpdatedAt.Equal(first.UpdatedAt) {
+		t.Fatalf("sub-second report advanced checkpoint: first=%#v next=%#v", first, stillFirst)
+	}
+	checkpointAt := now.Add(time.Second)
+	checkpointed := heartbeatReport(checkpointAt)
+	checkpointed.ReportID = "heartbeat-checkpointed"
+	checkpointed.Sequence = 3
+	if _, err := application.SubmitAt(context.Background(), checkpointed, checkpointAt); err != nil {
+		t.Fatal(err)
+	}
+	second, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.LastReportRowID <= first.LastReportRowID || !second.UpdatedAt.Equal(checkpointAt) {
+		t.Fatalf("one-second report did not advance checkpoint: first=%#v next=%#v", first, second)
+	}
+	rollbackAt := now.Add(-time.Second)
+	rollback := heartbeatReport(rollbackAt)
+	rollback.ReportID = "heartbeat-clock-rollback"
+	rollback.Sequence = 4
+	if _, err := application.SubmitAt(context.Background(), rollback, rollbackAt); err != nil {
+		t.Fatal(err)
+	}
+	rolledBack, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rolledBack.LastReportRowID <= second.LastReportRowID || !rolledBack.UpdatedAt.Equal(rollbackAt) {
+		t.Fatalf("receive-time rollback did not force checkpoint: previous=%#v next=%#v", second, rolledBack)
 	}
 }
 
