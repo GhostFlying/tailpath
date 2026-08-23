@@ -2,12 +2,13 @@ package collector
 
 import (
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	mathrand "math/rand"
 	"sort"
 	"time"
 
@@ -38,8 +39,13 @@ type Reporter interface {
 type Options struct {
 	SampleInterval    time.Duration
 	HeartbeatInterval time.Duration
+	RetryMin          time.Duration
+	RetryMax          time.Duration
+	SummaryInterval   time.Duration
 	ReporterInstance  string
 	Now               func() time.Time
+	Jitter            func() float64
+	Wait              func(context.Context, time.Duration) error
 	Logger            *slog.Logger
 }
 
@@ -48,8 +54,13 @@ type Collector struct {
 	reporter            Reporter
 	sampleInterval      time.Duration
 	heartbeatInterval   time.Duration
+	retryMin            time.Duration
+	retryMax            time.Duration
+	summaryInterval     time.Duration
 	reporterInstance    string
 	now                 func() time.Time
+	jitter              func() float64
+	wait                func(context.Context, time.Duration) error
 	logger              *slog.Logger
 	sequence            int64
 	connected           bool
@@ -66,11 +77,26 @@ func New(source Source, reporter Reporter, options Options) *Collector {
 	if options.HeartbeatInterval == 0 {
 		options.HeartbeatInterval = time.Minute
 	}
+	if options.RetryMin == 0 {
+		options.RetryMin = 2 * time.Second
+	}
+	if options.RetryMax == 0 {
+		options.RetryMax = 60 * time.Second
+	}
+	if options.SummaryInterval == 0 {
+		options.SummaryInterval = 5 * time.Minute
+	}
 	if options.ReporterInstance == "" {
 		options.ReporterInstance = newUUID()
 	}
 	if options.Now == nil {
 		options.Now = time.Now
+	}
+	if options.Jitter == nil {
+		options.Jitter = mathrand.Float64
+	}
+	if options.Wait == nil {
+		options.Wait = waitContext
 	}
 	if options.Logger == nil {
 		options.Logger = slog.Default()
@@ -80,35 +106,76 @@ func New(source Source, reporter Reporter, options Options) *Collector {
 		reporter:          reporter,
 		sampleInterval:    options.SampleInterval,
 		heartbeatInterval: options.HeartbeatInterval,
+		retryMin:          options.RetryMin,
+		retryMax:          options.RetryMax,
+		summaryInterval:   options.SummaryInterval,
 		reporterInstance:  options.ReporterInstance,
 		now:               options.Now,
+		jitter:            options.Jitter,
+		wait:              options.Wait,
 		logger:            options.Logger,
 		controlIDs:        make(map[string]struct{}),
 	}
 }
 
 func (c *Collector) Run(ctx context.Context) error {
-	if err := c.Step(ctx); err != nil {
-		c.logger.Warn("initial collection failed", "error", err)
-	}
-	ticker := time.NewTicker(c.sampleInterval)
-	defer ticker.Stop()
+	consecutiveFailures := 0
+	degraded := false
+	var degradedSince time.Time
+	var lastSummary time.Time
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := c.Step(ctx); err != nil {
-				c.logger.Warn("collection failed", "error", err)
+		result, err := c.step(ctx)
+		waitFor := c.sampleInterval
+		if err != nil {
+			c.connected = false
+			consecutiveFailures++
+			waitFor = c.retryDelay(consecutiveFailures)
+			now := c.now()
+			if !degraded {
+				degraded = true
+				degradedSince = now
+				lastSummary = now
+				c.logger.Warn("collector degraded", "error", err, "retry_in", waitFor)
+			} else if now.Sub(lastSummary) >= c.summaryInterval || now.Before(lastSummary) {
+				lastSummary = now
+				c.logger.Warn("collector remains degraded", "error", err, "failures", consecutiveFailures, "degraded_for", now.Sub(degradedSince), "retry_in", waitFor)
 			}
+		} else if result.helloAccepted {
+			if degraded {
+				c.logger.Info("collector recovered", "failures", consecutiveFailures, "degraded_for", c.now().Sub(degradedSince))
+			}
+			degraded = false
+			consecutiveFailures = 0
+		} else if result.resyncRequired {
+			c.logger.Warn("collector resync required")
+		}
+		if waitErr := c.wait(ctx, waitFor); waitErr != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("wait for next collection: %w", waitErr)
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 	}
 }
 
 func (c *Collector) Step(ctx context.Context) error {
+	_, err := c.step(ctx)
+	return err
+}
+
+type stepResult struct {
+	helloAccepted  bool
+	resyncRequired bool
+}
+
+func (c *Collector) step(ctx context.Context) (stepResult, error) {
 	snapshot, err := c.source.Snapshot(ctx)
 	if err != nil {
-		return fmt.Errorf("read local status: %w", err)
+		c.connected = false
+		return stepResult{}, fmt.Errorf("read local status: %w", err)
 	}
 	if snapshot.CollectedAt.IsZero() {
 		snapshot.CollectedAt = c.now()
@@ -119,14 +186,18 @@ func (c *Collector) Step(ctx context.Context) error {
 		receipt, sendErr := c.send(ctx, domain.ReportObserverHello, snapshot, generation, baselinePeers(snapshot))
 		if sendErr != nil {
 			c.baseline = snapshot
-			return sendErr
+			return stepResult{}, sendErr
 		}
 		c.acceptReceipt(receipt)
-		c.connected = receipt.Accepted && !receipt.ResyncRequired
 		c.baseline = snapshot
+		if !receipt.Accepted {
+			c.connected = false
+			return stepResult{}, fmt.Errorf("server rejected observer hello")
+		}
+		c.connected = true
 		c.inventoryGeneration = generation
 		c.lastReport = snapshot.CollectedAt
-		return nil
+		return stepResult{helloAccepted: true}, nil
 	}
 
 	if generation != c.inventoryGeneration {
@@ -134,13 +205,13 @@ func (c *Collector) Step(ctx context.Context) error {
 		if sendErr != nil {
 			c.connected = false
 			c.baseline = snapshot
-			return sendErr
+			return stepResult{}, sendErr
 		}
 		c.acceptReceipt(receipt)
 		if !receipt.Accepted || receipt.ResyncRequired {
 			c.connected = false
 			c.baseline = snapshot
-			return nil
+			return stepResult{resyncRequired: true}, nil
 		}
 		c.inventoryGeneration = generation
 		c.lastReport = snapshot.CollectedAt
@@ -152,7 +223,7 @@ func (c *Collector) Step(ctx context.Context) error {
 		c.baseline = snapshot
 		if sendErr != nil {
 			c.connected = false
-			return sendErr
+			return stepResult{}, sendErr
 		}
 		c.acceptReceipt(receipt)
 		if receipt.Accepted {
@@ -161,17 +232,17 @@ func (c *Collector) Step(ctx context.Context) error {
 		if !receipt.Accepted || receipt.ResyncRequired {
 			c.connected = false
 		}
-		return nil
+		return stepResult{resyncRequired: !receipt.Accepted || receipt.ResyncRequired}, nil
 	}
 
 	c.baseline = snapshot
 	if snapshot.CollectedAt.Sub(c.lastReport) < c.heartbeatInterval {
-		return nil
+		return stepResult{}, nil
 	}
 	receipt, sendErr := c.send(ctx, domain.ReportObserverHeartbeat, snapshot, c.inventoryGeneration, nil)
 	if sendErr != nil {
 		c.connected = false
-		return sendErr
+		return stepResult{}, sendErr
 	}
 	c.acceptReceipt(receipt)
 	if receipt.Accepted {
@@ -180,7 +251,34 @@ func (c *Collector) Step(ctx context.Context) error {
 	if !receipt.Accepted || receipt.ResyncRequired {
 		c.connected = false
 	}
-	return nil
+	return stepResult{resyncRequired: !receipt.Accepted || receipt.ResyncRequired}, nil
+}
+
+func (c *Collector) retryDelay(failures int) time.Duration {
+	base := c.retryMin
+	for attempt := 1; attempt < failures && base < c.retryMax; attempt++ {
+		if base > c.retryMax/2 {
+			base = c.retryMax
+			break
+		}
+		base *= 2
+	}
+	if base > c.retryMax {
+		base = c.retryMax
+	}
+	multiplier := 0.8 + 0.4*c.jitter()
+	return time.Duration(float64(base) * multiplier)
+}
+
+func waitContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *Collector) changedPeers(snapshot Snapshot) []domain.PeerObservation {
@@ -293,7 +391,7 @@ func inventoryHash(snapshot Snapshot) string {
 
 func newUUID() string {
 	var value [16]byte
-	if _, err := rand.Read(value[:]); err != nil {
+	if _, err := cryptorand.Read(value[:]); err != nil {
 		panic(err)
 	}
 	value[6] = (value[6] & 0x0f) | 0x40
