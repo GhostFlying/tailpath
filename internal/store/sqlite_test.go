@@ -194,6 +194,143 @@ func TestRecordPersistsHistoryEdgeAndCheckpointMetadata(t *testing.T) {
 	}
 }
 
+func TestMaintainRollsUpDeduplicatedDirectionalTraffic(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	start := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	record := func(id, observer string, at time.Time, aToB, bToA int64) {
+		t.Helper()
+		traffic := []domain.AcceptedTraffic{{
+			EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: observer,
+			AToBBytes: aToB, BToABytes: bToA, ReceivedAt: at,
+		}}
+		if _, err := database.Record(context.Background(), sampleReport(at, at, id), at, nil, traffic, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("source", "n_a", start.Add(3*time.Second), 120, 40)
+	record("target", "n_b", start.Add(4*time.Second), 90, 60)
+	record("relay-ignored", "n_relay", start.Add(5*time.Second), 500, 500)
+	record("relay-fallback", "n_relay", start.Add(13*time.Second), 30, 10)
+
+	if err := database.Maintain(context.Background(), start.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	assertRollup := func(table string, wantAToB, wantBToA int64) {
+		t.Helper()
+		var aToB, bToA int64
+		if err := database.db.QueryRow(`SELECT a_to_b_bytes, b_to_a_bytes FROM `+table+` WHERE edge_id = ?`, "n_a--n_b").Scan(&aToB, &bToA); err != nil {
+			t.Fatal(err)
+		}
+		if aToB != wantAToB || bToA != wantBToA {
+			t.Fatalf("%s traffic = %d/%d, want %d/%d", table, aToB, bToA, wantAToB, wantBToA)
+		}
+	}
+	assertRollup("traffic_rollup_minute", 150, 70)
+	if err := database.Maintain(context.Background(), start.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	assertRollup("traffic_rollup_minute", 150, 70)
+	if err := database.Maintain(context.Background(), start.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	assertRollup("traffic_rollup_hour", 150, 70)
+}
+
+func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-7 * 24 * time.Hour)
+	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
+	for _, at := range []time.Time{cutoff.Add(-2 * time.Hour), cutoff.Add(-time.Hour), cutoff.Add(time.Hour)} {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "retained", formatTime(at), path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "expired", formatTime(cutoff.Add(-time.Hour)), path); err != nil {
+		t.Fatal(err)
+	}
+	for edgeID, lastTraffic := range map[string]time.Time{"retained": now, "expired": cutoff.Add(-time.Hour)} {
+		if _, err := database.db.Exec(`INSERT INTO history_edges VALUES (?, 'a', 'b', ?, ?)`, edgeID, formatTime(lastTraffic), formatTime(lastTraffic)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.Maintain(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.db.Query(`SELECT edge_id, observed_at FROM path_events ORDER BY edge_id, observed_at`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var retained []string
+	for rows.Next() {
+		var edgeID, observedAt string
+		if err := rows.Scan(&edgeID, &observedAt); err != nil {
+			t.Fatal(err)
+		}
+		if edgeID == "expired" {
+			t.Fatal("expired edge retained a path anchor")
+		}
+		retained = append(retained, observedAt)
+	}
+	want := []string{formatTime(cutoff.Add(-time.Hour)), formatTime(cutoff.Add(time.Hour))}
+	if len(retained) != len(want) || retained[0] != want[0] || retained[1] != want[1] {
+		t.Fatalf("retained path events = %#v, want %#v", retained, want)
+	}
+}
+
+func TestMaintainAppliesTierRetentionBoundaries(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	if _, err := database.db.Exec(`INSERT INTO history_maintenance VALUES ('minute', ?), ('hour', ?)`, formatTime(now.Truncate(time.Minute)), formatTime(now.Truncate(time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	for table, retention := range map[string]time.Duration{
+		"traffic_buckets": rawTrafficRetention, "traffic_rollup_minute": minuteTrafficRetention,
+		"traffic_rollup_hour": hourTrafficRetention,
+	} {
+		columns := "edge_id, bucket_start, source_id, target_id, a_to_b_bytes, b_to_a_bytes"
+		values := "?, ?, 'a', 'b', 1, 1"
+		if table == "traffic_buckets" {
+			columns = "edge_id, bucket_start, source_id, target_id, observer_id, tx_bytes, rx_bytes, a_to_b_bytes, b_to_a_bytes"
+			values = "?, ?, 'a', 'b', 'a', 0, 0, 1, 1"
+		}
+		for _, item := range []struct {
+			id string
+			at time.Time
+		}{{"expired", now.Add(-retention).Add(-time.Nanosecond)}, {"boundary", now.Add(-retention)}} {
+			if _, err := database.db.Exec(`INSERT INTO `+table+`(`+columns+`) VALUES (`+values+`)`, item.id, formatTime(item.at)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := database.Maintain(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"traffic_buckets", "traffic_rollup_minute", "traffic_rollup_hour"} {
+		var count int
+		var edgeID string
+		if err := database.db.QueryRow(`SELECT COUNT(*), MIN(edge_id) FROM `+table).Scan(&count, &edgeID); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 || edgeID != "boundary" {
+			t.Fatalf("%s retained count=%d edge=%q", table, count, edgeID)
+		}
+	}
+}
+
 func TestRetentionUsesServerReceiveTime(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {
