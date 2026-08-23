@@ -31,6 +31,10 @@ func (g *Generator) Start(ctx context.Context) error {
 	if err := g.seedHistory(ctx); err != nil {
 		return fmt.Errorf("fixture history seed: %w", err)
 	}
+	if err := g.seedHistory(ctx); err != nil {
+		g.logger.Error("fixture history seed failed", "error", err)
+		return
+	}
 	g.sample(ctx)
 	go g.run(ctx)
 	return nil
