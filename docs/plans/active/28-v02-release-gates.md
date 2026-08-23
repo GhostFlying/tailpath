@@ -111,7 +111,7 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 - [x] Add fixture-only edge mutation and SSE-to-visible browser latency gate.
 - [x] Enforce the seven-day DB and scale browser gates in the manual workflow.
 - [x] Write alpha artifact, Linux smoke, Linux native, and Mac dogfood runbooks.
-- [ ] Run the local short gate and complete repository checks.
+- [x] Run the local short gate and complete repository checks.
 - [ ] Open the Draft PR and obtain hosted CI plus a strict workflow result.
 - [ ] Human: publish immutable `v0.2.0-alpha.1` artifacts.
 - [ ] Human-assisted: execute Linux and real arm64 Mac dogfood.
