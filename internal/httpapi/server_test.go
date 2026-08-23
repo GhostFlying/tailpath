@@ -273,29 +273,34 @@ func recordHistoryTraffic(t *testing.T, server *Server, reportID, edgeID, source
 	}
 }
 
-func TestCoalesceInvalidationsKeepsOneEventPerWindowAndAFollowUp(t *testing.T) {
+func TestCoalesceInvalidationsEmitsLeadingEventAndOneRateLimitedFollowUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	input := make(chan struct{}, 100)
-	output := coalesceInvalidations(ctx, input, 20*time.Millisecond)
-	for range 100 {
+	interval := 50 * time.Millisecond
+	output := coalesceInvalidations(ctx, input, interval)
+	started := time.Now()
+	input <- struct{}{}
+	select {
+	case <-output:
+		if elapsed := time.Since(started); elapsed >= interval {
+			t.Fatalf("leading invalidation took %s", elapsed)
+		}
+	case <-time.After(interval):
+		t.Fatal("leading topology invalidation was delayed by a full window")
+	}
+	for range 99 {
 		input <- struct{}{}
 	}
 	select {
 	case <-output:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("burst did not produce a topology invalidation")
+		t.Fatal("burst follow-up was not rate limited")
+	case <-time.After(interval / 2):
 	}
 	select {
 	case <-output:
-		t.Fatal("one burst produced more than one invalidation window")
-	case <-time.After(30 * time.Millisecond):
-	}
-	input <- struct{}{}
-	select {
-	case <-output:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("later burst did not produce a follow-up invalidation")
+	case <-time.After(2 * interval):
+		t.Fatal("burst did not produce one trailing invalidation")
 	}
 	cancel()
 	select {
