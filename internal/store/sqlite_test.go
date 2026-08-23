@@ -81,6 +81,49 @@ func TestRelayTrafficProvidesHistoryWhenEndpointsAreUnobservable(t *testing.T) {
 	}
 }
 
+func TestRecordPersistsHistoryEdgeAndCheckpointMetadata(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	at := time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{
+		Nodes: []domain.TopologyNode{{
+			NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "Node A", OS: "linux"},
+			ID:           "n_a", Observable: true, LastEvidenceAt: at,
+		}},
+		Redirects: map[string]string{"n_old": "n_a"},
+	}
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_a",
+		AToBBytes: 10, BToABytes: 2, ReceivedAt: at,
+	}}
+	inserted, err := database.RecordWithMetadata(context.Background(), sampleReport(at, at, "metadata"), at, []byte(`{}`), traffic, nil, &metadata)
+	if err != nil || !inserted {
+		t.Fatalf("inserted=%v err=%v", inserted, err)
+	}
+	var sourceID, targetID, lastTrafficAt string
+	if err := database.db.QueryRow(`SELECT source_id, target_id, last_traffic_at FROM history_edges WHERE edge_id = ?`, "n_a--n_b").Scan(&sourceID, &targetID, &lastTrafficAt); err != nil {
+		t.Fatal(err)
+	}
+	if sourceID != "n_a" || targetID != "n_b" || lastTrafficAt != formatTime(at) {
+		t.Fatalf("history edge = %q %q %q", sourceID, targetID, lastTrafficAt)
+	}
+	var identity []byte
+	if err := database.db.QueryRow(`SELECT identity FROM nodes WHERE node_id = ?`, "n_a").Scan(&identity); err != nil {
+		t.Fatal(err)
+	}
+	var stored domain.NodeIdentity
+	if err := json.Unmarshal(identity, &stored); err != nil || stored.OS != "linux" {
+		t.Fatalf("stored identity = %#v, err=%v", stored, err)
+	}
+	var redirect string
+	if err := database.db.QueryRow(`SELECT to_node_id FROM canonical_redirects WHERE from_node_id = ?`, "n_old").Scan(&redirect); err != nil || redirect != "n_a" {
+		t.Fatalf("redirect = %q, err=%v", redirect, err)
+	}
+}
+
 func TestRetentionUsesServerReceiveTime(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {
