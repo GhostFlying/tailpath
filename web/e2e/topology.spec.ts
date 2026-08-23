@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 test("keeps traffic empty states consistent with the recent option", async ({
   page,
@@ -87,6 +87,21 @@ test("renders the live fixture topology without overlap", async ({
   expect(
     Number(await graph.getAttribute("data-device-node-count")),
   ).toBeGreaterThan(0);
+  const initialPositions = parsePositions(
+    (await graph.getAttribute("data-layout-positions")) ?? "",
+  );
+  const initialLayoutRuns = await graph.getAttribute("data-layout-runs");
+  const initialViewport = await graph.getAttribute("data-viewport");
+  expect(initialPositions.size).toBeGreaterThan(0);
+  await page.waitForTimeout(2_500);
+  expect(
+    parsePositions((await graph.getAttribute("data-layout-positions")) ?? ""),
+  ).toEqual(initialPositions);
+  await expect(graph).toHaveAttribute(
+    "data-layout-runs",
+    initialLayoutRuns ?? "",
+  );
+  await expect(graph).toHaveAttribute("data-viewport", initialViewport ?? "");
 
   const stageBox = await page.locator(".graph-stage").boundingBox();
   const legendBox = await legend.boundingBox();
@@ -111,6 +126,15 @@ test("renders the live fixture topology without overlap", async ({
         "data-edge-count",
         (await button.locator("small").innerText()).trim(),
       );
+      await expectCommonPositions(initialPositions, graph);
+      await expect(graph).toHaveAttribute(
+        "data-layout-runs",
+        initialLayoutRuns ?? "",
+      );
+      await expect(graph).toHaveAttribute(
+        "data-viewport",
+        initialViewport ?? "",
+      );
     }
     await page
       .locator(".path-filter button")
@@ -130,6 +154,15 @@ test("renders the live fixture topology without overlap", async ({
         "data-edge-count",
         option.match(/(\d+)$/)?.[1] ?? "",
       );
+      await expectCommonPositions(initialPositions, graph);
+      await expect(graph).toHaveAttribute(
+        "data-layout-runs",
+        initialLayoutRuns ?? "",
+      );
+      await expect(graph).toHaveAttribute(
+        "data-viewport",
+        initialViewport ?? "",
+      );
     }
     await page.getByLabel("Path filter").selectOption("peer_relay");
   }
@@ -144,6 +177,40 @@ test("renders the live fixture topology without overlap", async ({
   await expect(
     page.getByRole("switch", { name: "Show recent" }),
   ).toHaveAttribute("aria-checked", "true");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  expect(
+    parsePositions((await graph.getAttribute("data-layout-positions")) ?? ""),
+  ).toEqual(initialPositions);
+  await expect(graph).toHaveAttribute("data-layout-runs", "0");
+  const storedLayout = await page.evaluate(() =>
+    window.localStorage.getItem("tailpath.graph-layout.v1"),
+  );
+  expect(storedLayout).toContain('"version":1');
+  const graphBox = await graph.boundingBox();
+  if (!graphBox) throw new Error("graph has no bounding box");
+  const beforePan = await graph.getAttribute("data-viewport");
+  await page.mouse.move(graphBox.x + 30, graphBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(graphBox.x + 90, graphBox.y + 80, { steps: 4 });
+  await page.mouse.up();
+  await expect
+    .poll(() => graph.getAttribute("data-viewport"))
+    .not.toBe(beforePan);
+  const pannedViewport = await graph.getAttribute("data-viewport");
+  await page.getByRole("button", { name: "Fit graph" }).click();
+  await expect
+    .poll(() => graph.getAttribute("data-viewport"))
+    .not.toBe(pannedViewport);
+  expect(
+    parsePositions((await graph.getAttribute("data-layout-positions")) ?? ""),
+  ).toEqual(initialPositions);
+
+  await page.getByRole("button", { name: "Relayout graph" }).click();
+  await expect(graph).toHaveAttribute("data-layout-runs", "1");
+  const relayoutPositions = parsePositions(
+    (await graph.getAttribute("data-layout-positions")) ?? "",
+  );
+  expect(relayoutPositions).not.toEqual(initialPositions);
 
   await expect(page.locator("canvas")).toHaveCount(3);
   expect(consoleErrors).toEqual([]);
@@ -152,3 +219,35 @@ test("renders the live fixture topology without overlap", async ({
     fullPage: true,
   });
 });
+
+function parsePositions(value: string): Map<string, string> {
+  return new Map(
+    value
+      .split("|")
+      .filter(Boolean)
+      .map((entry) => {
+        const separator = entry.lastIndexOf(":");
+        return [entry.slice(0, separator), entry.slice(separator + 1)] as const;
+      }),
+  );
+}
+
+async function expectCommonPositions(
+  expected: ReadonlyMap<string, string>,
+  graph: Locator,
+) {
+  await expect
+    .poll(
+      async () =>
+        parsePositions(
+          (await graph.getAttribute("data-layout-positions")) ?? "",
+        ).size,
+    )
+    .toBeGreaterThan(0);
+  const actual = parsePositions(
+    (await graph.getAttribute("data-layout-positions")) ?? "",
+  );
+  for (const [id, position] of actual) {
+    expect(position, `position for ${id}`).toBe(expected.get(id));
+  }
+}

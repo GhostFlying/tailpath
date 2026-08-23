@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
+import { Maximize2, RefreshCcw } from "lucide-react";
 import cytoscape, {
   type Core,
   type ElementDefinition,
+  type NodeSingular,
   type StylesheetCSS,
 } from "cytoscape";
 import type { Topology } from "../api/types";
@@ -10,6 +12,12 @@ import {
   edgeIdealLengthForWidth,
   type PathFilter,
 } from "../lib/graph";
+import {
+  clearLayoutCache,
+  readLayoutCache,
+  type LayoutPosition,
+  writeLayoutCache,
+} from "../lib/layoutCache";
 
 interface Props {
   topology: Topology;
@@ -191,7 +199,15 @@ const styles: StylesheetCSS[] = [
 export function TopologyGraph(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<Core | null>(null);
-  const structure = useRef("");
+  const initialized = useRef(false);
+  const layoutRuns = useRef(0);
+  const renderEpoch = useRef(0);
+  const topologyNodeIDs = useRef<string[]>([]);
+  const cachedPositions = useRef(
+    readLayoutCache(
+      typeof window === "undefined" ? undefined : window.localStorage,
+    ),
+  );
   const elements = useMemo(
     () =>
       buildElements(props.topology, {
@@ -204,7 +220,6 @@ export function TopologyGraph(props: Props) {
 
   useEffect(() => {
     if (!container.current) return;
-    structure.current = "";
     const cy = cytoscape({
       container: container.current,
       elements: [],
@@ -236,6 +251,10 @@ export function TopologyGraph(props: Props) {
         props.onSelectNode(null);
       }
     });
+    cy.on("free", "node[persistable]", () => persistPositionsNow(cy));
+    cy.on("pan zoom", () =>
+      updateGraphDiagnostics(cy, container.current, layoutRuns.current),
+    );
     return () => {
       if (graph.current === cy) graph.current = null;
       cy.destroy();
@@ -245,6 +264,11 @@ export function TopologyGraph(props: Props) {
   useEffect(() => {
     const cy = graph.current;
     if (!cy) return;
+    const epoch = ++renderEpoch.current;
+    const firstRender = !initialized.current;
+    const viewport = { zoom: cy.zoom(), pan: cy.pan() };
+    captureCurrentPositions(cy, cachedPositions.current);
+    topologyNodeIDs.current = props.topology.nodes.map((node) => node.id);
     const preparedElements = elements.map(withMeasuredIdealLength);
     const nextIDs = new Set(
       preparedElements.map((element) => String(element.data?.id)),
@@ -252,51 +276,47 @@ export function TopologyGraph(props: Props) {
     cy.elements().forEach((element) => {
       if (!nextIDs.has(element.id())) element.remove();
     });
+    const newCanonicalNodes: NodeSingular[] = [];
+    const knownNodeIDs = new Set<string>();
     for (const definition of preparedElements) {
       const id = String(definition.data?.id);
       const existing = cy.getElementById(id);
       if (existing.length) {
         existing.data(definition.data ?? {});
         existing.classes(definition.classes?.toString() ?? "");
+        if (existing.isNode() && existing.data("persistable")) {
+          knownNodeIDs.add(id);
+        }
       } else {
-        cy.add(definition);
+        const added = cy.add(definition);
+        if (added.isNode() && added.data("persistable")) {
+          const cached = cachedPositions.current.get(id);
+          if (cached) {
+            added.position({ x: cached.x, y: cached.y });
+            knownNodeIDs.add(id);
+          } else {
+            newCanonicalNodes.push(added);
+          }
+        }
       }
     }
-    const signature = preparedElements
-      .map((element) => `${element.group}:${String(element.data?.id)}`)
-      .sort()
-      .join("|");
-    if (signature !== structure.current) {
-      const isInitialLayout = structure.current === "";
-      if (container.current) container.current.dataset.ready = "false";
-      structure.current = signature;
-      const fit = () => {
-        if (graph.current !== cy || cy.destroyed()) return;
-        enforceEdgeClearance(cy);
-        cy.resize();
-        if (cy.nodes().length > 0) {
-          cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+    seedNewNodes(cy, newCanonicalNodes, knownNodeIDs);
+    deriveVirtualPositions(cy);
+    if (container.current) container.current.dataset.ready = "false";
+    if (newCanonicalNodes.length > 0) {
+      const newIDs = new Set(newCanonicalNodes.map((node) => node.id()));
+      const locked: NodeSingular[] = [];
+      cy.nodes().forEach((node) => {
+        if (!newIDs.has(node.id())) {
+          node.lock();
+          locked.push(node);
         }
-        if (container.current) {
-          const deviceNodes = cy.nodes(".device-node");
-          let deviceNodesSquare = true;
-          deviceNodes.forEach((node) => {
-            if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
-              deviceNodesSquare = false;
-            }
-          });
-          container.current.dataset.deviceNodeCount = String(
-            deviceNodes.length,
-          );
-          container.current.dataset.deviceNodesSquare =
-            String(deviceNodesSquare);
-          container.current.dataset.ready = "true";
-        }
-      };
+      });
+      layoutRuns.current += 1;
       const layout = cy.layout({
         name: "cose",
         animate: false,
-        randomize: isInitialLayout,
+        randomize: firstRender && knownNodeIDs.size === 0,
         fit: false,
         padding: 64,
         nodeRepulsion: () => 180000,
@@ -306,10 +326,30 @@ export function TopologyGraph(props: Props) {
         componentSpacing: 120,
       });
       layout.run();
-      requestAnimationFrame(() => requestAnimationFrame(fit));
-    } else if (enforceEdgeClearance(cy)) {
-      cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+      locked.forEach((node) => node.unlock());
+      deriveVirtualPositions(cy);
     }
+    initialized.current = true;
+    if (!firstRender) {
+      cy.zoom(viewport.zoom);
+      cy.pan(viewport.pan);
+    }
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (
+          graph.current !== cy ||
+          cy.destroyed() ||
+          epoch !== renderEpoch.current
+        )
+          return;
+        cy.resize();
+        if (firstRender && cy.nodes().length > 0) {
+          cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+        }
+        updateGraphDiagnostics(cy, container.current, layoutRuns.current);
+        persistPositionsNow(cy);
+      }),
+    );
   }, [elements]);
 
   useEffect(() => {
@@ -323,22 +363,88 @@ export function TopologyGraph(props: Props) {
     }
   }, [props.selectedEdgeId]);
 
+  function persistPositionsNow(cy: Core) {
+    captureCurrentPositions(cy, cachedPositions.current);
+    writeLayoutCache(
+      typeof window === "undefined" ? undefined : window.localStorage,
+      cachedPositions.current,
+      topologyNodeIDs.current,
+    );
+    cachedPositions.current = readLayoutCache(
+      typeof window === "undefined" ? undefined : window.localStorage,
+    );
+    updateGraphDiagnostics(cy, container.current, layoutRuns.current);
+  }
+
+  function fitGraph() {
+    const cy = graph.current;
+    if (!cy || cy.nodes().length === 0) return;
+    cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+    updateGraphDiagnostics(cy, container.current, layoutRuns.current);
+  }
+
+  function relayoutGraph() {
+    const cy = graph.current;
+    if (!cy || cy.nodes().length === 0) return;
+    clearLayoutCache(
+      typeof window === "undefined" ? undefined : window.localStorage,
+    );
+    cachedPositions.current.clear();
+    cy.nodes().unlock();
+    layoutRuns.current += 1;
+    cy.layout({
+      name: "cose",
+      animate: false,
+      randomize: true,
+      fit: false,
+      padding: 64,
+      nodeRepulsion: () => 180000,
+      idealEdgeLength: (edge) => edge.data("idealLength") as number,
+      edgeElasticity: () => 80,
+      gravity: 45,
+      componentSpacing: 120,
+    }).run();
+    deriveVirtualPositions(cy);
+    cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+    persistPositionsNow(cy);
+  }
+
   return (
-    <div
-      className="topology-canvas"
-      ref={container}
-      aria-label="Live Tailnet topology"
-      data-edge-count={
-        new Set(
-          elements
-            .filter((element) => element.group === "edges")
-            .map((element) => element.data?.logicalEdgeId),
-        ).size
-      }
-      data-node-count={
-        elements.filter((element) => element.group === "nodes").length
-      }
-    />
+    <>
+      <div
+        className="topology-canvas"
+        ref={container}
+        aria-label="Live Tailnet topology"
+        data-edge-count={
+          new Set(
+            elements
+              .filter((element) => element.group === "edges")
+              .map((element) => element.data?.logicalEdgeId),
+          ).size
+        }
+        data-node-count={
+          elements.filter((element) => element.group === "nodes").length
+        }
+      />
+      <div className="graph-controls" aria-label="Graph layout controls">
+        <button
+          type="button"
+          onClick={fitGraph}
+          title="Fit graph"
+          aria-label="Fit graph"
+        >
+          <Maximize2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={relayoutGraph}
+          title="Relayout graph"
+          aria-label="Relayout graph"
+        >
+          <RefreshCcw size={16} />
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -369,43 +475,125 @@ function withMeasuredIdealLength(
   };
 }
 
-function enforceEdgeClearance(cy: Core): boolean {
-  let changed = false;
-  for (let pass = 0; pass < 16; pass += 1) {
-    let adjustedThisPass = false;
-    cy.edges().forEach((edge, index) => {
-      const source = edge.source();
-      const target = edge.target();
-      const sourcePosition = source.position();
-      const targetPosition = target.position();
-      let deltaX = targetPosition.x - sourcePosition.x;
-      let deltaY = targetPosition.y - sourcePosition.y;
-      let distance = Math.hypot(deltaX, deltaY);
-      const minimumDistance = Number(edge.data("idealLength"));
-      if (!Number.isFinite(minimumDistance) || distance >= minimumDistance) {
-        return;
-      }
-      if (distance < 0.001) {
-        const angle = ((index + pass) * Math.PI) / 4;
-        deltaX = Math.cos(angle);
-        deltaY = Math.sin(angle);
-        distance = 1;
-      }
-      const displacement = (minimumDistance - distance) / 2;
-      const offsetX = (deltaX / distance) * displacement;
-      const offsetY = (deltaY / distance) * displacement;
-      source.position({
-        x: sourcePosition.x - offsetX,
-        y: sourcePosition.y - offsetY,
+function captureCurrentPositions(cy: Core, cache: Map<string, LayoutPosition>) {
+  const now = Date.now();
+  cy.nodes("[persistable]").forEach((node) => {
+    const position = node.position();
+    if (Number.isFinite(position.x) && Number.isFinite(position.y)) {
+      cache.set(node.id(), { x: position.x, y: position.y, lastSeen: now });
+    }
+  });
+}
+
+function seedNewNodes(
+  cy: Core,
+  nodes: NodeSingular[],
+  knownNodeIDs: ReadonlySet<string>,
+) {
+  nodes.forEach((node, index) => {
+    const neighbors = knownNeighborPositions(node, knownNodeIDs);
+    if (neighbors.length > 0) {
+      const center = neighbors.reduce(
+        (sum, position) => ({
+          x: sum.x + position.x / neighbors.length,
+          y: sum.y + position.y / neighbors.length,
+        }),
+        { x: 0, y: 0 },
+      );
+      const angle = (stableHash(node.id()) % 360) * (Math.PI / 180);
+      node.position({
+        x: center.x + Math.cos(angle) * 72,
+        y: center.y + Math.sin(angle) * 72,
       });
-      target.position({
-        x: targetPosition.x + offsetX,
-        y: targetPosition.y + offsetY,
-      });
-      adjustedThisPass = true;
-      changed = true;
+      return;
+    }
+    const columns = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+    const offset = stableHash(node.id()) % 19;
+    node.position({
+      x: (index % columns) * 140 + offset,
+      y: Math.floor(index / columns) * 140 + offset,
     });
-    if (!adjustedThisPass) break;
+  });
+  deriveVirtualPositions(cy);
+}
+
+function knownNeighborPositions(
+  node: NodeSingular,
+  knownNodeIDs: ReadonlySet<string>,
+) {
+  const positions = new Map<string, { x: number; y: number }>();
+  const visit = (candidate: NodeSingular) => {
+    if (candidate.id() !== node.id() && knownNodeIDs.has(candidate.id())) {
+      positions.set(candidate.id(), candidate.position());
+    }
+  };
+  node.neighborhood("node").forEach((neighbor) => {
+    if (!neighbor.isNode()) return;
+    visit(neighbor);
+    if (!neighbor.data("persistable")) {
+      neighbor.neighborhood("node").forEach((candidate) => {
+        if (candidate.isNode()) visit(candidate);
+      });
+    }
+  });
+  return [...positions.values()];
+}
+
+function deriveVirtualPositions(cy: Core) {
+  cy.nodes().forEach((node) => {
+    if (node.data("persistable")) return;
+    const neighbors: Array<{ x: number; y: number }> = [];
+    node.neighborhood("node").forEach((neighbor) => {
+      if (neighbor.isNode()) neighbors.push(neighbor.position());
+    });
+    if (neighbors.length === 0) return;
+    node.position(
+      neighbors.reduce(
+        (sum, position) => ({
+          x: sum.x + position.x / neighbors.length,
+          y: sum.y + position.y / neighbors.length,
+        }),
+        { x: 0, y: 0 },
+      ),
+    );
+  });
+}
+
+function updateGraphDiagnostics(
+  cy: Core,
+  element: HTMLDivElement | null,
+  runs: number,
+) {
+  if (!element) return;
+  const deviceNodes = cy.nodes(".device-node");
+  let deviceNodesSquare = true;
+  deviceNodes.forEach((node) => {
+    if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
+      deviceNodesSquare = false;
+    }
+  });
+  const positions: string[] = [];
+  cy.nodes("[persistable]").forEach((node) => {
+    const position = node.position();
+    positions.push(
+      `${node.id()}:${position.x.toFixed(2)},${position.y.toFixed(2)}`,
+    );
+  });
+  positions.sort();
+  const pan = cy.pan();
+  element.dataset.deviceNodeCount = String(deviceNodes.length);
+  element.dataset.deviceNodesSquare = String(deviceNodesSquare);
+  element.dataset.layoutPositions = positions.join("|");
+  element.dataset.layoutRuns = String(runs);
+  element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
+  element.dataset.ready = "true";
+}
+
+function stableHash(value: string): number {
+  let result = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    result ^= value.charCodeAt(index);
+    result = Math.imul(result, 16777619);
   }
-  return changed;
+  return result >>> 0;
 }
