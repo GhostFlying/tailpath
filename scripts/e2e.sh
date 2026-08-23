@@ -12,14 +12,22 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+run_fixture() {
+  if test -n "$fixture_binary"; then
+    "$fixture_binary" "$@"
+  else
+    go run ./cmd/tailpath "$@"
+  fi
+}
+
 if test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
-  go run ./cmd/tailpath fixture-server \
+  run_fixture fixture-server \
     --scale \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
 else
-  go run ./cmd/tailpath fixture-server \
+  run_fixture fixture-server \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
