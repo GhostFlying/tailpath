@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
@@ -134,37 +133,6 @@ func (s *ScaleScenario) Reports(at time.Time) []TimedReport {
 	return reports
 }
 
-func (s *ScaleScenario) HelloReports(at time.Time) []domain.ReportEnvelope {
-	reports := make([]domain.ReportEnvelope, len(s.nodes))
-	for node := range s.nodes {
-		reports[node] = s.helloReport(node, at.UTC())
-	}
-	return reports
-}
-
-func (s *ScaleScenario) SteadyReports(at time.Time, sequence int64) []domain.ReportEnvelope {
-	reports := make([]domain.ReportEnvelope, len(s.nodes))
-	for node := range s.nodes {
-		reports[node] = s.steadyTrafficReport(node, at.UTC(), sequence)
-	}
-	return reports
-}
-
-func (s *ScaleScenario) EdgeMutationReport(at time.Time, sequence int64) domain.ReportEnvelope {
-	edge := s.edges[1]
-	factor := 2 + sequence%7
-	return s.envelope(edge.source, sequence, domain.ReportTrafficSample, at.UTC(), []domain.PeerObservation{{
-		Peer:             s.nodes[edge.target],
-		RxBytes:          10_000_000 + edge.bToABytes*sequence,
-		TxBytes:          20_000_000 + edge.aToBBytes*sequence,
-		RxDelta:          edge.bToABytes * factor,
-		TxDelta:          edge.aToBBytes * factor,
-		SampleDurationMS: 2000,
-		Path:             s.pathForObserver(edge, edge.target),
-		LastActive:       at.UTC(),
-	}})
-}
-
 func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.Time) error {
 	for _, timed := range s.Reports(at) {
 		receipt, err := application.SubmitAt(ctx, timed.Report, timed.ReceivedAt)
@@ -173,22 +141,6 @@ func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.
 		}
 		if !receipt.Accepted || receipt.ResyncRequired {
 			return fmt.Errorf("scale report %s was not accepted cleanly", timed.Report.ReportID)
-		}
-	}
-	return nil
-}
-
-// RefreshRuntime keeps the test-only browser fixture inside the ten-second
-// active window after the intentionally unoptimized persistent load finishes.
-func (s *ScaleScenario) RefreshRuntime(aggregator *aggregate.Aggregator, at time.Time, sequence int64) error {
-	for node := range s.nodes {
-		report := s.trafficReport(node, at.UTC(), false, sequence)
-		result, err := aggregator.ApplyAt(report, at.UTC())
-		if err != nil {
-			return fmt.Errorf("refresh scale report %s: %w", report.ReportID, err)
-		}
-		if !result.Receipt.Accepted || result.Receipt.ResyncRequired {
-			return fmt.Errorf("scale refresh report %s was not accepted cleanly", report.ReportID)
 		}
 	}
 	return nil
@@ -238,30 +190,6 @@ func (s *ScaleScenario) trafficReport(node int, receivedAt time.Time, recent boo
 	return s.envelope(node, sequence, domain.ReportTrafficSample, receivedAt, peers)
 }
 
-func (s *ScaleScenario) steadyTrafficReport(node int, receivedAt time.Time, sequence int64) domain.ReportEnvelope {
-	peers := make([]domain.PeerObservation, 0, len(s.neighbors[node]))
-	for _, edgeIndex := range s.neighbors[node] {
-		edge := s.edges[edgeIndex]
-		peer := edge.source
-		txDelta, rxDelta := edge.bToABytes, edge.aToBBytes
-		if peer == node {
-			peer = edge.target
-			txDelta, rxDelta = edge.aToBBytes, edge.bToABytes
-		}
-		peers = append(peers, domain.PeerObservation{
-			Peer:             s.nodes[peer],
-			RxBytes:          10_000_000 + rxDelta*sequence,
-			TxBytes:          20_000_000 + txDelta*sequence,
-			RxDelta:          rxDelta,
-			TxDelta:          txDelta,
-			SampleDurationMS: 2000,
-			Path:             s.pathForObserver(edge, peer),
-			LastActive:       receivedAt,
-		})
-	}
-	return s.envelope(node, sequence, domain.ReportTrafficSample, receivedAt, peers)
-}
-
 func (s *ScaleScenario) envelope(
 	node int,
 	sequence int64,
@@ -271,7 +199,7 @@ func (s *ScaleScenario) envelope(
 ) domain.ReportEnvelope {
 	collectedAt := receivedAt
 	if node%29 == 0 {
-		collectedAt = collectedAt.Add(6 * time.Minute)
+		collectedAt = collectedAt.Add(5 * time.Minute)
 	}
 	return domain.ReportEnvelope{
 		Version:            domain.ProtocolVersion,
@@ -316,7 +244,6 @@ func (s *ScaleScenario) pathForObserver(edge scaleEdge, peer int) domain.PathObs
 
 func scaleNode(index int) domain.NodeIdentity {
 	hostname := fmt.Sprintf("scale-node-%03d", index+1)
-	platforms := [...]string{"linux", "macos", "windows", "ios", "android"}
 	return domain.NodeIdentity{
 		StableNodeID: fmt.Sprintf("scale-%03d", index+1),
 		NodeID:       fmt.Sprintf("nodeid-%03d", index+1),
@@ -324,7 +251,6 @@ func scaleNode(index int) domain.NodeIdentity {
 		DiscoKey:     fmt.Sprintf("discokey:%064x", index+1),
 		Hostname:     hostname,
 		DNSName:      hostname + ".scale.example.ts.net.",
-		OS:           platforms[index%len(platforms)],
 		TailscaleIPs: []string{fmt.Sprintf("100.100.%d.%d", index/250, index%250+1)},
 	}
 }
