@@ -1,4 +1,4 @@
-import type { EdgeHistory, Topology } from "./types";
+import type { EdgeHistory, HistoryWindow, Topology } from "./types";
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
@@ -18,9 +18,10 @@ export function getTopology(signal?: AbortSignal): Promise<Topology> {
 export function getEdgeHistory(
   edgeId: string,
   signal?: AbortSignal,
+  window: HistoryWindow = "1h",
 ): Promise<EdgeHistory> {
   return getJSON<EdgeHistory>(
-    `/api/v1/history/edges/${encodeURIComponent(edgeId)}`,
+    `/api/v1/history/edges/${encodeURIComponent(edgeId)}?window=${window}`,
     signal,
   );
 }
