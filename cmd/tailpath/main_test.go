@@ -50,10 +50,12 @@ func TestCollectorConfigPrecedence(t *testing.T) {
 }
 
 func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
-	source := &checkSource{diagnostic: collector.Diagnostic{
-		Self:      domain.NodeIdentity{StableNodeID: "self-id", Hostname: "workstation"},
-		OS:        "linux",
-		PeerCount: 2,
+	source := &checkSource{snapshot: collector.Snapshot{
+		Observer: domain.NodeIdentity{StableNodeID: "self-id", Hostname: "workstation"},
+		Peers: []collector.PeerSnapshot{
+			{Identity: domain.NodeIdentity{StableNodeID: "peer-a"}},
+			{Identity: domain.NodeIdentity{StableNodeID: "peer-b"}},
+		},
 	}}
 	var output bytes.Buffer
 	if err := checkCollector(context.Background(), source, &output); err != nil {
@@ -62,7 +64,7 @@ func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
 	if source.calls != 1 {
 		t.Fatalf("Snapshot calls = %d, want one", source.calls)
 	}
-	var result collector.Diagnostic
+	var result collectorCheckResult
 	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 		t.Fatalf("check output is not JSON: %v", err)
 	}
@@ -72,13 +74,13 @@ func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
 }
 
 type checkSource struct {
-	diagnostic collector.Diagnostic
-	calls      int
+	snapshot collector.Snapshot
+	calls    int
 }
 
-func (s *checkSource) Diagnostic(context.Context) (collector.Diagnostic, error) {
+func (s *checkSource) Snapshot(context.Context) (collector.Snapshot, error) {
 	s.calls++
-	return s.diagnostic, nil
+	return s.snapshot, nil
 }
 
 func TestResolveAuthKey(t *testing.T) {
