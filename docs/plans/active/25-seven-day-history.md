@@ -88,15 +88,15 @@ seven days of logical history without summing bilateral observations.
 
 ## Steps
 
-- [x] Introduce append-only numbered migrations and migration compatibility
+- [ ] Introduce append-only numbered migrations and migration compatibility
   tests for current dogfood databases.
-- [x] Persist canonical node metadata, redirects, and traffic edge metadata.
-- [x] Implement idempotent ended-bucket minute/hour rollups and tier retention.
-- [x] Preserve path anchors and add retention/query indexes.
-- [x] Define the OpenAPI history contracts and regenerate Go/TypeScript types.
-- [x] Implement bounded store queries, redirect grouping, filters, and cursor.
-- [x] Implement HTTP validation/status semantics and API tests.
-- [x] Run migration, retention, scale-size, generated-file, race, and full
+- [ ] Persist canonical node metadata, redirects, and traffic edge metadata.
+- [ ] Implement idempotent ended-bucket minute/hour rollups and tier retention.
+- [ ] Preserve path anchors and add retention/query indexes.
+- [ ] Define the OpenAPI history contracts and regenerate Go/TypeScript types.
+- [ ] Implement bounded store queries, redirect grouping, filters, and cursor.
+- [ ] Implement HTTP validation/status semantics and API tests.
+- [ ] Run migration, retention, scale-size, generated-file, race, and full
   repository verification.
 
 ## Tests
@@ -127,30 +127,13 @@ seven days of logical history without summing bilateral observations.
   anchor separately, return the newest 500 in chronological order, and set an
   explicit truncation flag.
 
-## Verification record
-
-- Migration tests preserve current draft databases, backfill legacy columns,
-  advance to user version 2, reopen idempotently, and reject future versions.
-- Store tests cover bilateral directional preference, third-party fallback,
-  idempotent rollup, ended buckets, all three retention boundaries, path
-  anchors, redirects with direction reversal, filters, cursor pagination,
-  known-empty detail, and transition caps.
-- API/generated Go types compile; generated TypeScript passes typecheck and
-  formatting. HTTP tests cover required windows, invalid path/limit/cursor,
-  list/nodes/detail success, known-empty 200, and unknown 404.
-- The manual 250-node/1,000-edge steady seven-day fixture wrote 3,768,000
-  traffic rows and produced a 707,936,256-byte database in 67.7 seconds, below
-  the 2 GiB target.
-- Generated Go and TypeScript hashes were unchanged after regeneration. Full Go
-  vet/test/race/build, Web typecheck/format/39 unit tests/build, and normal
-  desktop/mobile Playwright passed. The existing 500 kB Live bundle warning
-  remains; #26 owns History route lazy loading and bundle separation.
-
 ## Current state
 
-Migration, storage, aggregation metadata, query, API, manual size gate, and
-full repository verification are complete.
+The current schema, ingest transaction, checkpoint/replay flow, bilateral
+traffic SQL, identity merge path, retention job, and history HTTP route have
+been traced. No implementation changes have been made.
 
 ## Next step
 
-Push the verified branch and request review of the stacked Draft PR.
+Implement and test the numbered migration framework before changing write or
+query behavior.
