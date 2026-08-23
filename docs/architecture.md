@@ -30,8 +30,10 @@ and logical path transition is committed in one SQLite transaction. A typed
 candidate state is checkpointed immediately once and then at most once per
 second; the checkpoint records the last represented report rowid. Only after a
 successful transaction does ingest transfer candidate ownership and publish an
-SSE invalidation. Storage failure therefore cannot advance in-memory sequence
-or inventory state.
+SSE invalidation. Per-client invalidations are coalesced into 250-millisecond
+windows, and the browser merges a refresh burst into one in-flight request plus
+one follow-up. Storage failure therefore cannot advance in-memory sequence or
+inventory state.
 
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
