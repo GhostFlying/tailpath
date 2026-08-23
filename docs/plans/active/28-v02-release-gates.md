@@ -105,13 +105,13 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 
 ## Steps
 
-- [x] Add the deterministic steady-report generator and versioned load result.
-- [x] Add ingest/API percentile enforcement and focused unit tests.
-- [x] Add constrained Docker orchestration, RSS/health monitoring, and artifacts.
-- [x] Add fixture-only edge mutation and SSE-to-visible browser latency gate.
-- [x] Enforce the seven-day DB and scale browser gates in the manual workflow.
-- [x] Write alpha artifact, Linux smoke, Linux native, and Mac dogfood runbooks.
-- [x] Run the local short gate and complete repository checks.
+- [ ] Add the deterministic steady-report generator and versioned load result.
+- [ ] Add ingest/API percentile enforcement and focused unit tests.
+- [ ] Add constrained Docker orchestration, RSS/health monitoring, and artifacts.
+- [ ] Add fixture-only edge mutation and SSE-to-visible browser latency gate.
+- [ ] Enforce the seven-day DB and scale browser gates in the manual workflow.
+- [ ] Write alpha artifact, Linux smoke, Linux native, and Mac dogfood runbooks.
+- [ ] Run the local short gate and complete repository checks.
 - [ ] Open the Draft PR and obtain hosted CI plus a strict workflow result.
 - [ ] Human: publish immutable `v0.2.0-alpha.1` artifacts.
 - [ ] Human-assisted: execute Linux and real arm64 Mac dogfood.
@@ -136,23 +136,13 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 
 ## Current state
 
-The local short gate and full constrained path are implemented. The first
-ten-minute run correctly failed after accepting 75,000 reports: ingest p95 was
-589 ms, scheduler lag reached 226 seconds, and History hit a read-only temporary
-file error. The failure led to bounded report-ID state, WAL/NORMAL plus memory
-temporary storage, rollup-backed list summaries, and edge-filtered detail.
-
-The fixed ten-minute run accepted 75,000 of 75,000 reports in 599.996 seconds.
-Ingest p95/p99 were 43.3/77.8 ms, scheduler lag was 200.7 ms, topology/list /
-detail p95 were 16.1/81.2/11.1 ms, and peak process RSS was 45.3 MiB with no
-HTTP failure, 500, OOM, or restart. The seven-day database was 707,936,256
-bytes. Scale Playwright passed desktop and mobile; desktop cold ready was 3,386
-ms and the edge-only SSE update became visible in 464 ms without layout or
-viewport movement. Screenshots were inspected and were nonblank with complete
-controls and legends.
+The #28 issue, prior scale baselines, fixture generator, HTTP authorization,
+container delivery, browser scale test, and v0.1 smoke/dogfood runbooks have
+been inspected. Existing tests prove the data shape and DB capacity but do not
+yet create an open-loop 125 reports/s workload or measure HTTP/API percentiles.
 
 ## Next step
 
-Complete final repository checks, push the branch, obtain hosted CI and the
-manual strict workflow artifact, then wait for the human-owned alpha tag and
-real Linux/Mac dogfood gates.
+Implement the reusable steady-report generator and load command with strict
+result validation, then exercise it against a short-lived loopback fixture
+before adding Docker orchestration.
