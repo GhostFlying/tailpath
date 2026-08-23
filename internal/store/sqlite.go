@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE TABLE IF NOT EXISTS runtime_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     payload BLOB NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    last_report_rowid INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -77,8 +78,15 @@ type SQLite struct {
 }
 
 type StoredReport struct {
+	RowID      int64
 	Report     domain.ReportEnvelope
 	ReceivedAt time.Time
+}
+
+type RuntimeCheckpoint struct {
+	Payload         []byte
+	LastReportRowID int64
+	UpdatedAt       time.Time
 }
 
 func Open(path string, retention time.Duration) (*SQLite, error) {
@@ -108,6 +116,9 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	if _, err := db.Exec(`UPDATE reports SET received_at = collected_at WHERE received_at IS NULL OR received_at = ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "runtime_state", "last_report_rowid", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := ensureColumn(db, "path_events", "observations", "BLOB"); err != nil {
@@ -205,11 +216,20 @@ func (s *SQLite) Record(
 	if inserted == 0 {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `
-        INSERT INTO runtime_state(singleton, payload, updated_at) VALUES (1, ?, ?)
-        ON CONFLICT(singleton) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-		runtimeState, formatTime(receivedAt)); err != nil {
+	reportRowID, err := result.LastInsertId()
+	if err != nil {
 		return false, err
+	}
+	if runtimeState != nil {
+		if _, err := tx.ExecContext(ctx, `
+            INSERT INTO runtime_state(singleton, payload, updated_at, last_report_rowid) VALUES (1, ?, ?, ?)
+            ON CONFLICT(singleton) DO UPDATE SET
+              payload = excluded.payload,
+              updated_at = excluded.updated_at,
+              last_report_rowid = excluded.last_report_rowid`,
+			runtimeState, formatTime(receivedAt), reportRowID); err != nil {
+			return false, err
+		}
 	}
 	for _, record := range traffic {
 		if err := recordTraffic(ctx, tx, record); err != nil {
@@ -222,16 +242,6 @@ func (s *SQLite) Record(
 		}
 	}
 
-	cutoff := formatTime(receivedAt.Add(-s.retention))
-	for _, statement := range []string{
-		"DELETE FROM reports WHERE received_at < ?",
-		"DELETE FROM traffic_buckets WHERE bucket_start < ?",
-		"DELETE FROM path_events WHERE observed_at < ?",
-	} {
-		if _, err := tx.ExecContext(ctx, statement, cutoff); err != nil {
-			return false, err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
@@ -334,37 +344,64 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 }
 
 func (s *SQLite) RestoreState(ctx context.Context) ([]byte, error) {
-	var payload []byte
-	err := s.db.QueryRowContext(ctx, `SELECT payload FROM runtime_state WHERE singleton = 1`).Scan(&payload)
+	checkpoint, err := s.RestoreCheckpoint(ctx)
+	return checkpoint.Payload, err
+}
+
+func (s *SQLite) RestoreCheckpoint(ctx context.Context) (RuntimeCheckpoint, error) {
+	var checkpoint RuntimeCheckpoint
+	var rawUpdatedAt string
+	err := s.db.QueryRowContext(ctx, `
+        SELECT payload, last_report_rowid, updated_at FROM runtime_state WHERE singleton = 1`,
+	).Scan(&checkpoint.Payload, &checkpoint.LastReportRowID, &rawUpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return checkpoint, nil
 	}
-	return payload, err
+	if err != nil {
+		return checkpoint, err
+	}
+	checkpoint.UpdatedAt, err = time.Parse(time.RFC3339Nano, rawUpdatedAt)
+	return checkpoint, err
 }
 
 func (s *SQLite) SaveState(ctx context.Context, payload []byte, updatedAt time.Time) error {
+	var lastReportRowID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(rowid), 0) FROM reports`).Scan(&lastReportRowID); err != nil {
+		return err
+	}
+	return s.SaveCheckpoint(ctx, payload, lastReportRowID, updatedAt)
+}
+
+func (s *SQLite) SaveCheckpoint(ctx context.Context, payload []byte, lastReportRowID int64, updatedAt time.Time) error {
 	_, err := s.db.ExecContext(ctx, `
-        INSERT INTO runtime_state(singleton, payload, updated_at) VALUES (1, ?, ?)
-        ON CONFLICT(singleton) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-		payload, formatTime(updatedAt))
+        INSERT INTO runtime_state(singleton, payload, updated_at, last_report_rowid) VALUES (1, ?, ?, ?)
+        ON CONFLICT(singleton) DO UPDATE SET
+          payload = excluded.payload,
+          updated_at = excluded.updated_at,
+          last_report_rowid = excluded.last_report_rowid`,
+		payload, formatTime(updatedAt), lastReportRowID)
 	return err
 }
 
 func (s *SQLite) RestoreReports(ctx context.Context) ([]StoredReport, error) {
+	return s.RestoreReportsAfter(ctx, 0)
+}
+
+func (s *SQLite) RestoreReportsAfter(ctx context.Context, lastReportRowID int64) ([]StoredReport, error) {
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT payload, received_at FROM reports ORDER BY received_at, reporter_instance_id, sequence`)
+		SELECT rowid, payload, received_at FROM reports WHERE rowid > ? ORDER BY rowid`, lastReportRowID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var reports []StoredReport
 	for rows.Next() {
+		var stored StoredReport
 		var payload []byte
 		var rawReceivedAt string
-		if err := rows.Scan(&payload, &rawReceivedAt); err != nil {
+		if err := rows.Scan(&stored.RowID, &payload, &rawReceivedAt); err != nil {
 			return nil, err
 		}
-		var stored StoredReport
 		if err := json.Unmarshal(payload, &stored.Report); err != nil {
 			return nil, err
 		}
@@ -375,6 +412,34 @@ func (s *SQLite) RestoreReports(ctx context.Context) ([]StoredReport, error) {
 		reports = append(reports, stored)
 	}
 	return reports, rows.Err()
+}
+
+func (s *SQLite) Maintain(ctx context.Context, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var checkpointRowID int64
+	err = tx.QueryRowContext(ctx, `SELECT last_report_rowid FROM runtime_state WHERE singleton = 1`).Scan(&checkpointRowID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if checkpointRowID > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM reports WHERE rowid <= ?`, checkpointRowID); err != nil {
+			return err
+		}
+	}
+	cutoff := formatTime(now.UTC().Add(-s.retention))
+	for _, statement := range []string{
+		"DELETE FROM traffic_buckets WHERE bucket_start < ?",
+		"DELETE FROM path_events WHERE observed_at < ?",
+	} {
+		if _, err := tx.ExecContext(ctx, statement, cutoff); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func formatTime(value time.Time) string {
