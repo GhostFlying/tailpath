@@ -177,7 +177,6 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if err != nil {
 		return err
 	}
-	go application.RunMaintenance(ctx)
 	server := httpapi.New(application, httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger})
 	if fixture {
 		if *scaleFixture {
@@ -202,7 +201,6 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	// rollup cursors. Production starts with persisted data, so this ordering is
 	// also deterministic for both server modes.
 	go application.RunMaintenance(ctx)
-	server := httpapi.New(application, serverOptions)
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
 	return serve(ctx, listener, server.Handler(), *adminListen, logger)
 }
