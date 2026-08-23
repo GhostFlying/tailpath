@@ -46,6 +46,92 @@ func TestDirectEndpointsFromOppositeObserversAreEquivalent(t *testing.T) {
 	}
 }
 
+func TestCloneRuntimeStateIsIndependent(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	source := runtimeState{
+		Reporters: map[string]*reporterState{"reporter": {
+			LastSequence: 4,
+			ReportIDs:    map[string]struct{}{"report": {}},
+			ObserverIDs:  map[string]struct{}{"observer": {}},
+			LegacyInventories: map[string]string{
+				"legacy": "generation",
+			},
+			LegacyMemberships: map[string]map[string]struct{}{
+				"legacy": {"peer": {}},
+			},
+		}},
+		Observers: map[string]*observerRuntimeState{"observer": {
+			OwnerReporterInstanceID: "reporter",
+			InventoryGeneration:     "generation",
+			Membership:              map[string]struct{}{"peer": {}},
+		}},
+		Nodes: map[string]*nodeState{"observer": {
+			Identity: domain.NodeIdentity{StableNodeID: "observer", TailscaleIPs: []string{"100.64.0.1"}},
+		}},
+		Aliases:       map[string]string{"stable:observer": "observer"},
+		AliasLastSeen: map[string]time.Time{"ip:100.64.0.1": now},
+		Edges: map[string]*edgeState{"observer--peer": {
+			ID: "observer--peer", Source: "observer", Target: "peer",
+			Observations: map[string]edgeObservation{"observer": {ObserverID: "observer", TxRate: 1}},
+		}},
+	}
+	clone := cloneRuntimeState(source)
+	clone.Reporters["reporter"].LastSequence = 5
+	clone.Reporters["reporter"].ReportIDs["other"] = struct{}{}
+	clone.Reporters["reporter"].ObserverIDs["other"] = struct{}{}
+	clone.Reporters["reporter"].LegacyInventories["legacy"] = "changed"
+	clone.Reporters["reporter"].LegacyMemberships["legacy"]["other"] = struct{}{}
+	clone.Observers["observer"].InventoryGeneration = "changed"
+	clone.Observers["observer"].Membership["other"] = struct{}{}
+	clone.Nodes["observer"].Identity.TailscaleIPs[0] = "100.64.0.2"
+	clone.Aliases["stable:observer"] = "other"
+	clone.AliasLastSeen["ip:100.64.0.1"] = now.Add(time.Hour)
+	observation := clone.Edges["observer--peer"].Observations["observer"]
+	observation.TxRate = 2
+	clone.Edges["observer--peer"].Observations["observer"] = observation
+
+	reporter := source.Reporters["reporter"]
+	if reporter.LastSequence != 4 || len(reporter.ReportIDs) != 1 || len(reporter.ObserverIDs) != 1 ||
+		reporter.LegacyInventories["legacy"] != "generation" || len(reporter.LegacyMemberships["legacy"]) != 1 {
+		t.Fatalf("reporter clone mutated source: %#v", reporter)
+	}
+	observer := source.Observers["observer"]
+	if observer.InventoryGeneration != "generation" || len(observer.Membership) != 1 {
+		t.Fatalf("observer clone mutated source: %#v", observer)
+	}
+	if source.Nodes["observer"].Identity.TailscaleIPs[0] != "100.64.0.1" ||
+		source.Aliases["stable:observer"] != "observer" || !source.AliasLastSeen["ip:100.64.0.1"].Equal(now) ||
+		source.Edges["observer--peer"].Observations["observer"].TxRate != 1 {
+		t.Fatal("node, alias, or edge clone mutated source")
+	}
+}
+
+func TestReplaceWithTransfersStateAndKeepsSubscribers(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	clone, err := aggregator.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyHello(t, clone, "reporter-a", 1, "a", "A", "inventory-a")
+	events, unsubscribe := aggregator.Subscribe()
+	defer unsubscribe()
+	if err := aggregator.ReplaceWith(clone); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-events:
+	default:
+		t.Fatal("state transfer did not notify existing subscriber")
+	}
+	if got := len(aggregator.Snapshot().Nodes); got != 1 {
+		t.Fatalf("transferred state has %d nodes, want 1", got)
+	}
+	if got := len(clone.Snapshot().Nodes); got != 0 {
+		t.Fatalf("candidate retained %d transferred nodes", got)
+	}
+}
+
 func TestEquivalentDirectEndpointsDoNotCreatePathTransitions(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

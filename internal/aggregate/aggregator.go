@@ -926,37 +926,99 @@ func (a *Aggregator) RestoreState(payload []byte) error {
 }
 
 func (a *Aggregator) Clone() (*Aggregator, error) {
-	payload, err := a.MarshalState()
-	if err != nil {
-		return nil, err
-	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	clone := New(Options{
 		HeartbeatInterval: a.heartbeatInterval,
 		ControlNodeIDs:    a.controlIDs,
 		Now:               a.now,
 		NewNodeID:         a.newNodeID,
 	})
-	if err := clone.RestoreState(payload); err != nil {
-		return nil, err
-	}
+	clone.state = cloneRuntimeState(a.state)
 	return clone, nil
 }
 
 func (a *Aggregator) ReplaceWith(candidate *Aggregator) error {
-	payload, err := candidate.MarshalState()
-	if err != nil {
-		return err
-	}
-	var state runtimeState
-	if err := json.Unmarshal(payload, &state); err != nil {
-		return err
-	}
-	normalizeState(&state)
+	candidate.mu.Lock()
+	state := candidate.state
+	candidate.state = newRuntimeState()
+	candidate.mu.Unlock()
 	a.mu.Lock()
 	a.state = state
 	a.notifyLocked()
 	a.mu.Unlock()
 	return nil
+}
+
+func cloneRuntimeState(source runtimeState) runtimeState {
+	clone := runtimeState{
+		Reporters:     make(map[string]*reporterState, len(source.Reporters)),
+		Observers:     make(map[string]*observerRuntimeState, len(source.Observers)),
+		Nodes:         make(map[string]*nodeState, len(source.Nodes)),
+		Aliases:       make(map[string]string, len(source.Aliases)),
+		AliasLastSeen: make(map[string]time.Time, len(source.AliasLastSeen)),
+		Edges:         make(map[string]*edgeState, len(source.Edges)),
+	}
+	for id, reporter := range source.Reporters {
+		copy := *reporter
+		copy.ReportIDs = cloneSet(reporter.ReportIDs)
+		copy.ObserverIDs = cloneSet(reporter.ObserverIDs)
+		copy.LegacyInventories = cloneStringMap(reporter.LegacyInventories)
+		if reporter.LegacyMemberships != nil {
+			copy.LegacyMemberships = make(map[string]map[string]struct{}, len(reporter.LegacyMemberships))
+			for observerID, membership := range reporter.LegacyMemberships {
+				copy.LegacyMemberships[observerID] = cloneSet(membership)
+			}
+		}
+		clone.Reporters[id] = &copy
+	}
+	for id, observer := range source.Observers {
+		copy := *observer
+		copy.Membership = cloneSet(observer.Membership)
+		clone.Observers[id] = &copy
+	}
+	for id, node := range source.Nodes {
+		copy := *node
+		copy.Identity.TailscaleIPs = append([]string(nil), node.Identity.TailscaleIPs...)
+		clone.Nodes[id] = &copy
+	}
+	for alias, id := range source.Aliases {
+		clone.Aliases[alias] = id
+	}
+	for alias, seenAt := range source.AliasLastSeen {
+		clone.AliasLastSeen[alias] = seenAt
+	}
+	for id, edge := range source.Edges {
+		copy := *edge
+		copy.Observations = make(map[string]edgeObservation, len(edge.Observations))
+		for observerID, observation := range edge.Observations {
+			copy.Observations[observerID] = observation
+		}
+		clone.Edges[id] = &copy
+	}
+	return clone
+}
+
+func cloneSet(source map[string]struct{}) map[string]struct{} {
+	if source == nil {
+		return nil
+	}
+	clone := make(map[string]struct{}, len(source))
+	for value := range source {
+		clone[value] = struct{}{}
+	}
+	return clone
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	if source == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
 }
 
 func normalizeState(state *runtimeState) {
