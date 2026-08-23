@@ -136,6 +136,9 @@ func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Requ
 	}
 	history, found, err := s.app.EdgeHistoryWindow(request.Context(), edgeID, window)
 	if err != nil {
+		if historyRequestCanceled(request, err) {
+			return
+		}
 		s.logger.Error("edge history query failed", "edge_id", edgeID, "error", err)
 		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
 		return
@@ -154,6 +157,9 @@ func (s *Server) getHistoryNodes(response http.ResponseWriter, request *http.Req
 	}
 	nodes, err := s.app.HistoryNodes(request.Context(), window)
 	if err != nil {
+		if historyRequestCanceled(request, err) {
+			return
+		}
 		s.logger.Error("history nodes query failed", "window", window, "error", err)
 		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
 		return
@@ -188,11 +194,19 @@ func (s *Server) listHistoryEdges(response http.ResponseWriter, request *http.Re
 		return
 	}
 	if err != nil {
+		if historyRequestCanceled(request, err) {
+			return
+		}
 		s.logger.Error("history edge list query failed", "window", window, "error", err)
 		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
 		return
 	}
 	writeJSON(response, http.StatusOK, page)
+}
+
+func historyRequestCanceled(request *http.Request, err error) bool {
+	return request.Context().Err() != nil &&
+		(errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 }
 
 func parseHistoryWindow(response http.ResponseWriter, request *http.Request) (domain.HistoryWindow, bool) {
