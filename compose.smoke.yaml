@@ -1,0 +1,200 @@
+name: tailpath-smoke
+
+x-tailscale-node: &tailscale-node
+  image: ${TAILSCALE_IMAGE:-tailscale/tailscale:v1.102.2}
+  environment:
+    TS_ACCEPT_DNS: "true"
+    TS_AUTH_ONCE: "true"
+    TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+    TS_SOCKET: /var/run/tailscale/tailscaled.sock
+    TS_STATE_DIR: /var/lib/tailscale
+    TS_USERSPACE: "false"
+  cap_add:
+    - NET_ADMIN
+    - NET_RAW
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  secrets:
+    - tailscale-authkey
+  healthcheck:
+    test: ["CMD", "tailscale", "--socket=/var/run/tailscale/tailscaled.sock", "ip", "-4"]
+    interval: 2s
+    timeout: 2s
+    retries: 45
+    start_period: 2s
+  networks:
+    - underlay
+  restart: "no"
+
+x-workload: &workload
+  image: ${BUSYBOX_IMAGE:-busybox:1.37.0}
+  environment:
+    ALL_PROXY: ""
+    HTTPS_PROXY: ""
+    HTTP_PROXY: ""
+    all_proxy: ""
+    https_proxy: ""
+    http_proxy: ""
+  command:
+    - sh
+    - -ec
+    - |
+      mkdir -p /www
+      printf 'ok\n' > /www/healthz
+      dd if=/dev/zero of=/www/payload.bin bs=1048576 count=64
+      exec httpd -f -p 18088 -h /www
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18088/healthz"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 2s
+  restart: "no"
+
+services:
+  server:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-smoke}
+    build:
+      context: .
+      args:
+        VERSION: ${TAILPATH_VERSION:-smoke}
+    command:
+      - server
+      - --network=tsnet
+      - --hostname=tailpath-smoke-server
+      - --state-dir=/var/lib/tailpath/tsnet
+      - --database=/var/lib/tailpath/tailpath.db
+      - --web-dir=/opt/tailpath/web
+      - --admin-listen=127.0.0.1:8091
+      - --heartbeat-interval=${TAILPATH_SMOKE_HEARTBEAT:-15s}
+    environment:
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+    secrets:
+      - tailscale-authkey
+    volumes:
+      - server-state:/var/lib/tailpath
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tailpath", "healthcheck", "--url=http://127.0.0.1:8091/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 2s
+    networks:
+      - underlay
+    restart: "no"
+
+  tailscale-a:
+    <<: *tailscale-node
+    hostname: tailpath-smoke-a
+    environment:
+      TS_ACCEPT_DNS: "true"
+      TS_AUTH_ONCE: "true"
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+      TS_HOSTNAME: tailpath-smoke-a
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-a-state:/var/lib/tailscale
+      - tailscale-a-run:/var/run/tailscale
+
+  tailscale-b:
+    <<: *tailscale-node
+    hostname: tailpath-smoke-b
+    environment:
+      TS_ACCEPT_DNS: "true"
+      TS_AUTH_ONCE: "true"
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+      TS_HOSTNAME: tailpath-smoke-b
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-b-state:/var/lib/tailscale
+      - tailscale-b-run:/var/run/tailscale
+
+  tailscale-c:
+    <<: *tailscale-node
+    hostname: tailpath-smoke-c
+    environment:
+      TS_ACCEPT_DNS: "true"
+      TS_AUTH_ONCE: "true"
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+      TS_HOSTNAME: tailpath-smoke-c
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-c-state:/var/lib/tailscale
+      - tailscale-c-run:/var/run/tailscale
+
+  collector-a:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-smoke}
+    command:
+      - collector
+      - --server=${TAILPATH_SMOKE_SERVER_URL:-http://127.0.0.1:1}
+      - --socket=/var/run/tailscale/tailscaled.sock
+    network_mode: service:tailscale-a
+    user: "0:0"
+    volumes:
+      - tailscale-a-run:/var/run/tailscale:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      tailscale-a:
+        condition: service_healthy
+    restart: "no"
+
+  collector-b:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-smoke}
+    command:
+      - collector
+      - --server=${TAILPATH_SMOKE_SERVER_URL:-http://127.0.0.1:1}
+      - --socket=/var/run/tailscale/tailscaled.sock
+    network_mode: service:tailscale-b
+    user: "0:0"
+    volumes:
+      - tailscale-b-run:/var/run/tailscale:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      tailscale-b:
+        condition: service_healthy
+    restart: "no"
+
+  workload-a:
+    <<: *workload
+    network_mode: service:tailscale-a
+    depends_on:
+      tailscale-a:
+        condition: service_healthy
+
+  workload-b:
+    <<: *workload
+    network_mode: service:tailscale-b
+    depends_on:
+      tailscale-b:
+        condition: service_healthy
+
+  workload-c:
+    <<: *workload
+    network_mode: service:tailscale-c
+    depends_on:
+      tailscale-c:
+        condition: service_healthy
+
+networks:
+  underlay:
+
+secrets:
+  tailscale-authkey:
+    file: ${TAILPATH_SMOKE_AUTHKEY_FILE:-/tmp/tailpath-smoke-authkey}
+
+volumes:
+  server-state:
+  tailscale-a-state:
+  tailscale-a-run:
+  tailscale-b-state:
+  tailscale-b-run:
+  tailscale-c-state:
+  tailscale-c-run:
