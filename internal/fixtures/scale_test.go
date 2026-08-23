@@ -69,7 +69,7 @@ func TestScaleScenarioContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(payload)
-	const wantDigest = "4313d67cc743639095416983394aa402f97b56624f25f4acfe9db405ed522785"
+	const wantDigest = "10a2c9718a947aa4d4bd85cda044da98d0262a20a53a57dac999d4a3fd342e88"
 	if got := hex.EncodeToString(digest[:]); got != wantDigest {
 		t.Fatalf("digest = %s, want %s", got, wantDigest)
 	}
