@@ -360,10 +360,39 @@ export function TopologyGraph(props: Props) {
         if (firstRender && cy.nodes().length > 0) {
           cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
         }
-        updateGraphDiagnostics(cy, container.current, layoutRuns.current);
-        persistPositionsNow(cy);
-      }),
-    );
+        if (container.current) {
+          const deviceNodes = cy.nodes(".device-node");
+          let deviceNodesSquare = true;
+          deviceNodes.forEach((node) => {
+            if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
+              deviceNodesSquare = false;
+            }
+          });
+          container.current.dataset.deviceNodeCount = String(
+            deviceNodes.length,
+          );
+          container.current.dataset.deviceNodesSquare =
+            String(deviceNodesSquare);
+          container.current.dataset.ready = "true";
+        }
+      };
+      const layout = cy.layout({
+        name: "cose",
+        animate: false,
+        randomize: isInitialLayout,
+        fit: false,
+        padding: 64,
+        nodeRepulsion: () => 180000,
+        idealEdgeLength: (edge) => edge.data("idealLength") as number,
+        edgeElasticity: () => 80,
+        gravity: 45,
+        componentSpacing: 120,
+      });
+      layout.run();
+      requestAnimationFrame(() => requestAnimationFrame(fit));
+    } else if (enforceEdgeClearance(cy)) {
+      cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
+    }
   }, [elements]);
 
   useEffect(() => {
