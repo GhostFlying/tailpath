@@ -204,6 +204,25 @@ func TestScaleScenarioSteadyReportsCoverEveryEdgeBilaterally(t *testing.T) {
 	}
 }
 
+func TestScaleScenarioEdgeMutationChangesOneEdgeRate(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	first := scenario.EdgeMutationReport(at, 1_000_001)
+	second := scenario.EdgeMutationReport(at.Add(time.Second), 1_000_002)
+	if err := first.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Observers) != 1 || len(first.Observers[0].Peers) != 1 {
+		t.Fatalf("mutation report = %#v", first)
+	}
+	if first.Observers[0].Peers[0].TxDelta == second.Observers[0].Peers[0].TxDelta {
+		t.Fatal("successive mutation reports have the same visible rate")
+	}
+}
+
 func TestScaleScenarioAppIngestAndRestart(t *testing.T) {
 	scenario, err := NewScaleScenario(DefaultScaleConfig())
 	if err != nil {

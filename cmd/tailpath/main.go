@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -183,7 +184,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if err != nil {
 		return err
 	}
-	server := httpapi.New(application, httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger})
+	serverOptions := httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger}
 	if fixture {
 		if *scaleFixture {
 			scenario, err := fixtures.NewScaleScenario(fixtures.DefaultScaleConfig())
@@ -196,7 +197,23 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			if err := scenario.RefreshRuntime(application.Aggregator, time.Now().UTC(), 4); err != nil {
 				return fmt.Errorf("refresh scale fixture: %w", err)
 			}
-			go runScaleRuntime(ctx, scenario, application.Aggregator, logger)
+			runtime := &scaleFixtureRuntime{sequence: 4}
+			serverOptions.FixtureMutation = func(requestContext context.Context) (any, error) {
+				runtime.mu.Lock()
+				defer runtime.mu.Unlock()
+				at := time.Now().UTC()
+				runtime.sequence++
+				sequence := runtime.sequence
+				receipt, err := application.Submit(requestContext, scenario.EdgeMutationReport(at, sequence))
+				if err != nil {
+					return nil, err
+				}
+				if !receipt.Accepted || receipt.ResyncRequired {
+					return nil, fmt.Errorf("fixture mutation receipt accepted=%t resyncRequired=%t", receipt.Accepted, receipt.ResyncRequired)
+				}
+				return map[string]any{"sequence": sequence, "triggeredAt": at}, nil
+			}
+			go runScaleRuntime(ctx, scenario, application.Aggregator, logger, runtime)
 		} else if !*emptyFixture {
 			if err := fixtures.New(application, logger).Start(ctx); err != nil {
 				return err
@@ -207,24 +224,38 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	// rollup cursors. Production starts with persisted data, so this ordering is
 	// also deterministic for both server modes.
 	go application.RunMaintenance(ctx)
+	server := httpapi.New(application, serverOptions)
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
 	return serve(ctx, listener, server.Handler(), *adminListen, logger)
 }
 
-func runScaleRuntime(ctx context.Context, scenario *fixtures.ScaleScenario, aggregator *aggregate.Aggregator, logger *slog.Logger) {
+type scaleFixtureRuntime struct {
+	mu       sync.Mutex
+	sequence int64
+}
+
+func runScaleRuntime(
+	ctx context.Context,
+	scenario *fixtures.ScaleScenario,
+	aggregator *aggregate.Aggregator,
+	logger *slog.Logger,
+	runtime *scaleFixtureRuntime,
+) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	sequence := int64(5)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case at := <-ticker.C:
-			if err := scenario.RefreshRuntime(aggregator, at.UTC(), sequence); err != nil {
+			runtime.mu.Lock()
+			runtime.sequence++
+			err := scenario.RefreshRuntime(aggregator, at.UTC(), runtime.sequence)
+			runtime.mu.Unlock()
+			if err != nil {
 				logger.Error("scale fixture refresh failed", "error", err)
 				return
 			}
-			sequence++
 		}
 	}
 }
