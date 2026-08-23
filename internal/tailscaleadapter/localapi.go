@@ -101,6 +101,7 @@ func peerIdentity(peer *ipnstate.PeerStatus) domain.NodeIdentity {
 		StableNodeID: string(peer.ID),
 		Hostname:     peer.HostName,
 		DNSName:      peer.DNSName,
+		OS:           normalizeOS(peer.OS),
 		TailscaleIPs: ips,
 	}
 	if peer.NodeID != 0 {

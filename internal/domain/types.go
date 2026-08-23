@@ -43,6 +43,7 @@ type NodeIdentity struct {
 	DiscoKey     string   `json:"discoKey,omitempty"`
 	Hostname     string   `json:"hostname"`
 	DNSName      string   `json:"dnsName,omitempty"`
+	OS           string   `json:"os,omitempty"`
 	TailscaleIPs []string `json:"tailscaleIps,omitempty"`
 }
 

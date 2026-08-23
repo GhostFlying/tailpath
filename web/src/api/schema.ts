@@ -108,6 +108,8 @@ export interface components {
             discoKey?: string;
             hostname?: string;
             dnsName?: string;
+            /** @description Reported operating system for display only; never identity evidence. */
+            os?: string;
             tailscaleIps?: string[];
         };
         PeerObservation: {

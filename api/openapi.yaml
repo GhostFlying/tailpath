@@ -159,6 +159,9 @@ components:
           type: string
         dnsName:
           type: string
+        os:
+          type: string
+          description: Reported operating system for display only; never identity evidence.
         tailscaleIps:
           type: array
           minItems: 1

@@ -1,9 +1,25 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
+
+func TestOSIsDisplayMetadataOnly(t *testing.T) {
+	linux := NodeIdentity{StableNodeID: "node-a", OS: "linux"}
+	macos := NodeIdentity{StableNodeID: "node-a", OS: "macos"}
+	if linux.IdentityKey() != macos.IdentityKey() || linux.CanonicalID() != macos.CanonicalID() {
+		t.Fatal("OS changed canonical identity")
+	}
+	payload, err := json.Marshal(NodeIdentity{StableNodeID: "node-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != `{"stableNodeId":"node-a","hostname":""}` {
+		t.Fatalf("legacy identity JSON = %s", payload)
+	}
+}
 
 func TestHelloBaselineAllowsZeroSampleDuration(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
