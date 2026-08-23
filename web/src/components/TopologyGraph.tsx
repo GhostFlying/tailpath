@@ -206,7 +206,6 @@ export function TopologyGraph(props: Props) {
   const layoutRuns = useRef(0);
   const renderEpoch = useRef(0);
   const topologyNodeIDs = useRef<string[]>([]);
-  const renderedFingerprints = useRef(new Map<string, string>());
   const cachedPositions = useRef(
     readLayoutCache(
       typeof window === "undefined" ? undefined : window.localStorage,
@@ -224,10 +223,6 @@ export function TopologyGraph(props: Props) {
 
   useEffect(() => {
     if (!container.current) return;
-    initialized.current = false;
-    layoutRuns.current = 0;
-    renderEpoch.current = 0;
-    renderedFingerprints.current.clear();
     const cy = cytoscape({
       container: container.current,
       elements: [],
@@ -286,16 +281,14 @@ export function TopologyGraph(props: Props) {
     });
     const newCanonicalNodes: NodeSingular[] = [];
     const knownNodeIDs = new Set<string>();
-    const nextFingerprints = new Map<string, string>();
     for (const definition of preparedElements) {
       const id = String(definition.data?.id);
       const fingerprint = elementFingerprint(definition);
       nextFingerprints.set(id, fingerprint);
       const existing = cy.getElementById(id);
       if (existing.length) {
-        if (renderedFingerprints.current.get(id) !== fingerprint) {
-          updateElementIfChanged(existing, definition);
-        }
+        existing.data(definition.data ?? {});
+        existing.classes(definition.classes?.toString() ?? "");
         if (existing.isNode() && existing.data("persistable")) {
           knownNodeIDs.add(id);
         }
@@ -312,7 +305,6 @@ export function TopologyGraph(props: Props) {
         }
       }
     }
-    renderedFingerprints.current = nextFingerprints;
     seedNewNodes(cy, newCanonicalNodes, knownNodeIDs);
     deriveVirtualPositions(cy);
     if (container.current) container.current.dataset.ready = "false";
@@ -326,20 +318,19 @@ export function TopologyGraph(props: Props) {
         }
       });
       layoutRuns.current += 1;
-      if (cy.nodes("[persistable]").length <= automaticCoseNodeLimit) {
-        cy.layout({
-          name: "cose",
-          animate: false,
-          randomize: firstRender && knownNodeIDs.size === 0,
-          fit: false,
-          padding: 64,
-          nodeRepulsion: () => 180000,
-          idealEdgeLength: (edge) => edge.data("idealLength") as number,
-          edgeElasticity: () => 80,
-          gravity: 45,
-          componentSpacing: 120,
-        }).run();
-      }
+      const layout = cy.layout({
+        name: "cose",
+        animate: false,
+        randomize: firstRender && knownNodeIDs.size === 0,
+        fit: false,
+        padding: 64,
+        nodeRepulsion: () => 180000,
+        idealEdgeLength: (edge) => edge.data("idealLength") as number,
+        edgeElasticity: () => 80,
+        gravity: 45,
+        componentSpacing: 120,
+      });
+      layout.run();
       locked.forEach((node) => node.unlock());
       deriveVirtualPositions(cy);
     }
@@ -360,39 +351,10 @@ export function TopologyGraph(props: Props) {
         if (firstRender && cy.nodes().length > 0) {
           cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
         }
-        if (container.current) {
-          const deviceNodes = cy.nodes(".device-node");
-          let deviceNodesSquare = true;
-          deviceNodes.forEach((node) => {
-            if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
-              deviceNodesSquare = false;
-            }
-          });
-          container.current.dataset.deviceNodeCount = String(
-            deviceNodes.length,
-          );
-          container.current.dataset.deviceNodesSquare =
-            String(deviceNodesSquare);
-          container.current.dataset.ready = "true";
-        }
-      };
-      const layout = cy.layout({
-        name: "cose",
-        animate: false,
-        randomize: isInitialLayout,
-        fit: false,
-        padding: 64,
-        nodeRepulsion: () => 180000,
-        idealEdgeLength: (edge) => edge.data("idealLength") as number,
-        edgeElasticity: () => 80,
-        gravity: 45,
-        componentSpacing: 120,
-      });
-      layout.run();
-      requestAnimationFrame(() => requestAnimationFrame(fit));
-    } else if (enforceEdgeClearance(cy)) {
-      cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
-    }
+        updateGraphDiagnostics(cy, container.current, layoutRuns.current);
+        persistPositionsNow(cy);
+      }),
+    );
   }, [elements]);
 
   useEffect(() => {
@@ -488,44 +450,6 @@ export function TopologyGraph(props: Props) {
         </button>
       </div>
     </>
-  );
-}
-
-function updateElementIfChanged(
-  element: CollectionReturnValue,
-  definition: ElementDefinition,
-) {
-  const nextData = definition.data ?? {};
-  const currentData = element.data() as Record<string, unknown>;
-  const dataChanged =
-    Object.keys(currentData).length !== Object.keys(nextData).length ||
-    Object.entries(nextData).some(
-      ([key, value]) => !sameElementData(currentData[key], value),
-    );
-  if (dataChanged) element.data(nextData);
-
-  const nextClasses = String(definition.classes ?? "")
-    .split(/\s+/)
-    .filter(Boolean);
-  const currentClasses = element.classes();
-  if (
-    currentClasses.length !== nextClasses.length ||
-    nextClasses.some((className) => !element.hasClass(className))
-  ) {
-    element.classes(nextClasses);
-  }
-}
-
-function elementFingerprint(definition: ElementDefinition): string {
-  return JSON.stringify([definition.data ?? {}, definition.classes ?? ""]);
-}
-
-function sameElementData(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (!Array.isArray(left) || !Array.isArray(right)) return false;
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
   );
 }
 
@@ -654,7 +578,6 @@ function updateGraphDiagnostics(
     }
   });
   const positions: string[] = [];
-  const edgeRates: string[] = [];
   cy.nodes("[persistable]").forEach((node) => {
     const position = node.position();
     positions.push(
@@ -662,18 +585,11 @@ function updateGraphDiagnostics(
     );
   });
   positions.sort();
-  cy.edges().forEach((edge) => {
-    edgeRates.push(
-      `${edge.id()}:${Number(edge.data("trafficWidth")).toFixed(4)}:${String(edge.data("label"))}`,
-    );
-  });
-  edgeRates.sort();
   const pan = cy.pan();
   element.dataset.deviceNodeCount = String(deviceNodes.length);
   element.dataset.deviceNodesSquare = String(deviceNodesSquare);
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
-  element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
   element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
   element.dataset.ready = "true";
 }
