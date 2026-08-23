@@ -20,12 +20,16 @@ COPY . .
 RUN --mount=type=cache,id=tailpath-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=tailpath-go-build,target=/root/.cache/go-build \
     GOPROXY=${GOPROXY} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/tailpath ./cmd/tailpath \
-    && CGO_ENABLED=0 go build -trimpath -o /out/tailpath-load ./cmd/tailpath-load \
     && test "$(/out/tailpath version)" = "${VERSION}" \
     && mkdir -p /out/state/tsnet
 
+FROM go-build AS perf-build
+RUN --mount=type=cache,id=tailpath-go-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=tailpath-go-build,target=/root/.cache/go-build \
+    GOPROXY=${GOPROXY} CGO_ENABLED=0 go build -trimpath -o /out/tailpath-load ./cmd/tailpath-load
+
 FROM gcr.io/distroless/static-debian12:nonroot AS perf-client
-COPY --from=go-build /out/tailpath-load /usr/local/bin/tailpath-load
+COPY --from=perf-build /out/tailpath-load /usr/local/bin/tailpath-load
 ENTRYPOINT ["/usr/local/bin/tailpath-load"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
