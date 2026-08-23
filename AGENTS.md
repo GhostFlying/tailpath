@@ -74,9 +74,11 @@ uncommitted batch. Open a draft PR once the branch has its first compiling,
 reviewable implementation commit. Mark it ready only when acceptance criteria,
 the active plan, required docs, `make check`, and UI screenshots are complete.
 
-PR titles follow the same Conventional Commit format and become the human-made
-squash commit and changelog entry. Agents may open and update PRs for explicitly
-assigned work, but a human reviews and squash-merges them.
+PR titles follow the same Conventional Commit format and summarize the change.
+Ready PRs must contain coherent atomic commits because GitHub's Rebase and merge
+preserves them on `main`; merge commits and squash merges are disabled. Agents
+may open and update PRs for explicitly assigned work, but a human reviews and
+rebase-merges them.
 
 ## UI Verification
 
