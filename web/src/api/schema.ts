@@ -72,6 +72,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/history/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return canonical nodes with traffic in a fixed history window. */
+        get: operations["getHistoryNodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/history/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return a keyset-paginated page of logical traffic edges. */
+        get: operations["listHistoryEdges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -229,8 +263,47 @@ export interface components {
         };
         EdgeHistory: {
             edgeId: string;
+            source: components["schemas"]["HistoryNodeReference"];
+            target: components["schemas"]["HistoryNodeReference"];
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int64 */
+            bucketDurationMs: number;
             traffic: components["schemas"]["TrafficBucket"][];
+            pathAnchor?: components["schemas"]["PathEvent"];
             pathEvents: components["schemas"]["PathEvent"][];
+            trafficTruncated: boolean;
+            pathEventsTruncated: boolean;
+        };
+        /** @enum {string} */
+        HistoryWindow: "15m" | "1h" | "6h" | "24h" | "7d";
+        HistoryNodeReference: {
+            id: string;
+            label: string;
+            hostname?: string;
+            dnsName?: string;
+            os?: string;
+        };
+        HistoryNodes: {
+            nodes: components["schemas"]["HistoryNodeReference"][];
+        };
+        HistoryEdgeSummary: {
+            edgeId: string;
+            source: components["schemas"]["HistoryNodeReference"];
+            target: components["schemas"]["HistoryNodeReference"];
+            /** Format: date-time */
+            lastTrafficAt: string;
+            /** Format: int64 */
+            aToBBytes: number;
+            /** Format: int64 */
+            bToABytes: number;
+            paths: components["schemas"]["PathKind"][];
+        };
+        HistoryEdgePage: {
+            edges: components["schemas"]["HistoryEdgeSummary"][];
+            nextCursor?: string;
         };
         TrafficBucket: {
             /** Format: date-time */
@@ -263,7 +336,9 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        HistoryWindow: components["schemas"]["HistoryWindow"];
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -340,7 +415,9 @@ export interface operations {
     };
     getEdgeHistory: {
         parameters: {
-            query?: never;
+            query: {
+                window: components["parameters"]["HistoryWindow"];
+            };
             header?: never;
             path: {
                 edgeId: string;
@@ -360,6 +437,59 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    getHistoryNodes: {
+        parameters: {
+            query: {
+                window: components["parameters"]["HistoryWindow"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching canonical node references. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryNodes"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+        };
+    };
+    listHistoryEdges: {
+        parameters: {
+            query: {
+                window: components["parameters"]["HistoryWindow"];
+                nodeId?: string;
+                /** @description Match when the path appeared at any point in the window. */
+                path?: components["schemas"]["PathKind"];
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching logical edge page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryEdgePage"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
         };
     };
 }
