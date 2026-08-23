@@ -40,6 +40,7 @@ type runtimeState struct {
 	Nodes         map[string]*nodeState            `json:"nodes"`
 	Aliases       map[string]string                `json:"aliases"`
 	AliasLastSeen map[string]time.Time             `json:"aliasLastSeen,omitempty"`
+	Redirects     map[string]string                `json:"redirects,omitempty"`
 	Edges         map[string]*edgeState            `json:"edges"`
 }
 
@@ -127,6 +128,7 @@ func newRuntimeState() runtimeState {
 		Nodes:         make(map[string]*nodeState),
 		Aliases:       make(map[string]string),
 		AliasLastSeen: make(map[string]time.Time),
+		Redirects:     make(map[string]string),
 		Edges:         make(map[string]*edgeState),
 	}
 }
@@ -554,6 +556,12 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 		keep.ClockSkewed = remove.ClockSkewed
 	}
 	delete(a.state.Nodes, removeID)
+	for fromID, toID := range a.state.Redirects {
+		if toID == removeID {
+			a.state.Redirects[fromID] = keepID
+		}
+	}
+	a.state.Redirects[removeID] = keepID
 	for alias, id := range a.state.Aliases {
 		if id == removeID {
 			a.state.Aliases[alias] = keepID
@@ -913,6 +921,28 @@ func (a *Aggregator) MarshalState() ([]byte, error) {
 	return json.Marshal(a.state)
 }
 
+func (a *Aggregator) HistoryMetadata() domain.HistoryMetadata {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	metadata := domain.HistoryMetadata{
+		Nodes:     make([]domain.TopologyNode, 0, len(a.state.Nodes)),
+		Redirects: make(map[string]string, len(a.state.Redirects)),
+	}
+	for id, node := range a.state.Nodes {
+		metadata.Nodes = append(metadata.Nodes, domain.TopologyNode{
+			NodeIdentity:   node.Identity,
+			ID:             id,
+			Observable:     node.Observable,
+			LastEvidenceAt: node.LastEvidence,
+		})
+	}
+	sort.Slice(metadata.Nodes, func(i, j int) bool { return metadata.Nodes[i].ID < metadata.Nodes[j].ID })
+	for fromID, toID := range a.state.Redirects {
+		metadata.Redirects[fromID] = toID
+	}
+	return metadata
+}
+
 func (a *Aggregator) RestoreState(payload []byte) error {
 	if len(payload) == 0 {
 		return nil
@@ -960,6 +990,7 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 		Nodes:         make(map[string]*nodeState, len(source.Nodes)),
 		Aliases:       make(map[string]string, len(source.Aliases)),
 		AliasLastSeen: make(map[string]time.Time, len(source.AliasLastSeen)),
+		Redirects:     make(map[string]string, len(source.Redirects)),
 		Edges:         make(map[string]*edgeState, len(source.Edges)),
 	}
 	for id, reporter := range source.Reporters {
@@ -990,6 +1021,9 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 	}
 	for alias, seenAt := range source.AliasLastSeen {
 		clone.AliasLastSeen[alias] = seenAt
+	}
+	for fromID, toID := range source.Redirects {
+		clone.Redirects[fromID] = toID
 	}
 	for id, edge := range source.Edges {
 		copy := *edge
@@ -1039,6 +1073,9 @@ func normalizeState(state *runtimeState) {
 	}
 	if state.AliasLastSeen == nil {
 		state.AliasLastSeen = make(map[string]time.Time)
+	}
+	if state.Redirects == nil {
+		state.Redirects = make(map[string]string)
 	}
 	if state.Edges == nil {
 		state.Edges = make(map[string]*edgeState)
