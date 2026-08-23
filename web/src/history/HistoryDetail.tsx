@@ -84,6 +84,10 @@ export const HistoryDetail = memo(function HistoryDetail({
             <h1>
               {history.source.label} <span>↔</span> {history.target.label}
             </h1>
+            <span
+              className="history-detail-status"
+              aria-label="Server reachable"
+            />
           </header>
           <div className="detail-window-control" aria-label="History window">
             {windows.map((item) => (
