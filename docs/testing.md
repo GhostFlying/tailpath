@@ -25,12 +25,13 @@ explicit SSE reconnect/conflict/long-label browser cases remain v0.2 work.
 
 The first unoptimized local Docker baseline on 2026-08-23 ingested 750 scale
 reports in about 23 seconds and produced a 5.37 MB SQLite database. This records
-the starting point for #21; it is not a release performance claim or gate. The
-same baseline reached browser `data-ready` in about 18 seconds. Bursts from 250
-runtime refreshes can produce Chromium `ERR_INSUFFICIENT_RESOURCES` while the
-current client aborts superseded topology fetches. The manual workflow records
-that known error but still fails on any other console error; #21 owns SSE
-coalescing and browser single-flight refresh.
+the starting point for #21; it is not a release performance claim or gate.
+Incremental checkpoints and typed state transfer reduced the same ingest to
+about 1.88 seconds and the database to 4.04 MB. The browser baseline remains
+about 18-19 seconds, isolating layout as #24 work. Server-side 250 ms SSE
+coalescing and browser single-flight refresh eliminated the earlier Chromium
+`ERR_INSUFFICIENT_RESOURCES` warning; the scale test now fails on any console
+error.
 
 Manual milestone verification uses at least two real nodes and ordinary
 application traffic. Tailpath itself never invokes an active connectivity probe.

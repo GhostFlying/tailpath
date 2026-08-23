@@ -123,6 +123,41 @@ func TestRelaySessionIngestPreservesThirdPartyProvenance(t *testing.T) {
 	}
 }
 
+func TestCoalesceInvalidationsKeepsOneEventPerWindowAndAFollowUp(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	input := make(chan struct{}, 100)
+	output := coalesceInvalidations(ctx, input, 20*time.Millisecond)
+	for range 100 {
+		input <- struct{}{}
+	}
+	select {
+	case <-output:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("burst did not produce a topology invalidation")
+	}
+	select {
+	case <-output:
+		t.Fatal("one burst produced more than one invalidation window")
+	case <-time.After(30 * time.Millisecond):
+	}
+	input <- struct{}{}
+	select {
+	case <-output:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("later burst did not produce a follow-up invalidation")
+	}
+	cancel()
+	select {
+	case _, ok := <-output:
+		if ok {
+			t.Fatal("coalescer emitted after cancellation")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("coalescer did not close after cancellation")
+	}
+}
+
 func newTestServer(t *testing.T, authorizer Authorizer) *Server {
 	t.Helper()
 	database, err := store.Open(":memory:", time.Hour)

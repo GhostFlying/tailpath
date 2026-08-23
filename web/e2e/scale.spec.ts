@@ -49,10 +49,7 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   expect(
     topology.observers.filter((observer) => observer.clockSkewed),
   ).toHaveLength(9);
-  const unexpectedConsoleErrors = consoleErrors.filter(
-    (message) => !message.includes("net::ERR_INSUFFICIENT_RESOURCES"),
-  );
-  expect(unexpectedConsoleErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
 
   const readyElapsedMs = Date.now() - startedAt;
   await testInfo.attach("scale-browser.json", {
@@ -63,7 +60,7 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
         topologyNodes: topology.nodes.length,
         logicalEdges: topology.edges.length,
         renderedNodes: 505,
-        knownConsoleErrors: consoleErrors,
+        consoleErrors,
       },
       null,
       2,
