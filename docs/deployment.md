@@ -54,6 +54,55 @@ Run `tailpath collector --check` to read LocalAPI once and print self identity,
 runtime platform, and peer count as JSON without contacting the Tailpath server
 or actively probing any peer.
 
+## Native collector archives
+
+Each GitHub Release contains Linux and macOS `tar.gz` archives and Windows
+`zip` archives for amd64 and arm64. An archive contains only the collector
+binary and installer material for its platform, plus the README and license.
+Verify the downloaded archive against `checksums.txt` before installation.
+
+On Linux, extract the matching archive and run:
+
+```sh
+sudo ./install.sh --server-url http://tailpath.example.ts.net:8080
+sudo systemctl status tailpath-collector.service
+```
+
+The installer puts the binary in `/usr/local/bin`, creates a hardened systemd
+unit, and creates `/etc/default/tailpath-collector` with mode 0600 only when it
+does not exist. Use `--socket PATH` for a non-default LocalAPI socket. Reinstall
+preserves operator-edited configuration. `sudo ./uninstall.sh` preserves the
+configuration; `sudo ./uninstall.sh --purge` removes it.
+
+On macOS, install as the logged-in desktop user, never with `sudo`:
+
+```sh
+./install.sh --server-url http://tailpath.example.ts.net:8080
+launchctl print "gui/$(id -u)/com.tailpath.collector"
+```
+
+The installer uses `~/Library/Application Support/Tailpath`, a user
+LaunchAgent, and `~/Library/Logs/Tailpath`. It performs a passive LocalAPI check
+and warns, without blocking installation, when the Tailscale GUI safesocket is
+not available. `./uninstall.sh` preserves configuration and logs;
+`./uninstall.sh --purge` removes them. macOS support remains alpha until the
+v0.2 real-arm64-node gate is recorded.
+
+On Windows, extract the archive and run `install.ps1` from an elevated Windows
+PowerShell 5.1 process:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1 -ServerUrl http://tailpath.example.ts.net:8080
+Get-ScheduledTask -TaskName "Tailpath Collector"
+```
+
+The preview installer uses `%ProgramFiles%\Tailpath` and a SYSTEM startup
+Scheduled Task. Its runner retains at most five approximately 5 MiB log files.
+Reinstall preserves `collector.env`; elevated `.\uninstall.ps1` preserves
+configuration and logs, while `.\uninstall.ps1 -Purge` removes them. v0.2 does
+not claim real-node Windows support, signing, or MSI delivery.
+
 In tailscaled server mode, an omitted listen host resolves to the first local
 Tailscale IP. Explicit wildcard, LAN, and other addresses are rejected unless
 `--unsafe-allow-non-tailnet-listen` is supplied; API WhoIs remains mandatory
