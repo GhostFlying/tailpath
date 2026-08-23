@@ -19,10 +19,17 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - formats: [tar.gz]
+  - ids: [tailpath]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - src: packaging/{{ .Os }}/*
+        dst: .
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt
