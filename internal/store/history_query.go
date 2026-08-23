@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -52,7 +53,7 @@ func (s *SQLite) HistoryNodes(ctx context.Context, window domain.HistoryWindow, 
 		return domain.HistoryNodes{}, err
 	}
 	from := to.UTC().Add(-window.Duration())
-	points, err := s.loadTrafficPoints(ctx, index, window, from, to.UTC())
+	points, err := s.loadTrafficSummaryPoints(ctx, index, window, from, to.UTC())
 	if err != nil {
 		return domain.HistoryNodes{}, err
 	}
@@ -97,7 +98,7 @@ func (s *SQLite) HistoryEdges(ctx context.Context, query domain.HistoryEdgeQuery
 		return domain.HistoryEdgePage{}, err
 	}
 	from := to.UTC().Add(-query.Window.Duration())
-	points, err := s.loadTrafficPoints(ctx, index, query.Window, from, to.UTC())
+	points, err := s.loadTrafficSummaryPoints(ctx, index, query.Window, from, to.UTC())
 	if err != nil {
 		return domain.HistoryEdgePage{}, err
 	}
@@ -154,11 +155,12 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 	}
 	to = to.UTC()
 	from := to.Add(-window.Duration())
-	points, err := s.loadTrafficPoints(ctx, index, window, from, to)
+	sourceEdgeIDs := originalEdgeIDs(index, canonicalID)
+	points, err := s.loadTrafficPointsForEdges(ctx, index, window, from, to, sourceEdgeIDs)
 	if err != nil {
 		return domain.EdgeHistory{}, false, err
 	}
-	paths, err := s.loadPathSets(ctx, index, from, to)
+	paths, err := s.loadPathSetsForEdges(ctx, index, from, to, sourceEdgeIDs)
 	if err != nil {
 		return domain.EdgeHistory{}, false, err
 	}
@@ -275,10 +277,14 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 }
 
 func (s *SQLite) loadTrafficPoints(ctx context.Context, index historyIndex, window domain.HistoryWindow, from, to time.Time) (map[string][]storedTrafficPoint, error) {
+	return s.loadTrafficPointsForEdges(ctx, index, window, from, to, nil)
+}
+
+func (s *SQLite) loadTrafficPointsForEdges(ctx context.Context, index historyIndex, window domain.HistoryWindow, from, to time.Time, edgeIDs []string) (map[string][]storedTrafficPoint, error) {
 	segments := trafficSegments(window, from, to)
 	bySourceBucket := make(map[string]storedTrafficPoint)
 	for _, segment := range segments {
-		points, err := s.queryTrafficLayer(ctx, segment.table, segment.from, segment.to)
+		points, err := s.queryTrafficLayer(ctx, segment.table, segment.from, segment.to, edgeIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -336,6 +342,84 @@ func (s *SQLite) loadTrafficPoints(ctx context.Context, index historyIndex, wind
 	return result, nil
 }
 
+func (s *SQLite) loadTrafficSummaryPoints(ctx context.Context, index historyIndex, window domain.HistoryWindow, from, to time.Time) (map[string][]storedTrafficPoint, error) {
+	if len(index.redirects) != 0 {
+		return s.loadTrafficPoints(ctx, index, window, from, to)
+	}
+	result := make(map[string][]storedTrafficPoint)
+	segments, err := s.summaryTrafficSegments(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	for _, segment := range segments {
+		points, err := s.queryTrafficSummaryLayer(ctx, segment.table, segment.from, segment.to)
+		if err != nil {
+			return nil, err
+		}
+		for _, point := range points {
+			canonicalID := index.edgeAlias[point.edgeID]
+			if canonicalID == "" {
+				continue
+			}
+			current := storedTrafficPoint{edgeID: canonicalID}
+			if existing := result[canonicalID]; len(existing) != 0 {
+				current = existing[0]
+			}
+			current.aToBBytes += point.aToBBytes
+			current.bToABytes += point.bToABytes
+			if point.bucketStart.After(current.bucketStart) {
+				current.bucketStart = point.bucketStart
+			}
+			result[canonicalID] = []storedTrafficPoint{current}
+		}
+	}
+	return result, nil
+}
+
+func (s *SQLite) summaryTrafficSegments(ctx context.Context, from, to time.Time) ([]trafficSegment, error) {
+	hourEnd, err := s.maintenanceCoverage(ctx, "hour", from, to)
+	if err != nil {
+		return nil, err
+	}
+	minuteEnd, err := s.maintenanceCoverage(ctx, "minute", hourEnd, to)
+	if err != nil {
+		return nil, err
+	}
+	segments := make([]trafficSegment, 0, 3)
+	if from.Before(hourEnd) {
+		segments = append(segments, trafficSegment{"traffic_rollup_hour", from, hourEnd})
+	}
+	if hourEnd.Before(minuteEnd) {
+		segments = append(segments, trafficSegment{"traffic_rollup_minute", hourEnd, minuteEnd})
+	}
+	if minuteEnd.Before(to) {
+		segments = append(segments, trafficSegment{"traffic_buckets", minuteEnd, to})
+	}
+	return segments, nil
+}
+
+func (s *SQLite) maintenanceCoverage(ctx context.Context, name string, lower, upper time.Time) (time.Time, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM history_maintenance WHERE name = ?`, name).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lower, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	coverage, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if coverage.Before(lower) {
+		return lower, nil
+	}
+	if coverage.After(upper) {
+		return upper, nil
+	}
+	return coverage, nil
+}
+
 type trafficSegment struct {
 	table    string
 	from, to time.Time
@@ -357,13 +441,46 @@ func trafficSegments(window domain.HistoryWindow, from, to time.Time) []trafficS
 	return segments
 }
 
-func (s *SQLite) queryTrafficLayer(ctx context.Context, table string, from, to time.Time) ([]storedTrafficPoint, error) {
-	query := `SELECT edge_id, source_id, target_id, bucket_start, a_to_b_bytes, b_to_a_bytes FROM ` + table + ` WHERE bucket_start >= ? AND bucket_start < ? ORDER BY edge_id, bucket_start`
+func (s *SQLite) queryTrafficLayer(ctx context.Context, table string, from, to time.Time, edgeIDs []string) ([]storedTrafficPoint, error) {
+	filter, args := edgeFilter(edgeIDs, from, to)
+	query := `SELECT edge_id, source_id, target_id, bucket_start, a_to_b_bytes, b_to_a_bytes FROM ` + table + ` WHERE bucket_start >= ? AND bucket_start < ?` + filter + ` ORDER BY edge_id, bucket_start`
 	if table == "traffic_buckets" {
 		query = `SELECT edge_id, MIN(source_id), MIN(target_id), bucket_start,
 		  COALESCE(SUM(CASE WHEN observer_id = source_id THEN a_to_b_bytes END), SUM(CASE WHEN observer_id = target_id THEN a_to_b_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN a_to_b_bytes END), 0),
 		  COALESCE(SUM(CASE WHEN observer_id = target_id THEN b_to_a_bytes END), SUM(CASE WHEN observer_id = source_id THEN b_to_a_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN b_to_a_bytes END), 0)
-		FROM traffic_buckets WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id, bucket_start ORDER BY edge_id, bucket_start`
+		FROM traffic_buckets WHERE bucket_start >= ? AND bucket_start < ?` + filter + ` GROUP BY edge_id, bucket_start ORDER BY edge_id, bucket_start`
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var points []storedTrafficPoint
+	for rows.Next() {
+		var point storedTrafficPoint
+		var rawTime string
+		if err := rows.Scan(&point.edgeID, &point.sourceID, &point.targetID, &rawTime, &point.aToBBytes, &point.bToABytes); err != nil {
+			return nil, err
+		}
+		point.bucketStart, err = time.Parse(time.RFC3339Nano, rawTime)
+		if err != nil {
+			return nil, err
+		}
+		points = append(points, point)
+	}
+	return points, rows.Err()
+}
+
+func (s *SQLite) queryTrafficSummaryLayer(ctx context.Context, table string, from, to time.Time) ([]storedTrafficPoint, error) {
+	query := `SELECT edge_id, MIN(source_id), MIN(target_id), MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes)
+		FROM ` + table + ` WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id`
+	if table == "traffic_buckets" {
+		query = `SELECT edge_id, MIN(source_id), MIN(target_id), MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes) FROM (
+		  SELECT edge_id, MIN(source_id) AS source_id, MIN(target_id) AS target_id, bucket_start,
+		    COALESCE(SUM(CASE WHEN observer_id = source_id THEN a_to_b_bytes END), SUM(CASE WHEN observer_id = target_id THEN a_to_b_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN a_to_b_bytes END), 0) AS a_to_b_bytes,
+		    COALESCE(SUM(CASE WHEN observer_id = target_id THEN b_to_a_bytes END), SUM(CASE WHEN observer_id = source_id THEN b_to_a_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN b_to_a_bytes END), 0) AS b_to_a_bytes
+		  FROM traffic_buckets WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id, bucket_start
+		) GROUP BY edge_id`
 	}
 	rows, err := s.db.QueryContext(ctx, query, formatTime(from), formatTime(to))
 	if err != nil {
@@ -386,8 +503,36 @@ func (s *SQLite) queryTrafficLayer(ctx context.Context, table string, from, to t
 	return points, rows.Err()
 }
 
+func edgeFilter(edgeIDs []string, from, to time.Time) (string, []any) {
+	args := []any{formatTime(from), formatTime(to)}
+	if len(edgeIDs) == 0 {
+		return "", args
+	}
+	placeholders := make([]string, len(edgeIDs))
+	for index, edgeID := range edgeIDs {
+		placeholders[index] = "?"
+		args = append(args, edgeID)
+	}
+	return " AND edge_id IN (" + strings.Join(placeholders, ",") + ")", args
+}
+
 func (s *SQLite) loadPathSets(ctx context.Context, index historyIndex, from, to time.Time) (map[string]*historyPathSet, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT edge_id, observed_at, path, observations FROM path_events WHERE observed_at < ? ORDER BY observed_at, id`, formatTime(to))
+	return s.loadPathSetsForEdges(ctx, index, from, to, nil)
+}
+
+func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, from, to time.Time, edgeIDs []string) (map[string]*historyPathSet, error) {
+	query := `SELECT edge_id, observed_at, path, observations FROM path_events WHERE observed_at < ?`
+	args := []any{formatTime(to)}
+	if len(edgeIDs) != 0 {
+		placeholders := make([]string, len(edgeIDs))
+		for index, edgeID := range edgeIDs {
+			placeholders[index] = "?"
+			args = append(args, edgeID)
+		}
+		query += " AND edge_id IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	query += " ORDER BY observed_at, id"
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -437,6 +582,17 @@ func (s *SQLite) loadPathSets(ctx context.Context, index historyIndex, from, to 
 		}
 	}
 	return result, rows.Err()
+}
+
+func originalEdgeIDs(index historyIndex, canonicalID string) []string {
+	result := make([]string, 0, 1)
+	for edgeID, resolvedID := range index.edgeAlias {
+		if resolvedID == canonicalID {
+			result = append(result, edgeID)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 func summarizeHistoryEdges(index historyIndex, points map[string][]storedTrafficPoint, paths map[string]*historyPathSet, from, to time.Time) []domain.HistoryEdgeSummary {

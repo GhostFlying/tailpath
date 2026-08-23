@@ -132,6 +132,29 @@ func TestReplaceWithTransfersStateAndKeepsSubscribers(t *testing.T) {
 	}
 }
 
+func TestReporterDeduplicationWindowStaysBounded(t *testing.T) {
+	aggregator := newTestAggregator(time.Now)
+	at := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	applyHello(t, aggregator, "reporter", 1, "node-a", "A", "inventory")
+	for sequence := int64(2); sequence <= reportIDWindowSize+3; sequence++ {
+		report := sampleReport(
+			"reporter", sequence, "node-a", "A", "node-b", "B", "inventory",
+			domain.PathObservation{Kind: domain.PathDirect}, 100, 50,
+		)
+		report.CollectedAt = at.Add(time.Duration(sequence) * time.Second)
+		if _, err := aggregator.ApplyAt(report, at.Add(time.Duration(sequence)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aggregator.mu.RLock()
+	reporter := aggregator.state.Reporters["reporter"]
+	got := len(reporter.ReportIDs)
+	aggregator.mu.RUnlock()
+	if got > reportIDWindowSize {
+		t.Fatalf("retained report IDs = %d, want at most %d", got, reportIDWindowSize)
+	}
+}
+
 func TestEquivalentDirectEndpointsDoNotCreatePathTransitions(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

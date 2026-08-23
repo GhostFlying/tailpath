@@ -12,7 +12,10 @@ import (
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
-const activeWindow = 10 * time.Second
+const (
+	activeWindow       = 10 * time.Second
+	reportIDWindowSize = 32
+)
 
 type Options struct {
 	HeartbeatInterval time.Duration
@@ -295,7 +298,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 
 	reporter.LastSequence = report.Sequence
 	reporter.ReportIDs[report.ReportID] = struct{}{}
-	if len(reporter.ReportIDs) > 4096 {
+	if len(reporter.ReportIDs) > reportIDWindowSize {
 		reporter.ReportIDs = map[string]struct{}{report.ReportID: {}}
 	}
 	result.Changed = true
