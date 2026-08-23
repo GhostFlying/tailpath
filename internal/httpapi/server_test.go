@@ -204,6 +204,24 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	}
 }
 
+func TestHistoryRequestCancellationIsNotAnInternalServerError(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	for _, path := range []string{
+		"/api/v1/history/nodes?window=1h",
+		"/api/v1/history/edges?window=1h",
+		"/api/v1/history/edges/edge?window=1h",
+	} {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		request := httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx)
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, request)
+		if recorder.Code == http.StatusInternalServerError {
+			t.Errorf("GET %s reported client cancellation as 500", path)
+		}
+	}
+}
+
 func recordHistoryTraffic(t *testing.T, server *Server, reportID, edgeID, sourceID, targetID string, at time.Time) {
 	t.Helper()
 	report := domain.ReportEnvelope{
