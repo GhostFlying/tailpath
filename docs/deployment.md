@@ -61,7 +61,8 @@ The server identity must be dedicated to Tailpath. A tailscaled-mode deployment
 that shares an identity must explicitly acknowledge that all traffic to that
 node is hidden as system telemetry.
 
-Production operators should back up the SQLite file with the documented online
-backup command and include the `tsnet/` directory when backing up or migrating
-the named volume. Upgrade one version at a time. The server runs migrations
-before readiness.
+Tailpath v0.2 does not provide a supported backup or restore contract. Copying
+only `tailpath.db` is insufficient because the `tsnet/` directory owns the
+server identity, and copying a live SQLite file is not documented as safe.
+Operators must treat ad hoc volume copies as unsupported. Upgrade one version
+at a time; the server runs migrations before readiness.
