@@ -122,11 +122,11 @@ test("renders the live fixture topology without overlap", async ({
         .filter({ hasText: path });
       await button.click();
       await expect(graph).toHaveAttribute("data-ready", "true");
-      await expect(graph).toHaveAttribute(
-        "data-edge-count",
+      const edgeCount = Number(
         (await button.locator("small").innerText()).trim(),
       );
-      await expectCommonPositions(initialPositions, graph);
+      await expect(graph).toHaveAttribute("data-edge-count", String(edgeCount));
+      await expectFilteredPositions(initialPositions, graph, edgeCount);
       await expect(graph).toHaveAttribute(
         "data-layout-runs",
         initialLayoutRuns ?? "",
@@ -150,11 +150,9 @@ test("renders the live fixture topology without overlap", async ({
       await page.getByLabel("Path filter").selectOption(path);
       await expect(graph).toHaveAttribute("data-ready", "true");
       const option = await page.locator(`option[value="${path}"]`).innerText();
-      await expect(graph).toHaveAttribute(
-        "data-edge-count",
-        option.match(/(\d+)$/)?.[1] ?? "",
-      );
-      await expectCommonPositions(initialPositions, graph);
+      const edgeCount = Number(option.match(/(\d+)$/)?.[1] ?? "0");
+      await expect(graph).toHaveAttribute("data-edge-count", String(edgeCount));
+      await expectFilteredPositions(initialPositions, graph, edgeCount);
       await expect(graph).toHaveAttribute(
         "data-layout-runs",
         initialLayoutRuns ?? "",
@@ -250,4 +248,23 @@ async function expectCommonPositions(
   for (const [id, position] of actual) {
     expect(position, `position for ${id}`).toBe(expected.get(id));
   }
+}
+
+async function expectFilteredPositions(
+  initialPositions: ReadonlyMap<string, string>,
+  graph: Locator,
+  edgeCount: number,
+) {
+  if (edgeCount > 0) {
+    await expectCommonPositions(initialPositions, graph);
+    return;
+  }
+  await expect
+    .poll(
+      async () =>
+        parsePositions(
+          (await graph.getAttribute("data-layout-positions")) ?? "",
+        ).size,
+    )
+    .toBe(0);
 }
