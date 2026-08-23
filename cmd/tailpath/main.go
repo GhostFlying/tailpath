@@ -193,7 +193,9 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			}
 			go runScaleRuntime(ctx, scenario, application.Aggregator, logger)
 		} else {
-			go fixtures.New(application, logger).Run(ctx)
+			if err := fixtures.New(application, logger).Start(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	// Fixture history must exist before the first maintenance pass establishes
