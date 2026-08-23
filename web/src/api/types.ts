@@ -6,3 +6,4 @@ export type TopologyEdge = components["schemas"]["TopologyEdge"];
 export type PathKind = components["schemas"]["PathKind"];
 export type PathObservation = components["schemas"]["PathObservation"];
 export type EdgeHistory = components["schemas"]["EdgeHistory"];
+export type HistoryWindow = components["schemas"]["HistoryWindow"];
