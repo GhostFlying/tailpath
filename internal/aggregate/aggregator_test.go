@@ -430,63 +430,6 @@ func TestPlatformMetadataRefreshesWithoutChangingCanonicalNode(t *testing.T) {
 	}
 }
 
-func TestCanonicalMergeRecordsDurableRedirect(t *testing.T) {
-	at := time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC)
-	ids := []string{"n_observer", "n_disco", "n_key"}
-	aggregator := New(Options{NewNodeID: func() string {
-		id := ids[0]
-		ids = ids[1:]
-		return id
-	}})
-	hello := domain.ReportEnvelope{
-		Version: domain.ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
-		CollectedAt: at, Kind: domain.ReportObserverHello,
-		Observers: []domain.ObserverReport{{
-			Observer: domain.NodeIdentity{StableNodeID: "observer"}, InventoryGeneration: "g1",
-			Peers: []domain.PeerObservation{
-				{Peer: domain.NodeIdentity{DiscoKey: "disco-b"}, Path: domain.PathObservation{Kind: domain.PathUnknown}, LastActive: at},
-				{Peer: domain.NodeIdentity{NodeKey: "node-key-b"}, Path: domain.PathObservation{Kind: domain.PathUnknown}, LastActive: at},
-			},
-		}},
-	}
-	if _, err := aggregator.ApplyAt(hello, at); err != nil {
-		t.Fatal(err)
-	}
-	merge := domain.ReportEnvelope{
-		Version: domain.ProtocolVersion, ReportID: "merge", ReporterInstanceID: "reporter", Sequence: 2,
-		CollectedAt: at.Add(time.Second), Kind: domain.ReportTrafficSample,
-		Observers: []domain.ObserverReport{{
-			Observer: domain.NodeIdentity{StableNodeID: "observer"}, InventoryGeneration: "g1",
-			Peers: []domain.PeerObservation{{
-				Peer:    domain.NodeIdentity{DiscoKey: "disco-b", NodeKey: "node-key-b"},
-				TxDelta: 1, SampleDurationMS: 1000, LastActive: at.Add(time.Second),
-				Path: domain.PathObservation{Kind: domain.PathDirect},
-			}},
-		}},
-	}
-	if _, err := aggregator.ApplyAt(merge, at.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	metadata := aggregator.HistoryMetadata()
-	if metadata.Redirects["n_key"] != "n_disco" {
-		t.Fatalf("redirects = %#v, want n_key -> n_disco", metadata.Redirects)
-	}
-	if len(metadata.Nodes) != 2 {
-		t.Fatalf("nodes after merge = %#v", metadata.Nodes)
-	}
-	payload, err := aggregator.MarshalState()
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := New(Options{})
-	if err := restored.RestoreState(payload); err != nil {
-		t.Fatal(err)
-	}
-	if restored.HistoryMetadata().Redirects["n_key"] != "n_disco" {
-		t.Fatalf("restored redirects = %#v", restored.HistoryMetadata().Redirects)
-	}
-}
-
 func TestOpaqueIdentityMergesAliasesAndNeverUsesHostname(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

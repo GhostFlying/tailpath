@@ -37,3 +37,10 @@ func TestNormalizeOS(t *testing.T) {
 		}
 	}
 }
+
+func TestPeerIdentityCarriesNormalizedOS(t *testing.T) {
+	identity := peerIdentity(&ipnstate.PeerStatus{OS: "Darwin"})
+	if identity.OS != "macos" {
+		t.Fatalf("peer identity OS = %q, want macos", identity.OS)
+	}
+}
