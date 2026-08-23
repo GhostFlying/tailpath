@@ -15,6 +15,65 @@ import (
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
+const schema = `
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS reports (
+    report_id TEXT PRIMARY KEY,
+    reporter_instance_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    collected_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload BLOB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS runtime_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    payload BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_report_rowid INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS nodes (
+    node_id TEXT PRIMARY KEY,
+    identity BLOB NOT NULL,
+    observable INTEGER NOT NULL,
+    last_seen TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS latest_observations (
+    edge_id TEXT NOT NULL,
+    observer_id TEXT NOT NULL,
+    peer_id TEXT NOT NULL,
+    path BLOB NOT NULL,
+    collected_at TEXT NOT NULL,
+    PRIMARY KEY(edge_id, observer_id)
+);
+
+CREATE TABLE IF NOT EXISTS traffic_buckets (
+    edge_id TEXT NOT NULL,
+    bucket_start TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    observer_id TEXT NOT NULL,
+    tx_bytes INTEGER NOT NULL,
+    rx_bytes INTEGER NOT NULL,
+    a_to_b_bytes INTEGER NOT NULL,
+    b_to_a_bytes INTEGER NOT NULL,
+    PRIMARY KEY(edge_id, bucket_start, observer_id)
+);
+
+CREATE TABLE IF NOT EXISTS path_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    edge_id TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    path BLOB NOT NULL,
+    observations BLOB NOT NULL DEFAULT '[]'
+);
+`
+
 type SQLite struct {
 	db        *sql.DB
 	anchor    *sql.Conn
@@ -78,10 +137,68 @@ func sqliteDSN(path string) string {
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
-	return path + separator +
-		"_pragma=foreign_keys%281%29" +
-		"&_pragma=synchronous%28NORMAL%29" +
-		"&_pragma=temp_store%28MEMORY%29"
+	if err := ensureColumn(db, "reports", "received_at", "TEXT"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE reports SET received_at = collected_at WHERE received_at IS NULL OR received_at = ''`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "runtime_state", "last_report_rowid", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "path_events", "observations", "BLOB"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`UPDATE path_events SET observations = '[]' WHERE observations IS NULL`); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "traffic_buckets", "a_to_b_bytes", "INTEGER"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "traffic_buckets", "b_to_a_bytes", "INTEGER"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+        UPDATE traffic_buckets SET
+          a_to_b_bytes = CASE WHEN observer_id = source_id THEN tx_bytes ELSE rx_bytes END,
+          b_to_a_bytes = CASE WHEN observer_id = target_id THEN tx_bytes ELSE rx_bytes END
+        WHERE a_to_b_bytes IS NULL OR b_to_a_bytes IS NULL`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`
+        CREATE INDEX IF NOT EXISTS reports_received_at ON reports(received_at);
+        CREATE INDEX IF NOT EXISTS path_events_edge_time ON path_events(edge_id, observed_at);
+    `)
+	return err
+}
+
+func ensureColumn(db *sql.DB, table, column, declaration string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var sequence int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&sequence, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + declaration)
+	return err
 }
 
 func (s *SQLite) Close() error {
@@ -163,11 +280,6 @@ func (s *SQLite) RecordWithMetadata(
 	}
 	for _, transition := range transitions {
 		if err := recordPathTransition(ctx, tx, transition); err != nil {
-			return false, err
-		}
-	}
-	if metadata != nil {
-		if err := recordHistoryMetadata(ctx, tx, *metadata, receivedAt); err != nil {
 			return false, err
 		}
 	}
@@ -409,8 +521,14 @@ func (s *SQLite) Maintain(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	if err := rollupHistory(ctx, tx, now.UTC()); err != nil {
-		return err
+	cutoff := formatTime(now.UTC().Add(-s.retention))
+	for _, statement := range []string{
+		"DELETE FROM traffic_buckets WHERE bucket_start < ?",
+		"DELETE FROM path_events WHERE observed_at < ?",
+	} {
+		if _, err := tx.ExecContext(ctx, statement, cutoff); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

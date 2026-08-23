@@ -486,46 +486,6 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	}
 }
 
-func TestOpenNumberedMigrationsAreIdempotent(t *testing.T) {
-	path := t.TempDir() + "/numbered.db"
-	for attempt := range 2 {
-		database, err := Open(path, 7*24*time.Hour)
-		if err != nil {
-			t.Fatalf("open attempt %d: %v", attempt, err)
-		}
-		var version int
-		if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-			database.Close()
-			t.Fatal(err)
-		}
-		if version != currentSchemaVersion {
-			database.Close()
-			t.Fatalf("schema version = %d, want %d", version, currentSchemaVersion)
-		}
-		if err := database.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestOpenRejectsFutureSchemaVersion(t *testing.T) {
-	path := t.TempDir() + "/future.db"
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.Exec(`PRAGMA user_version = 99`); err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if database, err := Open(path, 7*24*time.Hour); err == nil {
-		database.Close()
-		t.Fatal("future schema version was accepted")
-	}
-}
-
 func TestOpenMigratesLegacyRuntimeCheckpointCursor(t *testing.T) {
 	path := t.TempDir() + "/legacy-checkpoint.db"
 	raw, err := sql.Open("sqlite", path)
