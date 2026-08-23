@@ -57,6 +57,27 @@ func TestRecordIsIdempotentAndBuildsLogicalHistory(t *testing.T) {
 	}
 }
 
+func TestInMemoryDatabaseSurvivesPooledConnectionReplacement(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if database.anchor == nil {
+		t.Fatal("in-memory database has no lifetime anchor")
+	}
+	database.db.SetConnMaxLifetime(time.Nanosecond)
+	time.Sleep(time.Millisecond)
+
+	var version int
+	if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version == 0 {
+		t.Fatal("schema disappeared after replacing the pooled connection")
+	}
+}
+
 func TestRelayTrafficProvidesHistoryWhenEndpointsAreUnobservable(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,8 +16,11 @@ import (
 
 type SQLite struct {
 	db        *sql.DB
+	anchor    *sql.Conn
 	retention time.Duration
 }
+
+var memoryDatabaseSequence atomic.Uint64
 
 type StoredReport struct {
 	RowID      int64
@@ -37,19 +41,41 @@ func Open(path string, retention time.Duration) (*SQLite, error) {
 	if retention == 0 {
 		retention = 7 * 24 * time.Hour
 	}
+	memory := path == ":memory:"
+	if memory {
+		path = fmt.Sprintf("file:tailpath-memory-%d?mode=memory&cache=shared", memoryDatabaseSequence.Add(1))
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	maxConnections := 1
+	var anchor *sql.Conn
+	if memory {
+		maxConnections = 2
+		anchor, err = db.Conn(context.Background())
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("anchor in-memory database: %w", err)
+		}
+	}
+	db.SetMaxOpenConns(maxConnections)
 	if err := migrate(db); err != nil {
+		if anchor != nil {
+			anchor.Close()
+		}
 		db.Close()
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}
-	return &SQLite{db: db, retention: retention}, nil
+	return &SQLite{db: db, anchor: anchor, retention: retention}, nil
 }
 
 func (s *SQLite) Close() error {
+	if s.anchor != nil {
+		if err := s.anchor.Close(); err != nil {
+			return err
+		}
+	}
 	return s.db.Close()
 }
 
