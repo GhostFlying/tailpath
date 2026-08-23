@@ -155,6 +155,11 @@ func (s *SQLite) RecordWithMetadata(
 			return false, err
 		}
 	}
+	if metadata != nil {
+		if err := recordHistoryMetadata(ctx, tx, *metadata, receivedAt); err != nil {
+			return false, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return false, err
