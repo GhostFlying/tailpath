@@ -25,7 +25,8 @@ telemetry，不做 counter 扣减，也不进入用户 activity。
 同一个 SQLite transaction 中提交。Typed candidate state 首次立即 checkpoint，之后
 最多每秒一次；checkpoint 同时记录其包含的最后 report rowid。只有 transaction 成功
 后，ingest 才转移 candidate ownership 并通知 SSE。存储失败不会推进内存中的
-sequence 或 inventory。
+sequence 或 inventory。每个 client 的 invalidation 会合并到 250ms window；browser
+把 refresh burst 合并为一个 in-flight request 和最多一个 follow-up。
 
 路径变更按逻辑路径身份比较。Observer-local Direct endpoint 只属于 provenance
 属性；相反两侧 observer 报告同一条 Direct 连接的不同端点时不会产生新 transition。
