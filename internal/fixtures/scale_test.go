@@ -1,14 +1,21 @@
 package fixtures
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/GhostFlying/tailpath/internal/aggregate"
+	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
+	"github.com/GhostFlying/tailpath/internal/store"
 )
 
 func TestScaleScenarioContract(t *testing.T) {
@@ -134,4 +141,118 @@ func TestScaleScenarioRejectsInvalidShape(t *testing.T) {
 			t.Fatalf("NewScaleScenario(%#v) succeeded", config)
 		}
 	}
+}
+
+func TestScaleScenarioAppIngestAndRestart(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	databasePath := filepath.Join(t.TempDir(), "scale.db")
+	database, err := store.Open(databasePath, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := scaleAggregateOptions(at)
+	application, err := app.New(database, options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	if err := scenario.Load(context.Background(), application, at); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("scale ingest elapsed=%s", time.Since(started))
+	before := application.Aggregator.Snapshot()
+	assertScaleTopology(t, before)
+
+	seenPaths := map[domain.PathKind]bool{}
+	for _, edge := range before.Edges {
+		if seenPaths[edge.Path.Kind] {
+			continue
+		}
+		history, err := database.EdgeHistory(context.Background(), edge.ID, at.Add(-time.Hour))
+		if err != nil {
+			t.Fatalf("history for %s: %v", edge.ID, err)
+		}
+		if len(history.Traffic) == 0 || len(history.PathEvents) == 0 {
+			t.Fatalf("history for %s is incomplete: %#v", edge.ID, history)
+		}
+		seenPaths[edge.Path.Kind] = true
+	}
+	if len(seenPaths) != 4 {
+		t.Fatalf("history paths = %#v, want all four kinds", seenPaths)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restartedDatabase, err := store.Open(databasePath, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restartedDatabase.Close()
+	restarted, err := app.New(restartedDatabase, scaleAggregateOptions(at), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := restarted.Aggregator.Snapshot()
+	assertScaleTopology(t, after)
+	beforeDigest := topologyDigest(t, before)
+	afterDigest := topologyDigest(t, after)
+	if beforeDigest != afterDigest {
+		t.Fatalf("topology digest changed across restart: before=%s after=%s", beforeDigest, afterDigest)
+	}
+
+	if info, err := os.Stat(databasePath); err != nil {
+		t.Fatal(err)
+	} else {
+		t.Logf("scale database bytes=%d", info.Size())
+	}
+}
+
+func scaleAggregateOptions(at time.Time) aggregate.Options {
+	nextID := 0
+	return aggregate.Options{
+		Now: func() time.Time { return at },
+		NewNodeID: func() string {
+			nextID++
+			return fmt.Sprintf("n_%03d", nextID)
+		},
+	}
+}
+
+func assertScaleTopology(t *testing.T, topology domain.Topology) {
+	t.Helper()
+	if len(topology.Nodes) != DefaultScaleNodeCount || len(topology.Edges) != DefaultScaleEdgeCount ||
+		len(topology.Observers) != DefaultScaleNodeCount {
+		t.Fatalf("topology = %d nodes/%d edges/%d observers, want 250/1000/250",
+			len(topology.Nodes), len(topology.Edges), len(topology.Observers))
+	}
+}
+
+func topologyDigest(t *testing.T, topology domain.Topology) string {
+	t.Helper()
+	for index := range topology.Edges {
+		edge := &topology.Edges[index]
+		if edge.Path.Kind == domain.PathDirect {
+			edge.Path.DirectEndpoint = ""
+		}
+		sort.Slice(edge.Observations, func(i, j int) bool {
+			return edge.Observations[i].ObserverID < edge.Observations[j].ObserverID
+		})
+		sort.Slice(edge.Conflicts, func(i, j int) bool {
+			left, _ := json.Marshal(edge.Conflicts[i])
+			right, _ := json.Marshal(edge.Conflicts[j])
+			return string(left) < string(right)
+		})
+	}
+	payload, err := json.Marshal(topology)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
 }
