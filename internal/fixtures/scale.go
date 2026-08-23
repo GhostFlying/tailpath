@@ -134,6 +134,22 @@ func (s *ScaleScenario) Reports(at time.Time) []TimedReport {
 	return reports
 }
 
+func (s *ScaleScenario) HelloReports(at time.Time) []domain.ReportEnvelope {
+	reports := make([]domain.ReportEnvelope, len(s.nodes))
+	for node := range s.nodes {
+		reports[node] = s.helloReport(node, at.UTC())
+	}
+	return reports
+}
+
+func (s *ScaleScenario) SteadyReports(at time.Time, sequence int64) []domain.ReportEnvelope {
+	reports := make([]domain.ReportEnvelope, len(s.nodes))
+	for node := range s.nodes {
+		reports[node] = s.steadyTrafficReport(node, at.UTC(), sequence)
+	}
+	return reports
+}
+
 func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.Time) error {
 	for _, timed := range s.Reports(at) {
 		receipt, err := application.SubmitAt(ctx, timed.Report, timed.ReceivedAt)
@@ -197,6 +213,30 @@ func (s *ScaleScenario) trafficReport(node int, receivedAt time.Time, recent boo
 			Peer:             s.nodes[peer],
 			RxBytes:          10_000_000 + rxDelta,
 			TxBytes:          20_000_000 + txDelta,
+			RxDelta:          rxDelta,
+			TxDelta:          txDelta,
+			SampleDurationMS: 2000,
+			Path:             s.pathForObserver(edge, peer),
+			LastActive:       receivedAt,
+		})
+	}
+	return s.envelope(node, sequence, domain.ReportTrafficSample, receivedAt, peers)
+}
+
+func (s *ScaleScenario) steadyTrafficReport(node int, receivedAt time.Time, sequence int64) domain.ReportEnvelope {
+	peers := make([]domain.PeerObservation, 0, len(s.neighbors[node]))
+	for _, edgeIndex := range s.neighbors[node] {
+		edge := s.edges[edgeIndex]
+		peer := edge.source
+		txDelta, rxDelta := edge.bToABytes, edge.aToBBytes
+		if peer == node {
+			peer = edge.target
+			txDelta, rxDelta = edge.aToBBytes, edge.bToABytes
+		}
+		peers = append(peers, domain.PeerObservation{
+			Peer:             s.nodes[peer],
+			RxBytes:          10_000_000 + rxDelta*sequence,
+			TxBytes:          20_000_000 + txDelta*sequence,
 			RxDelta:          rxDelta,
 			TxDelta:          txDelta,
 			SampleDurationMS: 2000,
