@@ -25,7 +25,20 @@ The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from
 peer counters, and excluded from user activity.
 
-Current topology lives in memory and is reconstructed from SQLite after a
-restart. SQLite stores latest observations, identity bindings, path events,
-ten-second traffic buckets, and relay sessions. Raw two-second status results
-and idle heartbeat history are not stored.
+Current topology is served from memory and committed to SQLite as durable
+runtime state after every accepted report. Ingest clones and validates the next
+state, persists the report, runtime state, traffic buckets, and logical path
+transitions in one transaction, then publishes the committed state to SSE.
+Storage failure therefore cannot advance in-memory sequence or inventory state.
+
+Path transitions compare logical path identity. Observer-local direct endpoints
+remain provenance attributes and do not create a new transition when opposite
+observers report different ends of the same Direct connection. DERP region and
+Peer Relay node changes remain logical transitions. A known Peer Relay node is
+retained in the visible topology for as long as fresh edge provenance refers to
+it.
+
+Restart restores current reporter sequences, inventory generations, identity
+aliases, nodes, observations, and edge lifecycle directly. Raw report retention
+is not the recovery mechanism. SQLite also stores ten-second traffic buckets
+and aggregated path transitions with the provenance supporting each transition.

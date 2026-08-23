@@ -21,6 +21,16 @@ Tailscale 类型只能存在于 `internal/tailscaleadapter`。协议、聚合、
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
 telemetry，不做 counter 扣减，也不进入用户 activity。
 
-当前拓扑保存在内存并可从 SQLite 恢复。SQLite 保存最新 observation、identity
-binding、路径事件、十秒 traffic bucket 和 relay session；不保存两秒原始 status
-或空闲心跳历史。
+当前拓扑由内存提供读取，但每个 accepted report 都会把完整 runtime state 持久化到
+SQLite。Ingest 先 clone 并验证候选状态，再在同一事务中保存 report、runtime
+state、traffic bucket 和逻辑路径变更，最后才提交内存并通知 SSE。存储失败不会推进
+内存中的 sequence 或 inventory。
+
+路径变更按逻辑路径身份比较。Observer-local Direct endpoint 只属于 provenance
+属性；相反两侧 observer 报告同一条 Direct 连接的不同端点时不会产生新 transition。
+DERP region 或 Peer Relay node 的变化仍然是逻辑路径变更。只要新鲜 edge
+provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在可见拓扑中。
+
+重启直接恢复 reporter sequence、inventory generation、identity alias、节点、最新
+observation 和 edge lifecycle，不依赖有保留期限的 raw report 重放。SQLite 还保存
+十秒 traffic bucket，以及带 supporting provenance 的聚合路径变更。
