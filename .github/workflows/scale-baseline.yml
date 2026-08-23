@@ -35,6 +35,16 @@ jobs:
               -count=1 -v -json -timeout=15m \
               > scale-artifacts/scale-go.json \
               2> scale-artifacts/scale-resource.txt
+      - name: Enforce seven-day history database size
+        env:
+          TAILPATH_HISTORY_SCALE: "1"
+        run: |
+          /usr/bin/time -v \
+            go test ./internal/store \
+              -run TestSevenDayHistoryDatabaseSize \
+              -count=1 -v -json -timeout=15m \
+              > scale-artifacts/history-size.json \
+              2> scale-artifacts/history-size-resource.txt
       - name: Record browser baseline
         env:
           TAILPATH_SCALE_E2E: "1"
