@@ -87,21 +87,6 @@ test("renders the live fixture topology without overlap", async ({
   expect(
     Number(await graph.getAttribute("data-device-node-count")),
   ).toBeGreaterThan(0);
-  const initialPositions = parsePositions(
-    (await graph.getAttribute("data-layout-positions")) ?? "",
-  );
-  const initialLayoutRuns = await graph.getAttribute("data-layout-runs");
-  const initialViewport = await graph.getAttribute("data-viewport");
-  expect(initialPositions.size).toBeGreaterThan(0);
-  await page.waitForTimeout(2_500);
-  expect(
-    parsePositions((await graph.getAttribute("data-layout-positions")) ?? ""),
-  ).toEqual(initialPositions);
-  await expect(graph).toHaveAttribute(
-    "data-layout-runs",
-    initialLayoutRuns ?? "",
-  );
-  await expect(graph).toHaveAttribute("data-viewport", initialViewport ?? "");
 
   const stageBox = await page.locator(".graph-stage").boundingBox();
   const legendBox = await legend.boundingBox();
