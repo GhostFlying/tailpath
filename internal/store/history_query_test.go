@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -126,6 +127,50 @@ func TestHistoryWindowResolutionContract(t *testing.T) {
 	}
 	if domain.HistoryWindow("invalid").Valid() {
 		t.Fatal("invalid history window accepted")
+	}
+}
+
+func TestHistorySummaryUsesCompletedRollupsWithoutDoubleCountingRaw(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 2, 30, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, LastEvidenceAt: now},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, LastEvidenceAt: now},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	for index, sample := range []struct {
+		at    time.Time
+		bytes int64
+	}{
+		{at: now.Add(-2*time.Minute - 20*time.Second), bytes: 10},
+		{at: now.Add(-time.Minute - 20*time.Second), bytes: 20},
+		{at: now.Add(-20 * time.Second), bytes: 30},
+	} {
+		traffic := []domain.AcceptedTraffic{{
+			EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_a",
+			AToBBytes: sample.bytes, ReceivedAt: sample.at,
+		}}
+		if _, err := database.Record(context.Background(), sampleReport(sample.at, sample.at, fmt.Sprintf("summary-%d", index)), sample.at, nil, traffic, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.Maintain(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{
+		Window: domain.History15Minutes,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Edges) != 1 || page.Edges[0].AToBBytes != 60 {
+		t.Fatalf("history summary = %#v, want one edge with 60 bytes", page.Edges)
 	}
 }
 
