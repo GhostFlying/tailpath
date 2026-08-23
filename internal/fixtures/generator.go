@@ -132,10 +132,15 @@ func fixtureNode(id, hostname string) domain.NodeIdentity {
 		"linux":    16,
 		"ipad":     17,
 	}
+	platforms := map[string]string{
+		"macbook": "macos", "devbox": "linux", "iphone": "ios",
+		"windows": "windows", "relay-hz": "linux", "linux": "linux", "ipad": "ios",
+	}
 	return domain.NodeIdentity{
 		StableNodeID: id,
 		Hostname:     hostname,
 		DNSName:      hostname + ".example.ts.net.",
+		OS:           platforms[id],
 		TailscaleIPs: []string{"100.64.0." + fmt.Sprint(octets[id])},
 	}
 }
