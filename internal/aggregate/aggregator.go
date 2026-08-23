@@ -993,6 +993,7 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 		Nodes:         make(map[string]*nodeState, len(source.Nodes)),
 		Aliases:       make(map[string]string, len(source.Aliases)),
 		AliasLastSeen: make(map[string]time.Time, len(source.AliasLastSeen)),
+		Redirects:     make(map[string]string, len(source.Redirects)),
 		Edges:         make(map[string]*edgeState, len(source.Edges)),
 	}
 	for id, reporter := range source.Reporters {
@@ -1023,6 +1024,9 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 	}
 	for alias, seenAt := range source.AliasLastSeen {
 		clone.AliasLastSeen[alias] = seenAt
+	}
+	for fromID, toID := range source.Redirects {
+		clone.Redirects[fromID] = toID
 	}
 	for id, edge := range source.Edges {
 		copy := *edge

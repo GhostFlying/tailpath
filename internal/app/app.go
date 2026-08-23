@@ -68,6 +68,9 @@ func New(database *store.SQLite, options aggregate.Options, logger *slog.Logger)
 		}
 		application.lastCheckpoint = latest
 	}
+	if err := database.SaveHistoryMetadata(context.Background(), application.Aggregator.HistoryMetadata(), latest); err != nil {
+		return nil, fmt.Errorf("persist restored history metadata: %w", err)
+	}
 	return application, nil
 }
 
@@ -91,13 +94,16 @@ func (a *App) SubmitAt(ctx context.Context, report domain.ReportEnvelope, receiv
 		return result.Receipt, nil
 	}
 	var checkpoint []byte
+	var historyMetadata *domain.HistoryMetadata
 	if a.shouldCheckpoint(receivedAt) {
 		checkpoint, err = candidate.MarshalState()
 		if err != nil {
 			return result.Receipt, fmt.Errorf("encode runtime state: %w", err)
 		}
+		metadata := candidate.HistoryMetadata()
+		historyMetadata = &metadata
 	}
-	inserted, err := a.Store.Record(ctx, report, receivedAt, checkpoint, result.Traffic, result.PathTransitions)
+	inserted, err := a.Store.RecordWithMetadata(ctx, report, receivedAt, checkpoint, result.Traffic, result.PathTransitions, historyMetadata)
 	if err != nil {
 		return result.Receipt, fmt.Errorf("persist report: %w", err)
 	}
