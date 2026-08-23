@@ -8,7 +8,9 @@ actually using?
 
 ## In scope
 
-- Discover nodes from trusted observer inventories.
+- Discover known nodes best effort from trusted observer peer views. A complete
+  Tailnet directory is never implied unless an optional control-plane directory
+  source is configured, and directory entries never imply traffic.
 - Collect runtime status from tailscaled and embedded tsnet nodes.
 - Reconcile directed observations into logical traffic edges.
 - Distinguish direct, DERP, peer relay, and unknown paths.

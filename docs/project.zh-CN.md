@@ -7,7 +7,9 @@ Tailscale 实际使用了哪条路径。
 
 ## 范围内
 
-- 从可信 observer inventory 发现节点。
+- 从可信 observer 的 runtime peer view 中 best-effort 发现已知节点。除非可选接入
+  控制面 directory source，否则永远不承诺完整 Tailnet inventory；directory 节点也
+  不代表存在流量。
 - 从 tailscaled 和 embedded tsnet 节点采集运行时状态。
 - 将有方向的 observation 合并为逻辑流量边。
 - 区分 Direct、DERP、Peer Relay 和 Unknown。
