@@ -106,3 +106,8 @@ Tailpath v0.2 不提供受支持的 backup/restore contract。只复制 `tailpat
 完整，因为 `tsnet/` 目录保存 server identity；同时也没有承诺复制 live SQLite
 文件是安全的。任何临时 volume copy 都属于 unsupported 操作。升级时应逐版本
 进行，migration 会在 readiness 之前执行。
+
+SQLite 使用 WAL 和 `synchronous=NORMAL`。Process 或 operating-system crash 后
+database 必须保持结构一致，但突然断电或 storage failure 可能丢失最新已提交的
+observations。恢复后 collector 会重新同步当前 runtime state；中间的 history gap
+不会被补写。
