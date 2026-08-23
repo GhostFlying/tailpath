@@ -25,7 +25,9 @@ source, and target identities; the two forms cannot be mixed.
 
 The normal local sample interval is fixed at two seconds. The server's idle
 heartbeat interval is the single public freshness control and defaults to one
-minute; every receipt returns it so collectors adopt the same policy.
+minute. It can be configured from ten seconds through ten minutes; every
+receipt returns it so collectors adopt the same policy. Edge, observer, and
+node freshness are derived from this value and cannot be configured separately.
 Current path evidence, recent edges, and observer liveness expire after two
 heartbeat intervals. Nodes without observer reports or traffic evidence are
 omitted from the live topology after four intervals. Business traffic is active
@@ -52,7 +54,9 @@ observer identity described in a report.
 
 Collectors keep only the newest unsent state during an outage. Reconnect sends
 a fresh hello and baseline; a long outage delta is not presented as current
-traffic.
+traffic. LocalAPI and report failures use jittered exponential retry from two
+seconds through a sixty-second base delay. An accepted complete hello resets
+the retry state.
 
 ## Inventory generations
 
