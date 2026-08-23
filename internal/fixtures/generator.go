@@ -24,16 +24,19 @@ func New(application *app.App, logger *slog.Logger) *Generator {
 	return &Generator{app: application, logger: logger}
 }
 
-func (g *Generator) Run(ctx context.Context) {
+func (g *Generator) Start(ctx context.Context) error {
 	if err := g.hello(ctx); err != nil {
-		g.logger.Error("fixture hello failed", "error", err)
-		return
+		return fmt.Errorf("fixture hello: %w", err)
 	}
 	if err := g.seedHistory(ctx); err != nil {
-		g.logger.Error("fixture history seed failed", "error", err)
-		return
+		return fmt.Errorf("fixture history seed: %w", err)
 	}
 	g.sample(ctx)
+	go g.run(ctx)
+	return nil
+}
+
+func (g *Generator) run(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {

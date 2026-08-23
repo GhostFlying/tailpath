@@ -192,7 +192,9 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			}
 			go runScaleRuntime(ctx, scenario, application.Aggregator, logger)
 		} else {
-			go fixtures.New(application, logger).Run(ctx)
+			if err := fixtures.New(application, logger).Start(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
