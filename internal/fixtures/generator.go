@@ -29,6 +29,10 @@ func (g *Generator) Run(ctx context.Context) {
 		g.logger.Error("fixture hello failed", "error", err)
 		return
 	}
+	if err := g.seedHistory(ctx); err != nil {
+		g.logger.Error("fixture history seed failed", "error", err)
+		return
+	}
 	g.sample(ctx)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -40,6 +44,17 @@ func (g *Generator) Run(ctx context.Context) {
 			g.sample(ctx)
 		}
 	}
+}
+
+func (g *Generator) seedHistory(ctx context.Context) error {
+	now := time.Now().UTC()
+	for minutesAgo := 58; minutesAgo >= 2; minutesAgo -= 2 {
+		at := now.Add(-time.Duration(minutesAgo) * time.Minute)
+		if _, err := g.app.SubmitAt(ctx, g.sampleReport(at), at); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (g *Generator) hello(ctx context.Context) error {
@@ -55,13 +70,19 @@ func (g *Generator) hello(ctx context.Context) error {
 }
 
 func (g *Generator) sample(ctx context.Context) {
+	report := g.sampleReport(time.Now().UTC())
+	if _, err := g.app.Submit(ctx, report); err != nil {
+		g.logger.Warn("fixture sample failed", "error", err)
+	}
+}
+
+func (g *Generator) sampleReport(now time.Time) domain.ReportEnvelope {
 	g.tick++
-	now := time.Now().UTC()
 	iphonePath := domain.PathObservation{Kind: domain.PathDERP, DERPRegion: "hkg"}
 	if g.tick%15 >= 11 {
 		iphonePath = domain.PathObservation{Kind: domain.PathDirect, DirectEndpoint: "203.0.113.42:41641"}
 	}
-	report := g.envelope(domain.ReportTrafficSample, now, []domain.ObserverReport{
+	return g.envelope(domain.ReportTrafficSample, now, []domain.ObserverReport{
 		{
 			Observer: fixtureNode("macbook", "MacBook"), InventoryGeneration: "fixture-v1",
 			Peers: []domain.PeerObservation{
@@ -83,9 +104,6 @@ func (g *Generator) sample(ctx context.Context) {
 			},
 		},
 	})
-	if _, err := g.app.Submit(ctx, report); err != nil {
-		g.logger.Warn("fixture sample failed", "error", err)
-	}
 }
 
 func (g *Generator) envelope(kind domain.ReportKind, at time.Time, observers []domain.ObserverReport) domain.ReportEnvelope {
