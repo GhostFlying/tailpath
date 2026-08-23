@@ -429,11 +429,6 @@ type HistoryEdgeQuery struct {
 	Limit  int
 }
 
-type HistoryMetadata struct {
-	Nodes     []TopologyNode
-	Redirects map[string]string
-}
-
 func EdgeID(a, b string) (id, source, target string) {
 	if a > b {
 		a, b = b, a
