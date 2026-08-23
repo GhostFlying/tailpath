@@ -19,7 +19,7 @@ path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
 1,000 logical edges, bilateral provenance, all four paths, active/recent state,
 and clock skew. Its Go ingest/restart smoke runs in PR checks; the full desktop
-and mobile graph baseline runs through the manual `Scale baseline` workflow and
+and mobile graph gate runs through the manual `V0.2 release gate` workflow and
 uploads JSON and screenshots. Multi-release LocalAPI fixture normalization and
 explicit SSE reconnect/conflict/long-label browser cases remain v0.2 work.
 
@@ -50,3 +50,10 @@ validate a real DERP path and transition. The
 [constrained-network dogfood runbook](runbooks/v0.1-dogfood.md) remains a
 separate cross-host operational exercise. Test-harness fault injection never
 changes the passive boundary of production collectors or servers.
+
+The [v0.2 release-gate runbook](runbooks/v0.2-release-gates.md) defines the
+immutable alpha artifact record, automated thresholds, Linux container and
+native smoke, real arm64 Mac validation, independent review, and final human
+release decision. A short local performance run exercises the same container
+path but is diagnostic only; it cannot replace the strict hosted workflow or
+real-node dogfood.
