@@ -29,6 +29,8 @@ interface Props {
   onSelectNode: (nodeId: string | null) => void;
 }
 
+const automaticCoseNodeLimit = 100;
+
 const styles: StylesheetCSS[] = [
   {
     selector: "node",
@@ -220,6 +222,9 @@ export function TopologyGraph(props: Props) {
 
   useEffect(() => {
     if (!container.current) return;
+    initialized.current = false;
+    layoutRuns.current = 0;
+    renderEpoch.current = 0;
     const cy = cytoscape({
       container: container.current,
       elements: [],
@@ -313,19 +318,20 @@ export function TopologyGraph(props: Props) {
         }
       });
       layoutRuns.current += 1;
-      const layout = cy.layout({
-        name: "cose",
-        animate: false,
-        randomize: firstRender && knownNodeIDs.size === 0,
-        fit: false,
-        padding: 64,
-        nodeRepulsion: () => 180000,
-        idealEdgeLength: (edge) => edge.data("idealLength") as number,
-        edgeElasticity: () => 80,
-        gravity: 45,
-        componentSpacing: 120,
-      });
-      layout.run();
+      if (cy.nodes("[persistable]").length <= automaticCoseNodeLimit) {
+        cy.layout({
+          name: "cose",
+          animate: false,
+          randomize: firstRender && knownNodeIDs.size === 0,
+          fit: false,
+          padding: 64,
+          nodeRepulsion: () => 180000,
+          idealEdgeLength: (edge) => edge.data("idealLength") as number,
+          edgeElasticity: () => 80,
+          gravity: 45,
+          componentSpacing: 120,
+        }).run();
+      }
       locked.forEach((node) => node.unlock());
       deriveVirtualPositions(cy);
     }
