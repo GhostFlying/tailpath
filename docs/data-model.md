@@ -2,8 +2,8 @@
 
 Canonical nodes use persisted opaque Tailpath IDs. Identifiers are scoped to
 the current Tailnet and include StableNodeID, NodeID, node key, disco key, and
-time-valid Tailscale IP. MagicDNS and hostname are display/search metadata and
-never identity aliases.
+time-valid Tailscale IP. MagicDNS, hostname, and reported operating system are
+display/search metadata and never identity aliases.
 
 Resolution prefers StableNodeID, then NodeID/node key, disco key, time-valid
 Tailscale IP, and relay session correlation. New aliases merge placeholders into
@@ -16,7 +16,9 @@ Strong aliases remain durable. A Tailscale IP alias is refreshed by accepted
 runtime evidence and expires after the four-heartbeat node window; an IP seen
 again after that point cannot merge an identity into the stale canonical node.
 MagicDNS short name is the preferred UI label and remains display metadata, so
-renaming it updates presentation without changing canonical identity.
+renaming it updates presentation without changing canonical identity. A
+non-empty OS value from the latest trusted report similarly refreshes the
+existing node's device presentation; older collectors may omit it.
 
 Each observable canonical node owns its current inventory generation and peer
 membership. A reporter instance owns only its process-local message sequence,
