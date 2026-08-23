@@ -158,6 +158,103 @@ func TestRelaySessionIngestPreservesThirdPartyProvenance(t *testing.T) {
 	}
 }
 
+func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	now := time.Now().UTC()
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "Alpha"}, LastEvidenceAt: now},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "Beta"}, LastEvidenceAt: now},
+		{ID: "n_c", NodeIdentity: domain.NodeIdentity{StableNodeID: "c", Hostname: "Charlie"}, LastEvidenceAt: now},
+	}}
+	if err := server.app.Store.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	recordHistoryTraffic(t, server, "recent", "n_a--n_b", "n_a", "n_b", now.Add(-time.Minute))
+	recordHistoryTraffic(t, server, "old", "n_b--n_c", "n_b", "n_c", now.Add(-8*24*time.Hour))
+
+	for _, requestPath := range []string{
+		"/api/v1/history/nodes",
+		"/api/v1/history/edges?window=bad",
+		"/api/v1/history/edges?window=1h&limit=101",
+		"/api/v1/history/edges?window=1h&path=invalid",
+		"/api/v1/history/edges?window=1h&cursor=invalid",
+		"/api/v1/history/edges/n_a--n_b",
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, requestPath, nil)
+		server.Handler().ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("GET %s status = %d, want 400: %s", requestPath, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/history/nodes?window=1h", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("history nodes status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var nodes domain.HistoryNodes
+	if err := json.NewDecoder(recorder.Body).Decode(&nodes); err != nil || len(nodes.Nodes) != 2 {
+		t.Fatalf("history nodes = %#v, err=%v", nodes, err)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges?window=1h&path=direct&limit=1", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("history edges status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var page domain.HistoryEdgePage
+	if err := json.NewDecoder(recorder.Body).Decode(&page); err != nil || len(page.Edges) != 1 {
+		t.Fatalf("history page = %#v, err=%v", page, err)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_b?window=1h", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("recent detail status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var history domain.EdgeHistory
+	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || history.EdgeID != "n_a--n_b" || len(history.Traffic) != 1 {
+		t.Fatalf("recent history = %#v, err=%v", history, err)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_b--n_c?window=7d", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("known empty status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || len(history.Traffic) != 0 {
+		t.Fatalf("known empty history = %#v, err=%v", history, err)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/missing?window=1h", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown detail status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func recordHistoryTraffic(t *testing.T, server *Server, reportID, edgeID, sourceID, targetID string, at time.Time) {
+	t.Helper()
+	report := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: reportID, ReporterInstanceID: "history-fixture",
+		Sequence: at.UnixNano(), CollectedAt: at, Kind: domain.ReportTrafficSample,
+	}
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: edgeID, SourceID: sourceID, TargetID: targetID, ObserverID: sourceID,
+		AToBBytes: 10, BToABytes: 2, ReceivedAt: at,
+	}}
+	transition := []domain.PathTransition{{EdgeID: edgeID, ObservedAt: at, Path: domain.PathObservation{Kind: domain.PathDirect}}}
+	if _, err := server.app.Store.Record(context.Background(), report, at, nil, traffic, transition); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCoalesceInvalidationsKeepsOneEventPerWindowAndAFollowUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
