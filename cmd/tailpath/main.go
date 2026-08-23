@@ -97,8 +97,8 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if *scaleFixture && *heartbeat == time.Minute {
 		*heartbeat = 10 * time.Minute
 	}
-	if *heartbeat <= 0 {
-		return errors.New("heartbeat interval must be positive")
+	if *heartbeat < 10*time.Second || *heartbeat > 10*time.Minute {
+		return errors.New("heartbeat interval must be between 10s and 10m")
 	}
 	if err := ensureDatabaseDirectory(*databasePath); err != nil {
 		return err

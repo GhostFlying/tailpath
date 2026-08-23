@@ -46,50 +46,6 @@ profile，并只读挂载 tailscaled LocalAPI socket。Collector 通过 Tailnet 
 LocalAPI，以 JSON 输出 self identity、运行平台和 peer 数量；它不会连接 Tailpath
 server，也不会主动 probe 任何 peer。
 
-## 原生 collector archives
-
-每个 GitHub Release 包含 amd64/arm64 的 Linux、macOS `tar.gz` 和 Windows `zip`。
-每个 archive 只带当前平台的 collector binary、安装材料、README 和 license。
-安装前应使用 `checksums.txt` 校验下载文件。
-
-Linux 解压对应 archive 后执行：
-
-```sh
-sudo ./install.sh --server-url http://tailpath.example.ts.net:8080
-sudo systemctl status tailpath-collector.service
-```
-
-Installer 将 binary 安装到 `/usr/local/bin`，创建 hardened systemd unit，并仅在
-文件不存在时以 mode 0600 创建 `/etc/default/tailpath-collector`。非默认
-LocalAPI socket 使用 `--socket PATH`。重复安装保留 operator 修改过的配置；
-`sudo ./uninstall.sh` 保留配置，`sudo ./uninstall.sh --purge` 才删除。
-
-macOS 必须使用当前登录的桌面用户安装，不能使用 `sudo`：
-
-```sh
-./install.sh --server-url http://tailpath.example.ts.net:8080
-launchctl print "gui/$(id -u)/com.tailpath.collector"
-```
-
-Installer 使用 `~/Library/Application Support/Tailpath`、用户级 LaunchAgent 和
-`~/Library/Logs/Tailpath`。它会被动检查 LocalAPI；Tailscale GUI safesocket
-不可用时只警告，不阻止文件安装。`./uninstall.sh` 保留配置和日志，
-`./uninstall.sh --purge` 才删除。完成 v0.2 的真实 arm64 Mac gate 前，macOS
-支持仍标记为 alpha。
-
-Windows 解压 archive 后，在提升权限的 Windows PowerShell 5.1 中执行：
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\install.ps1 -ServerUrl http://tailpath.example.ts.net:8080
-Get-ScheduledTask -TaskName "Tailpath Collector"
-```
-
-Preview installer 使用 `%ProgramFiles%\Tailpath` 和以 SYSTEM 身份启动的 Scheduled
-Task。Runner 最多保留五个约 5 MiB 的日志文件。重复安装保留 `collector.env`；
-提升权限执行 `.\uninstall.ps1` 会保留配置和日志，`.\uninstall.ps1 -Purge` 才
-删除。v0.2 不声明 Windows 真实节点支持，也不提供签名或 MSI。
-
 tailscaled server 模式未填写 listen host 时会使用本机第一个 Tailscale IP。
 Wildcard、LAN 和其他非 Tailscale 地址默认被拒绝，只有显式传入
 `--unsafe-allow-non-tailnet-listen` 才能绑定；使用该 override 后 API WhoIs 仍然
