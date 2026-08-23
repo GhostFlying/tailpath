@@ -261,6 +261,7 @@ func (s *ScaleScenario) pathForObserver(edge scaleEdge, peer int) domain.PathObs
 
 func scaleNode(index int) domain.NodeIdentity {
 	hostname := fmt.Sprintf("scale-node-%03d", index+1)
+	platforms := [...]string{"linux", "macos", "windows", "ios", "android"}
 	return domain.NodeIdentity{
 		StableNodeID: fmt.Sprintf("scale-%03d", index+1),
 		NodeID:       fmt.Sprintf("nodeid-%03d", index+1),
@@ -268,6 +269,7 @@ func scaleNode(index int) domain.NodeIdentity {
 		DiscoKey:     fmt.Sprintf("discokey:%064x", index+1),
 		Hostname:     hostname,
 		DNSName:      hostname + ".scale.example.ts.net.",
+		OS:           platforms[index%len(platforms)],
 		TailscaleIPs: []string{fmt.Sprintf("100.100.%d.%d", index/250, index%250+1)},
 	}
 }
