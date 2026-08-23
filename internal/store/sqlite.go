@@ -369,14 +369,8 @@ func (s *SQLite) Maintain(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	cutoff := formatTime(now.UTC().Add(-s.retention))
-	for _, statement := range []string{
-		"DELETE FROM traffic_buckets WHERE bucket_start < ?",
-		"DELETE FROM path_events WHERE observed_at < ?",
-	} {
-		if _, err := tx.ExecContext(ctx, statement, cutoff); err != nil {
-			return err
-		}
+	if err := rollupHistory(ctx, tx, now.UTC()); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
