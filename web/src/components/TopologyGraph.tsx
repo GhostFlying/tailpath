@@ -43,24 +43,17 @@ const styles: StylesheetCSS[] = [
     },
   },
   {
-    selector: "node.runtime-telemetry",
+    selector: "node[backgroundImages]",
     css: {
-      "background-image": "/runtime-telemetry.svg",
-      "background-width": "18px",
-      "background-height": "18px",
-      "background-position-x": "64%",
-      "background-position-y": "10%",
-      "background-offset-x": 0,
-      "background-offset-y": 0,
-      "background-clip": "none",
+      "background-image": "data(backgroundImages)",
+      "background-width": "data(backgroundWidths)",
+      "background-height": "data(backgroundHeights)",
+      "background-position-x": "data(backgroundPositionsX)",
+      "background-position-y": "data(backgroundPositionsY)",
       "background-image-containment": "over",
     },
   },
   { selector: "node.offline", css: { opacity: 0.42 } },
-  {
-    selector: "node.clock-skewed",
-    css: { "border-color": "#c84d4d", "border-width": 4 },
-  },
   { selector: "node.dimmed", css: { opacity: 0.18 } },
   {
     selector: "node.relay-node",
@@ -284,7 +277,21 @@ export function TopologyGraph(props: Props) {
         if (cy.nodes().length > 0) {
           cy.fit(cy.elements(), window.innerWidth <= 620 ? 28 : 72);
         }
-        if (container.current) container.current.dataset.ready = "true";
+        if (container.current) {
+          const deviceNodes = cy.nodes(".device-node");
+          let deviceNodesSquare = true;
+          deviceNodes.forEach((node) => {
+            if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
+              deviceNodesSquare = false;
+            }
+          });
+          container.current.dataset.deviceNodeCount = String(
+            deviceNodes.length,
+          );
+          container.current.dataset.deviceNodesSquare =
+            String(deviceNodesSquare);
+          container.current.dataset.ready = "true";
+        }
       };
       const layout = cy.layout({
         name: "cose",
