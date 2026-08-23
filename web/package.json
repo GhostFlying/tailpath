@@ -9,6 +9,7 @@
     "dev": "vite --host 0.0.0.0",
     "format": "prettier --write .",
     "generate:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.ts",
+    "generate:icons": "node scripts/generate-device-icons.mjs",
     "test": "vitest run src",
     "test:e2e": "playwright test"
   },

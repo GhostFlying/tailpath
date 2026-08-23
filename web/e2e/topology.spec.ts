@@ -75,12 +75,18 @@ test("renders the live fixture topology without overlap", async ({
   await expect(legend).toContainText("Peer Relay");
   await expect(legend).toContainText("Activity");
   await expect(legend).toContainText("Runtime telemetry");
+  await expect(legend).toContainText("Platform device");
+  await expect(legend).toContainText("Clock skew");
   await expect(legend).not.toContainText("Observer");
   const recentSwitch = page.getByRole("switch", { name: "Show recent" });
   await expect(recentSwitch).toHaveAttribute("aria-checked", "true");
   const box = await graph.boundingBox();
   expect(box?.width).toBeGreaterThan(300);
   expect(box?.height).toBeGreaterThan(300);
+  await expect(graph).toHaveAttribute("data-device-nodes-square", "true");
+  expect(
+    Number(await graph.getAttribute("data-device-node-count")),
+  ).toBeGreaterThan(0);
 
   const stageBox = await page.locator(".graph-stage").boundingBox();
   const legendBox = await legend.boundingBox();

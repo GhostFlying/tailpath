@@ -1,4 +1,4 @@
-import { Activity, ClockAlert } from "lucide-react";
+import { Activity, Server, TriangleAlert } from "lucide-react";
 
 export function GraphLegend() {
   return (
@@ -35,6 +35,12 @@ export function GraphLegend() {
         <strong>Node telemetry</strong>
         <div className="legend-group node-legend">
           <span>
+            <i className="legend-device">
+              <Server size={13} />
+            </i>{" "}
+            Platform device
+          </span>
+          <span>
             <i className="legend-runtime-badge">
               <Activity size={9} />
             </i>{" "}
@@ -45,7 +51,7 @@ export function GraphLegend() {
           </span>
           <span>
             <i className="legend-clock">
-              <ClockAlert size={13} />
+              <TriangleAlert size={13} />
             </i>{" "}
             Clock skew
           </span>
