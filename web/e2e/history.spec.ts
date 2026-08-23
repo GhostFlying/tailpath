@@ -103,6 +103,7 @@ test("uses list and full-screen detail on mobile", async ({
   );
   await expect(page.getByLabel("History connections")).toBeVisible();
   await expect(page.getByLabel("History edge detail")).toBeHidden();
+  await expect(page.locator(".live-state")).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "History window" }),
   ).toHaveValue("6h");
@@ -121,6 +122,7 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(
     page.getByRole("heading", { name: /MacBook.*DevBox/ }),
   ).toBeVisible();
+  await expect(page.getByLabel("Server reachable")).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("history-mobile-detail.png"),
     fullPage: true,
