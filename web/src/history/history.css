@@ -424,6 +424,10 @@
   font-weight: 400;
 }
 
+.history-detail-status {
+  display: none;
+}
+
 .history-back-button,
 .detail-window-control {
   display: none;
@@ -831,7 +835,7 @@
 @media (max-width: 620px) {
   .history-shell .topbar {
     height: 64px;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto 14px;
     padding-inline: 16px;
   }
 
@@ -849,9 +853,14 @@
   }
 
   .history-shell .live-state {
+    grid-column: 3;
     width: 14px;
+    min-width: 0;
+    justify-content: center;
+    gap: 0;
     overflow: hidden;
     color: transparent;
+    font-size: 0;
   }
 
   .history-shell .live-state > span {
@@ -1020,6 +1029,17 @@
 
   .history-detail-header h1 {
     font-size: 16px;
+  }
+
+  .history-detail-status {
+    width: 9px;
+    height: 9px;
+    display: block;
+    flex: none;
+    border-radius: 50%;
+    background: var(--history-teal);
+    box-shadow: 0 0 0 4px #d9efec;
+    margin-left: auto;
   }
 
   .detail-window-control {
