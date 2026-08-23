@@ -19,6 +19,8 @@ describe("history chart geometry", () => {
     expect(
       geometry.points.every((point) => point.aY <= 130 && point.bY >= 130),
     ).toBe(true);
+    expect(geometry.aArea.match(/M/g)).toHaveLength(1);
+    expect(geometry.bArea.match(/M/g)).toHaveLength(1);
   });
 });
 
