@@ -1,0 +1,33 @@
+{
+  "name": "@tailpath/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "check": "tsc -b && prettier --check .",
+    "dev": "vite --host 0.0.0.0",
+    "format": "prettier --write .",
+    "generate:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.ts",
+    "test": "vitest run src",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "cytoscape": "3.33.1",
+    "lucide-react": "0.468.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0",
+    "@types/cytoscape": "3.21.9",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "5.0.2",
+    "openapi-typescript": "7.9.1",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2",
+    "vite": "7.1.5",
+    "vitest": "3.2.4"
+  }
+}
