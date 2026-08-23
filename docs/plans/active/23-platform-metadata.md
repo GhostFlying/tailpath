@@ -60,21 +60,21 @@ without changing identity reconciliation or path-marker semantics.
 - Observer protocol version remains `1`.
 - `NodeIdentity.os?: string` and therefore `TopologyNode.os?: string` are
   backward-compatible JSON properties.
-- Graph element data adds `platformIcon`, `telemetryIcon`, and `clockSkewIcon`
-  image values; ordinary node classes retain runtime/peer and skew semantics.
+- Graph element data adds bounded background image/size/position arrays;
+  ordinary node classes retain runtime/peer and skew semantics.
 - Inspector adds a Platform detail using the same glyph mapping as the graph.
 
 ## Steps
 
-- [ ] Add OpenAPI/domain OS fields, regenerate Go/TypeScript types, and prove
+- [x] Add OpenAPI/domain OS fields, regenerate Go/TypeScript types, and prove
   old report compatibility plus identity neutrality.
-- [ ] Map LocalAPI self and peer OS with known normalization and unknown-value
+- [x] Map LocalAPI self and peer OS with known normalization and unknown-value
   preservation tests.
-- [ ] Add centralized platform presentation and graph element icon data.
-- [ ] Render strict device anatomy and align Inspector/provenance/legend.
-- [ ] Add Vitest, Go, and Playwright coverage and inspect desktop/mobile
+- [x] Add centralized platform presentation and graph element icon data.
+- [x] Render strict device anatomy and align Inspector/provenance/legend.
+- [x] Add Vitest, Go, and Playwright coverage and inspect desktop/mobile
   screenshots through the documented Playwright fallback.
-- [ ] Record verification and open the stacked Draft PR.
+- [x] Record verification and open the stacked Draft PR.
 
 ## Tests
 
@@ -101,9 +101,40 @@ without changing identity reconciliation or path-marker semantics.
 
 ## Current state
 
-Implementation has not started. The API, aggregator, adapter, and current graph
-selectors have been traced end to end.
+Implementation and local verification are complete. The branch is ready for a
+stacked Draft PR based on the #22 collector-resilience branch.
 
 ## Next step
 
-Implement the optional schema/domain field and regenerate both API clients.
+Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
+are rebase-merged.
+
+## Verification
+
+- Generated and domain tests prove old JSON remains valid, OS round-trips, and
+  platform changes leave canonical identity unchanged.
+- Aggregator coverage proves a trusted linux-to-macos refresh keeps one node and
+  updates topology display metadata. Adapter tests cover normalized peer OS and
+  preservation of unknown values.
+- Vitest passes 30 tests, including all five known platform mappings, unknown
+  labels, independent telemetry/skew classes, background layers, and Peer Relay
+  platform-icon exclusion.
+- `go test ./...`, `go vet ./...`, TypeScript/Prettier checks, web tests, and the
+  production web build pass. Regenerating API and Lucide assets leaves the tree
+  unchanged.
+- Playwright Chromium passes four normal desktop/mobile tests and two manual
+  250-node/1,000-edge tests. The graph reports every ordinary device at exactly
+  52 by 52 model pixels; all image requests load without console errors.
+- Browser plugin was unavailable, so repository Playwright Chromium was the
+  documented fallback. `view_image` comparison against the accepted node
+  anatomy confirms centered platform glyphs, top-right teal telemetry, special
+  relay/path-marker shapes, and matching legend semantics. The normal fixture
+  intentionally has no clock skew; the scale fixture retains nine warnings and
+  the amber TriangleAlert asset/legend.
+
+## Completion summary
+
+Optional platform metadata now flows from LocalAPI through protocol v1 and
+canonical topology into a strict device-node anatomy. Platform, runtime
+telemetry, clock skew, and path intermediates remain independent visual and data
+semantics.

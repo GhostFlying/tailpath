@@ -16,6 +16,12 @@
 - `relay_session_update`: traffic-bearing Peer Relay sessions observed between
   two Tailnet endpoints. Zero-delta session lifecycle messages are not activity.
 
+Node identities may include optional reported `os` display metadata. Known
+LocalAPI values are normalized to `linux`, `macos`, `windows`, `ios`, or
+`android`; unknown values are preserved. OS never contributes to canonical
+identity, aliases, or merge decisions, and protocol-v1 reports that omit it
+remain valid.
+
 Every envelope has a UUID report ID, reporter instance UUID, monotonic sequence,
 and collection timestamp. Normal messages may contain several observer peer
 views. A relay update instead contains one or more sessions with explicit relay,
