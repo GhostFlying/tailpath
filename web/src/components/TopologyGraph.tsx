@@ -206,6 +206,7 @@ export function TopologyGraph(props: Props) {
   const layoutRuns = useRef(0);
   const renderEpoch = useRef(0);
   const topologyNodeIDs = useRef<string[]>([]);
+  const renderedFingerprints = useRef(new Map<string, string>());
   const cachedPositions = useRef(
     readLayoutCache(
       typeof window === "undefined" ? undefined : window.localStorage,
@@ -226,6 +227,7 @@ export function TopologyGraph(props: Props) {
     initialized.current = false;
     layoutRuns.current = 0;
     renderEpoch.current = 0;
+    renderedFingerprints.current.clear();
     const cy = cytoscape({
       container: container.current,
       elements: [],
@@ -284,14 +286,16 @@ export function TopologyGraph(props: Props) {
     });
     const newCanonicalNodes: NodeSingular[] = [];
     const knownNodeIDs = new Set<string>();
+    const nextFingerprints = new Map<string, string>();
     for (const definition of preparedElements) {
       const id = String(definition.data?.id);
       const fingerprint = elementFingerprint(definition);
       nextFingerprints.set(id, fingerprint);
       const existing = cy.getElementById(id);
       if (existing.length) {
-        existing.data(definition.data ?? {});
-        existing.classes(definition.classes?.toString() ?? "");
+        if (renderedFingerprints.current.get(id) !== fingerprint) {
+          updateElementIfChanged(existing, definition);
+        }
         if (existing.isNode() && existing.data("persistable")) {
           knownNodeIDs.add(id);
         }
@@ -308,6 +312,7 @@ export function TopologyGraph(props: Props) {
         }
       }
     }
+    renderedFingerprints.current = nextFingerprints;
     seedNewNodes(cy, newCanonicalNodes, knownNodeIDs);
     deriveVirtualPositions(cy);
     if (container.current) container.current.dataset.ready = "false";
@@ -457,6 +462,44 @@ export function TopologyGraph(props: Props) {
   );
 }
 
+function updateElementIfChanged(
+  element: CollectionReturnValue,
+  definition: ElementDefinition,
+) {
+  const nextData = definition.data ?? {};
+  const currentData = element.data() as Record<string, unknown>;
+  const dataChanged =
+    Object.keys(currentData).length !== Object.keys(nextData).length ||
+    Object.entries(nextData).some(
+      ([key, value]) => !sameElementData(currentData[key], value),
+    );
+  if (dataChanged) element.data(nextData);
+
+  const nextClasses = String(definition.classes ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const currentClasses = element.classes();
+  if (
+    currentClasses.length !== nextClasses.length ||
+    nextClasses.some((className) => !element.hasClass(className))
+  ) {
+    element.classes(nextClasses);
+  }
+}
+
+function elementFingerprint(definition: ElementDefinition): string {
+  return JSON.stringify([definition.data ?? {}, definition.classes ?? ""]);
+}
+
+function sameElementData(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
 const measuredLabels = new Map<string, number>();
 
 function withMeasuredIdealLength(
@@ -582,6 +625,7 @@ function updateGraphDiagnostics(
     }
   });
   const positions: string[] = [];
+  const edgeRates: string[] = [];
   cy.nodes("[persistable]").forEach((node) => {
     const position = node.position();
     positions.push(
@@ -589,11 +633,18 @@ function updateGraphDiagnostics(
     );
   });
   positions.sort();
+  cy.edges().forEach((edge) => {
+    edgeRates.push(
+      `${edge.id()}:${Number(edge.data("trafficWidth")).toFixed(4)}:${String(edge.data("label"))}`,
+    );
+  });
+  edgeRates.sort();
   const pan = cy.pan();
   element.dataset.deviceNodeCount = String(deviceNodes.length);
   element.dataset.deviceNodesSquare = String(deviceNodesSquare);
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
+  element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
   element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
   element.dataset.ready = "true";
 }
