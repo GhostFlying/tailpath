@@ -61,12 +61,12 @@ transactional publish boundary.
 
 ## Steps
 
-- [x] Implement typed runtime-state deep copy and ownership transfer tests.
-- [x] Add checkpoint cursor schema compatibility and incremental record APIs.
-- [x] Restore checkpoint plus later reports and cover crash/replay boundaries.
-- [x] Add minute maintenance and checkpoint-covered raw-report cleanup tests.
-- [x] Coalesce SSE invalidations and browser topology refreshes.
-- [x] Rerun scale baseline and document the before/after measurements.
+- [ ] Implement typed runtime-state deep copy and ownership transfer tests.
+- [ ] Add checkpoint cursor schema compatibility and incremental record APIs.
+- [ ] Restore checkpoint plus later reports and cover crash/replay boundaries.
+- [ ] Add minute maintenance and checkpoint-covered raw-report cleanup tests.
+- [ ] Coalesce SSE invalidations and browser topology refreshes.
+- [ ] Rerun scale baseline and document the before/after measurements.
 
 ## Tests
 
@@ -96,35 +96,18 @@ transactional publish boundary.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #20 scale-harness branch.
+The implementation boundary and current call chains are documented. No code has
+been changed yet.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
-are rebase-merged.
+Implement typed aggregator state cloning and exhaustive independence tests
+before changing persistence.
 
 ## Verification
 
-- Typed deep-copy and ownership-transfer tests cover every nested runtime-state
-  collection while preserving existing subscribers.
-- Store tests pass for checkpoint cursors, journal-only reports, legacy cursor
-  migration, replay queries, and checkpoint-safe maintenance cleanup.
-- App tests pass for crash-window replay, new-checkpoint generation, receive
-  time rollback, storage-failure atomicity, and recovery after all covered raw
-  reports are removed.
-- `go test ./...` and `go vet ./...` pass with Go 1.26.6. The scale app test
-  improved from about 23.0 seconds and 5.37 MB to 1.88 seconds and 4.04 MB.
-- Web typecheck/Prettier, 22 Vitest tests, and production build pass with Node
-  24.19.0 and pnpm 10.15.0.
-- Default Playwright passes four desktop/mobile tests. Scale Playwright passes
-  desktop and Pixel 7 with 1,000 logical edges, 666 active/334 recent edges,
-  nine skewed observers, and zero console errors.
-- Browser plugin was unavailable, so repository Playwright Chromium was the
-  explicit fallback. Scale screenshots were inspected as nonblank.
+Pending.
 
 ## Completion summary
 
-Runtime state now uses typed candidates and bounded checkpoints, restart replay
-uses a durable report cursor, maintenance deletes only checkpoint-covered raw
-reports, and invalidation bursts are bounded end to end.
+Pending.
