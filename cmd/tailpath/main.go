@@ -80,12 +80,16 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	adminListen := flags.String("admin-listen", "127.0.0.1:8091", "loopback health listen address")
 	heartbeat := flags.Duration("heartbeat-interval", time.Minute, "observer freshness heartbeat interval")
 	unsafeBroadListen := flags.Bool("unsafe-allow-non-tailnet-listen", false, "allow tailscaled mode to bind a non-Tailscale address; API WhoIs remains required")
+	scaleFixture := flags.Bool("scale", false, "load the 250-node/1,000-edge test fixture")
 	if fixture {
 		*networkMode = "plain"
 		*databasePath = ":memory:"
 	}
 	if err := flags.Parse(arguments); err != nil {
 		return err
+	}
+	if *scaleFixture && !fixture {
+		return errors.New("scale fixture is only available with fixture-server")
 	}
 	if *heartbeat <= 0 {
 		return errors.New("heartbeat interval must be positive")
@@ -169,7 +173,17 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	}
 	server := httpapi.New(application, httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger})
 	if fixture {
-		go fixtures.New(application, logger).Run(ctx)
+		if *scaleFixture {
+			scenario, err := fixtures.NewScaleScenario(fixtures.DefaultScaleConfig())
+			if err != nil {
+				return err
+			}
+			if err := scenario.Load(ctx, application, time.Now().UTC()); err != nil {
+				return fmt.Errorf("load scale fixture: %w", err)
+			}
+		} else {
+			go fixtures.New(application, logger).Run(ctx)
+		}
 	}
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
 	return serve(ctx, listener, server.Handler(), *adminListen, logger)
