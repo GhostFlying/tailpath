@@ -133,11 +133,15 @@ func TestValidateTailscaledListenAddress(t *testing.T) {
 	}
 }
 
-func TestServerRejectsNonPositiveHeartbeatBeforeStartup(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := runServer([]string{"--heartbeat-interval=-1s"}, logger, false)
-	if err == nil || err.Error() != "heartbeat interval must be positive" {
-		t.Fatalf("runServer error = %v, want positive heartbeat validation", err)
+func TestServerRejectsHeartbeatOutsideSupportedRange(t *testing.T) {
+	for _, value := range []string{"9s", "10m1s"} {
+		t.Run(value, func(t *testing.T) {
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			err := runServer([]string{"--heartbeat-interval=" + value}, logger, false)
+			if err == nil || err.Error() != "heartbeat interval must be between 10s and 10m" {
+				t.Fatalf("runServer error = %v, want heartbeat range validation", err)
+			}
+		})
 	}
 }
 

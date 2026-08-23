@@ -48,6 +48,12 @@ collectors run as native binaries. The built-in reporter deliberately bypasses
 process HTTP proxy settings so ingest preserves the Tailscale source identity
 required by WhoIs.
 
+Native collectors accept `TAILPATH_SERVER_URL` and `TAILPATH_SOCKET`; explicit
+`--server` and `--socket` flags take precedence over those environment values.
+Run `tailpath collector --check` to read LocalAPI once and print self identity,
+runtime platform, and peer count as JSON without contacting the Tailpath server
+or actively probing any peer.
+
 In tailscaled server mode, an omitted listen host resolves to the first local
 Tailscale IP. Explicit wildcard, LAN, and other addresses are rejected unless
 `--unsafe-allow-non-tailnet-listen` is supplied; API WhoIs remains mandatory
