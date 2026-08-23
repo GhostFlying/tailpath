@@ -69,7 +69,7 @@ func TestScaleScenarioContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(payload)
-	const wantDigest = "cc7fc789729ce9e1e8ba6c1025f9ab9617938aca4f4a2da6f0b8d3b46b5e52bb"
+	const wantDigest = "4313d67cc743639095416983394aa402f97b56624f25f4acfe9db405ed522785"
 	if got := hex.EncodeToString(digest[:]); got != wantDigest {
 		t.Fatalf("digest = %s, want %s", got, wantDigest)
 	}
@@ -128,6 +128,31 @@ func TestScaleScenarioAggregatesExpectedTopology(t *testing.T) {
 	}
 	if skewed != 9 {
 		t.Fatalf("clock-skewed observers = %d, want 9", skewed)
+	}
+}
+
+func TestScaleScenarioRefreshesBrowserRuntimeAfterSlowLoad(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	now := at.Add(30 * time.Second)
+	aggregator := aggregate.New(aggregate.Options{Now: func() time.Time { return now }})
+	for _, timed := range scenario.Reports(at) {
+		if _, err := aggregator.ApplyAt(timed.Report, timed.ReceivedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := scenario.RefreshRuntime(aggregator, now, 4); err != nil {
+		t.Fatal(err)
+	}
+	states := map[domain.EdgeState]int{}
+	for _, edge := range aggregator.Snapshot().Edges {
+		states[edge.State]++
+	}
+	if states[domain.EdgeActive] != 666 || states[domain.EdgeRecent] != 334 {
+		t.Fatalf("states after refresh = %#v, want 666 active/334 recent", states)
 	}
 }
 

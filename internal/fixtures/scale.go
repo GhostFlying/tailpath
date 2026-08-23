@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
@@ -146,6 +147,22 @@ func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.
 	return nil
 }
 
+// RefreshRuntime keeps the test-only browser fixture inside the ten-second
+// active window after the intentionally unoptimized persistent load finishes.
+func (s *ScaleScenario) RefreshRuntime(aggregator *aggregate.Aggregator, at time.Time, sequence int64) error {
+	for node := range s.nodes {
+		report := s.trafficReport(node, at.UTC(), false, sequence)
+		result, err := aggregator.ApplyAt(report, at.UTC())
+		if err != nil {
+			return fmt.Errorf("refresh scale report %s: %w", report.ReportID, err)
+		}
+		if !result.Receipt.Accepted || result.Receipt.ResyncRequired {
+			return fmt.Errorf("scale refresh report %s was not accepted cleanly", report.ReportID)
+		}
+	}
+	return nil
+}
+
 func (s *ScaleScenario) helloReport(node int, receivedAt time.Time) domain.ReportEnvelope {
 	peers := make([]domain.PeerObservation, 0, len(s.neighbors[node]))
 	for _, edgeIndex := range s.neighbors[node] {
@@ -199,7 +216,7 @@ func (s *ScaleScenario) envelope(
 ) domain.ReportEnvelope {
 	collectedAt := receivedAt
 	if node%29 == 0 {
-		collectedAt = collectedAt.Add(5 * time.Minute)
+		collectedAt = collectedAt.Add(6 * time.Minute)
 	}
 	return domain.ReportEnvelope{
 		Version:            domain.ProtocolVersion,
