@@ -16,3 +16,20 @@ func TestPeerRelayIP(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeOS(t *testing.T) {
+	tests := map[string]string{
+		"linux":      "linux",
+		"Darwin":     "macos",
+		"macOS":      "macos",
+		"WINDOWS":    "windows",
+		"iOS":        "ios",
+		"android":    "android",
+		"freebsd-14": "freebsd-14",
+	}
+	for input, expected := range tests {
+		if got := normalizeOS(input); got != expected {
+			t.Errorf("normalizeOS(%q) = %q, want %q", input, got, expected)
+		}
+	}
+}
