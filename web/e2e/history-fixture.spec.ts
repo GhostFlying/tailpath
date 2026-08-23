@@ -7,16 +7,15 @@ test("opens seeded history from the real fixture API", async ({
   await expect(page.locator(".history-shell")).toHaveAttribute(
     "data-history-ready",
     "true",
-    { timeout: 15_000 },
   );
 
   const connection = page
     .getByRole("button")
-    .filter({ hasText: /MacBook.*iPhone|iPhone.*MacBook/ });
+    .filter({ hasText: /MacBook.*iPhone/ });
   await expect(connection).toBeVisible();
   await connection.click();
   await expect(
-    page.getByRole("heading", { name: /MacBook.*iPhone|iPhone.*MacBook/ }),
+    page.getByRole("heading", { name: /MacBook.*iPhone/ }),
   ).toBeVisible();
   await expect(page.locator(".traffic-line-a")).toHaveAttribute("d", /L/);
   await expect(page.getByRole("list", { name: "Path timeline" })).toContainText(
