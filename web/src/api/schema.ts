@@ -106,7 +106,7 @@ export interface components {
             nodeId?: string;
             nodeKey?: string;
             discoKey?: string;
-            hostname: string;
+            hostname?: string;
             dnsName?: string;
             tailscaleIps?: string[];
         };

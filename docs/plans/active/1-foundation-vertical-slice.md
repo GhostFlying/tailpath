@@ -1,6 +1,6 @@
 # M0 and v0.1 foundation implementation plan
 
-Status: independent review remediation in progress
+Status: review remediation complete; awaiting CI
 Issue: https://github.com/GhostFlying/tailpath/issues/1
 Milestones: M0, v0.1
 Last updated: 2026-08-23
@@ -156,7 +156,7 @@ real Tailnet dogfooding.
 - [x] Migrate persisted draft runtime state in memory, cover collector restart
       and delayed old-session reports, and align the observer protocol/data
       model documentation.
-- [ ] Make hostname optional in the NodeIdentity OpenAPI contract while keeping
+- [x] Make hostname optional in the NodeIdentity OpenAPI contract while keeping
       the domain requirement for at least one stable identity or Tailscale IP.
 
 ## History cleanup
@@ -272,6 +272,13 @@ real Tailnet dogfooding.
   desktop/mobile Playwright cases without application log errors.
 - GitHub Actions passed the full `check`, image build/state-volume assertion, and
   Conventional PR title gates on the rewritten eight-commit head `b2bd192`.
+- Reporter-session remediation passed focused aggregation vet/tests and the full
+  Go suite in the pinned Go 1.26.6 container. Restart replacement, old-session
+  fencing, and migration from reporter-owned draft runtime state have dedicated
+  regressions. The NodeIdentity contract change passed generated Go/domain
+  tests, TypeScript and Prettier checks, all 20 Vitest tests, and the production
+  web build. The final deterministic pass also confirmed generated-file drift,
+  gofmt, full Go vet/tests, and all four desktop/Pixel 7 Playwright cases.
 
 ## Current state
 
@@ -281,14 +288,13 @@ transition are implemented as atomic commits on
 transition, relay-identity, and protocol-contract gaps; the initial remediation
 is complete and all deterministic, browser, Compose, image, and GitHub Actions
 gates are green. Codex review then found that reporter-session ownership still
-contains observer inventory state and that NodeIdentity incorrectly requires a
-display hostname in OpenAPI; structural remediation is in progress. The leased
-cleanup reduced the Draft PR from 49 commits to eight before human review while
-preserving the verified product tree.
+contained observer inventory state and that NodeIdentity incorrectly required a
+display hostname in OpenAPI; both are remediated with focused regressions. The
+leased cleanup reduced the Draft PR from 49 commits to eight before human review
+while preserving the verified product tree.
 
 ## Next step
 
-Complete observer-owned inventory and NodeIdentity contract remediation, run
-the focused and full deterministic checks, and resolve the Codex review threads.
-The cross-host runbook remains available for a later operational dogfood run,
-but it does not block v0.1 path correctness.
+Push the two atomic remediation commits, wait for current-head GitHub Actions,
+and resolve the Codex review threads. The cross-host runbook remains available
+for a later operational dogfood run, but it does not block v0.1 path correctness.
