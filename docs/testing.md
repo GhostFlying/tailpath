@@ -31,7 +31,15 @@ about 1.88 seconds and the database to 4.04 MB. The browser baseline remains
 about 18-19 seconds, isolating layout as #24 work. Server-side 250 ms SSE
 coalescing and browser single-flight refresh eliminated the earlier Chromium
 `ERR_INSUFFICIENT_RESOURCES` warning; the scale test now fails on any console
-error.
+error. Browser-local positions and bounded automatic layout reduced the desktop
+250-node/1,000-edge `data-ready` measurement below the five-second gate; cached
+reloads perform zero automatic layout runs and restore exact coordinates.
+
+The manual scale workflow also builds a steady seven-day history database with
+250 nodes, 1,000 continuously active edges, 720,000 raw provenance rows,
+2,880,000 minute rows, and 168,000 hour rows. The 2026-08-24 local run produced
+707,936,256 bytes in 67.7 seconds, below the 2 GiB target. This is a synthetic
+capacity gate rather than a production hardware performance claim.
 
 Manual milestone verification uses at least two real nodes and ordinary
 application traffic. Tailpath itself never invokes an active connectivity probe.
