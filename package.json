@@ -1,0 +1,12 @@
+{
+  "name": "tailpath",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "build": "pnpm --dir web build",
+    "check": "pnpm --dir web check",
+    "dev": "pnpm --dir web dev",
+    "generate": "pnpm --dir web generate:api",
+    "test": "pnpm --dir web test"
+  }
+}
