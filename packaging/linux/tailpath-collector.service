@@ -1,0 +1,26 @@
+[Unit]
+Description=Tailpath passive Tailscale collector
+Documentation=https://github.com/GhostFlying/tailpath
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/tailpath-collector
+ExecStart=/usr/local/bin/tailpath collector
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
