@@ -104,6 +104,75 @@ func TestRetentionUsesServerReceiveTime(t *testing.T) {
 	}
 }
 
+func TestCheckpointCursorRestoresOnlyLaterReports(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	first := sampleReport(at, at, "first")
+	second := sampleReport(at.Add(time.Second), at.Add(time.Second), "second")
+	if _, err := database.Record(context.Background(), first, at, []byte(`{"checkpoint":1}`), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Record(context.Background(), second, at.Add(time.Second), nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(checkpoint.Payload) != `{"checkpoint":1}` || checkpoint.LastReportRowID < 1 || !checkpoint.UpdatedAt.Equal(at) {
+		t.Fatalf("checkpoint = %#v", checkpoint)
+	}
+	reports, err := database.RestoreReportsAfter(context.Background(), checkpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 1 || reports[0].Report.ReportID != "second" || reports[0].RowID <= checkpoint.LastReportRowID {
+		t.Fatalf("later reports = %#v", reports)
+	}
+}
+
+func TestMaintainDeletesOnlyCheckpointCoveredReports(t *testing.T) {
+	database, err := Open(":memory:", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	if _, err := database.Record(context.Background(), sampleReport(at, at, "checkpointed"), at, []byte(`{}`), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Record(context.Background(), sampleReport(at.Add(time.Second), at.Add(time.Second), "journaled"), at.Add(time.Second), nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Maintain(context.Background(), at.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	reports, err := database.RestoreReports(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 1 || reports[0].Report.ReportID != "journaled" {
+		t.Fatalf("reports after maintenance = %#v", reports)
+	}
+	if _, err := database.Record(context.Background(), sampleReport(at.Add(2*time.Second), at.Add(2*time.Second), "next-checkpoint"), at.Add(2*time.Second), []byte(`{"next":true}`), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Maintain(context.Background(), at.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	reports, err = database.RestoreReports(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 0 {
+		t.Fatalf("checkpoint-covered reports remain: %#v", reports)
+	}
+}
+
 func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	path := t.TempDir() + "/legacy.db"
 	raw, err := sql.Open("sqlite", path)
@@ -160,6 +229,41 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	if err != nil || len(history.PathEvents) != 1 || history.PathEvents[0].Observations == nil ||
 		len(history.Traffic) != 1 || history.Traffic[0].AToBBytes != 120 || history.Traffic[0].BToABytes != 40 {
 		t.Fatalf("migrated path history = %#v, err=%v", history, err)
+	}
+}
+
+func TestOpenMigratesLegacyRuntimeCheckpointCursor(t *testing.T) {
+	path := t.TempDir() + "/legacy-checkpoint.db"
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	if _, err := raw.Exec(`
+        CREATE TABLE runtime_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          payload BLOB NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO runtime_state(singleton, payload, updated_at) VALUES (1, '{"legacy":true}', ?)
+    `, formatTime(at)); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(checkpoint.Payload) != `{"legacy":true}` || checkpoint.LastReportRowID != 0 || !checkpoint.UpdatedAt.Equal(at) {
+		t.Fatalf("migrated checkpoint = %#v", checkpoint)
 	}
 }
 
