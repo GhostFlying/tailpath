@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +25,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/collector"
+	"github.com/GhostFlying/tailpath/internal/domain"
 	"github.com/GhostFlying/tailpath/internal/fixtures"
 	"github.com/GhostFlying/tailpath/internal/httpapi"
 	"github.com/GhostFlying/tailpath/internal/store"
@@ -301,24 +305,78 @@ func serve(ctx context.Context, listener net.Listener, handler http.Handler, adm
 }
 
 func runCollector(arguments []string, logger *slog.Logger) error {
-	flags := flag.NewFlagSet("collector", flag.ContinueOnError)
-	serverURL := flags.String("server", "http://tailpath:8080", "Tailpath server URL on the Tailnet")
-	socket := flags.String("socket", "", "tailscaled LocalAPI socket")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	reporter, err := collector.NewHTTPReporter(*serverURL, nil)
+	config, err := parseCollectorConfig(arguments, os.Getenv)
 	if err != nil {
 		return err
 	}
-	source := tailscaleadapter.NewLocalSource(*socket)
+	source := tailscaleadapter.NewLocalSource(config.socket)
+	if config.check {
+		return checkCollector(context.Background(), source, os.Stdout)
+	}
+	reporter, err := collector.NewHTTPReporter(config.serverURL, nil)
+	if err != nil {
+		return err
+	}
 	runner := collector.New(source, reporter, collector.Options{
 		Logger: logger,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	logger.Info("collector started", "server", *serverURL, "sample_interval", 2*time.Second)
+	logger.Info("collector started", "server", config.serverURL, "sample_interval", 2*time.Second)
 	return runner.Run(ctx)
+}
+
+type collectorConfig struct {
+	serverURL string
+	socket    string
+	check     bool
+}
+
+func parseCollectorConfig(arguments []string, getenv func(string) string) (collectorConfig, error) {
+	flags := flag.NewFlagSet("collector", flag.ContinueOnError)
+	serverDefault := getenv("TAILPATH_SERVER_URL")
+	if serverDefault == "" {
+		serverDefault = "http://tailpath:8080"
+	}
+	serverURL := flags.String("server", serverDefault, "Tailpath server URL on the Tailnet")
+	socket := flags.String("socket", getenv("TAILPATH_SOCKET"), "tailscaled LocalAPI socket")
+	check := flags.Bool("check", false, "read LocalAPI status once without reporting")
+	if err := flags.Parse(arguments); err != nil {
+		return collectorConfig{}, err
+	}
+	if flags.NArg() != 0 {
+		return collectorConfig{}, fmt.Errorf("collector does not accept positional arguments")
+	}
+	return collectorConfig{serverURL: *serverURL, socket: *socket, check: *check}, nil
+}
+
+type collectorCheckResult struct {
+	Self      domain.NodeIdentity `json:"self"`
+	OS        string              `json:"os"`
+	PeerCount int                 `json:"peerCount"`
+}
+
+func checkCollector(ctx context.Context, source collector.Source, output io.Writer) error {
+	snapshot, err := source.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("read local status: %w", err)
+	}
+	result := collectorCheckResult{
+		Self:      snapshot.Observer,
+		OS:        collectorRuntimeOS(runtime.GOOS),
+		PeerCount: len(snapshot.Peers),
+	}
+	if err := json.NewEncoder(output).Encode(result); err != nil {
+		return fmt.Errorf("write collector check: %w", err)
+	}
+	return nil
+}
+
+func collectorRuntimeOS(value string) string {
+	if value == "darwin" {
+		return "macos"
+	}
+	return value
 }
 
 func runHealthcheck(arguments []string) error {
