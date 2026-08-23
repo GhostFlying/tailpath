@@ -1,6 +1,8 @@
 package aggregate
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -397,6 +399,124 @@ func TestReporterRestartReclaimsPriorStateForObserver(t *testing.T) {
 	}
 	if _, retained := previous.ObserverIDs[aggregator.state.Aliases["stable:b"]]; !retained {
 		t.Fatalf("old reporter no longer owns observer B: %#v", previous.ObserverIDs)
+	}
+	observerA := aggregator.state.Observers[aggregator.state.Aliases["stable:a"]]
+	if observerA == nil || observerA.OwnerReporterInstanceID != "reporter-b" {
+		t.Fatalf("observer A owner = %#v, want reporter-b", observerA)
+	}
+}
+
+func TestReporterRestartReplacesObserverInventoryAndFencesOldSession(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	hello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "old-hello", ReporterInstanceID: "reporter-old", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: node("a", "A"), InventoryGeneration: "old-inventory",
+			Peers: []domain.PeerObservation{{Peer: node("b", "B")}, {Peer: node("c", "C")}},
+		}},
+	}
+	if _, err := aggregator.ApplyAt(hello, now); err != nil {
+		t.Fatal(err)
+	}
+	applySample(t, aggregator, "reporter-old", 2, "a", "A", "c", "C", "old-inventory", 100, 50)
+
+	now = now.Add(time.Second)
+	restartedHello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "new-hello", ReporterInstanceID: "reporter-new", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: node("a", "A"), InventoryGeneration: "new-inventory",
+			Peers: []domain.PeerObservation{{Peer: node("b", "B")}},
+		}},
+	}
+	if _, err := aggregator.ApplyAt(restartedHello, now); err != nil {
+		t.Fatal(err)
+	}
+
+	observerID := aggregator.state.Aliases["stable:a"]
+	peerBID := aggregator.state.Aliases["stable:b"]
+	peerCID := aggregator.state.Aliases["stable:c"]
+	observer := aggregator.state.Observers[observerID]
+	if observer == nil || observer.OwnerReporterInstanceID != "reporter-new" ||
+		observer.InventoryGeneration != "new-inventory" {
+		t.Fatalf("restarted observer state = %#v", observer)
+	}
+	if _, retained := observer.Membership[peerBID]; !retained || len(observer.Membership) != 1 {
+		t.Fatalf("restarted membership = %#v, want only B", observer.Membership)
+	}
+	edgeID, _, _ := domain.EdgeID(observerID, peerCID)
+	if edge := aggregator.state.Edges[edgeID]; edge == nil || len(edge.Observations) != 0 {
+		t.Fatalf("removed peer provenance was retained: %#v", edge)
+	}
+	if aggregator.state.Reporters["reporter-old"] != nil {
+		t.Fatalf("old reporter state was retained: %#v", aggregator.state.Reporters["reporter-old"])
+	}
+
+	lastReport := aggregator.state.Nodes[observerID].LastReport
+	now = now.Add(time.Second)
+	delayed := sampleReport(
+		"reporter-old", 3, "a", "A", "c", "C", "old-inventory",
+		domain.PathObservation{Kind: domain.PathDERP, DERPRegion: "hkg"}, 100, 50,
+	)
+	delayed.CollectedAt = now
+	result, err := aggregator.ApplyAt(delayed, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Receipt.Accepted || !result.Receipt.ResyncRequired || result.Changed {
+		t.Fatalf("delayed old-session receipt = %#v, changed=%t", result.Receipt, result.Changed)
+	}
+	if !aggregator.state.Nodes[observerID].LastReport.Equal(lastReport) {
+		t.Fatal("delayed old-session sample refreshed observer liveness")
+	}
+	if aggregator.state.Reporters["reporter-old"] != nil {
+		t.Fatal("rejected old session recreated durable reporter state")
+	}
+	if edge := aggregator.state.Edges[edgeID]; len(edge.Observations) != 0 {
+		t.Fatalf("delayed old-session sample restored provenance: %#v", edge.Observations)
+	}
+}
+
+func TestRestoreMigratesReporterOwnedInventoryToObserverState(t *testing.T) {
+	legacy := runtimeState{
+		Reporters: map[string]*reporterState{
+			"reporter": {
+				LastSequence: 2,
+				ReportIDs:    map[string]struct{}{"sample": {}},
+				ObserverIDs:  map[string]struct{}{"n_a": {}},
+				LegacyInventories: map[string]string{
+					"n_a": "inventory",
+				},
+				LegacyMemberships: map[string]map[string]struct{}{
+					"n_a": {"n_b": {}},
+				},
+			},
+		},
+	}
+	payload, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregator := newTestAggregator(time.Now)
+	if err := aggregator.RestoreState(payload); err != nil {
+		t.Fatal(err)
+	}
+	observer := aggregator.state.Observers["n_a"]
+	if observer == nil || observer.OwnerReporterInstanceID != "reporter" ||
+		observer.InventoryGeneration != "inventory" {
+		t.Fatalf("migrated observer state = %#v", observer)
+	}
+	if _, exists := observer.Membership["n_b"]; !exists || len(observer.Membership) != 1 {
+		t.Fatalf("migrated membership = %#v", observer.Membership)
+	}
+	migrated, err := aggregator.MarshalState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(migrated, []byte(`"inventories"`)) || bytes.Contains(migrated, []byte(`"memberships"`)) {
+		t.Fatalf("migrated state retained reporter-owned inventory: %s", migrated)
 	}
 }
 

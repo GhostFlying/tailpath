@@ -31,6 +31,8 @@ state、traffic bucket 和逻辑路径变更，最后才提交内存并通知 SS
 DERP region 或 Peer Relay node 的变化仍然是逻辑路径变更。只要新鲜 edge
 provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在可见拓扑中。
 
-重启直接恢复 reporter sequence、inventory generation、identity alias、节点、最新
-observation 和 edge lifecycle，不依赖有保留期限的 raw report 重放。SQLite 还保存
-十秒 traffic bucket，以及带 supporting provenance 的聚合路径变更。
+重启直接恢复 reporter sequence、observer 自己持有的 inventory generation 和
+membership、reporter 到 observer 的 ownership、identity alias、节点、最新
+observation 和 edge lifecycle。新 reporter 进程只能通过完整 hello 接管 observer；
+旧 session 的普通消息不能重新取得 ownership。恢复不依赖有保留期限的 raw report
+重放。SQLite 还保存十秒 traffic bucket，以及带 supporting provenance 的聚合路径变更。
