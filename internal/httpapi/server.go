@@ -24,9 +24,10 @@ type Authorizer interface {
 }
 
 type Options struct {
-	Authorizer Authorizer
-	WebDir     string
-	Logger     *slog.Logger
+	Authorizer            Authorizer
+	WebDir                string
+	Logger                *slog.Logger
+	TopologyEventInterval time.Duration
 }
 
 type Server struct {
@@ -35,6 +36,7 @@ type Server struct {
 	webDir     string
 	logger     *slog.Logger
 	mux        *http.ServeMux
+	eventEvery time.Duration
 }
 
 type transportIdentityKey struct{}
@@ -43,12 +45,16 @@ func New(application *app.App, options Options) *Server {
 	if options.Logger == nil {
 		options.Logger = slog.Default()
 	}
+	if options.TopologyEventInterval <= 0 {
+		options.TopologyEventInterval = 250 * time.Millisecond
+	}
 	server := &Server{
 		app:        application,
 		authorizer: options.Authorizer,
 		webDir:     options.WebDir,
 		logger:     options.Logger,
 		mux:        http.NewServeMux(),
+		eventEvery: options.TopologyEventInterval,
 	}
 	server.mux.HandleFunc("POST /api/v1/reports", server.submitReport)
 	server.mux.HandleFunc("GET /api/v1/topology", server.getTopology)
@@ -144,6 +150,7 @@ func (s *Server) streamEvents(response http.ResponseWriter, request *http.Reques
 	response.Header().Set("X-Accel-Buffering", "no")
 	events, unsubscribe := s.app.Aggregator.Subscribe()
 	defer unsubscribe()
+	invalidations := coalesceInvalidations(request.Context(), events, s.eventEvery)
 	writeSSE(response, "ready", map[string]any{"generatedAt": time.Now().UTC()})
 	flusher.Flush()
 	keepalive := time.NewTicker(20 * time.Second)
@@ -152,7 +159,7 @@ func (s *Server) streamEvents(response http.ResponseWriter, request *http.Reques
 		select {
 		case <-request.Context().Done():
 			return
-		case _, ok := <-events:
+		case _, ok := <-invalidations:
 			if !ok {
 				return
 			}
@@ -163,6 +170,49 @@ func (s *Server) streamEvents(response http.ResponseWriter, request *http.Reques
 			flusher.Flush()
 		}
 	}
+}
+
+func coalesceInvalidations(ctx context.Context, input <-chan struct{}, interval time.Duration) <-chan struct{} {
+	output := make(chan struct{})
+	go func() {
+		defer close(output)
+		var timer *time.Timer
+		var deadline <-chan time.Time
+		pending := false
+		defer func() {
+			if timer != nil {
+				timer.Stop()
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-input:
+				if !ok {
+					return
+				}
+				pending = true
+				if timer == nil {
+					timer = time.NewTimer(interval)
+					deadline = timer.C
+				}
+			case <-deadline:
+				timer = nil
+				deadline = nil
+				if !pending {
+					continue
+				}
+				pending = false
+				select {
+				case output <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return output
 }
 
 func (s *Server) serveWeb(response http.ResponseWriter, request *http.Request) {

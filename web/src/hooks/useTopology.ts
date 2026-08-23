@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getTopology } from "../api/client";
 import type { Topology } from "../api/types";
+import { createSingleFlight } from "../lib/singleFlight";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "error";
 
@@ -8,27 +9,31 @@ export function useTopology() {
   const [topology, setTopology] = useState<Topology | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef<AbortController | null>(null);
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
-  const refresh = useCallback(async () => {
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    try {
-      const next = await getTopology(controller.signal);
-      setTopology(next);
-      setError(null);
-    } catch (caught) {
-      if (controller.signal.aborted) return;
-      setError(
-        caught instanceof Error ? caught.message : "Topology request failed",
-      );
-      setConnection("error");
-    }
-  }, []);
+  const refresh = useCallback(() => refreshRef.current(), []);
 
   useEffect(() => {
-    void refresh();
+    let controller: AbortController | null = null;
+    const runner = createSingleFlight(async () => {
+      const requestController = new AbortController();
+      controller = requestController;
+      try {
+        const next = await getTopology(requestController.signal);
+        setTopology(next);
+        setError(null);
+      } catch (caught) {
+        if (requestController.signal.aborted) return;
+        setError(
+          caught instanceof Error ? caught.message : "Topology request failed",
+        );
+        setConnection("error");
+      } finally {
+        if (controller === requestController) controller = null;
+      }
+    });
+    refreshRef.current = runner.request;
+    void runner.request();
     const events = new EventSource("/api/v1/events");
     events.addEventListener("ready", () => {
       setConnection("live");
@@ -41,9 +46,11 @@ export function useTopology() {
     events.onerror = () => setConnection("reconnecting");
     return () => {
       events.close();
-      requestRef.current?.abort();
+      refreshRef.current = () => Promise.resolve();
+      runner.stop();
+      controller?.abort();
     };
-  }, [refresh]);
+  }, []);
 
   useEffect(() => {
     if (!topology) return;
