@@ -25,6 +25,41 @@ func TestReportIngestRequiresAuthorization(t *testing.T) {
 	}
 }
 
+func TestFixtureMutationRouteIsExplicitAndAuthorized(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/fixture/edge-update", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("production fixture route status = %d, want 404", recorder.Code)
+	}
+
+	called := false
+	server = newTestServerWithOptions(t, Options{
+		Authorizer: staticAuthorizer{},
+		FixtureMutation: func(context.Context) (any, error) {
+			called = true
+			return map[string]any{"sequence": 4}, nil
+		},
+	})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/fixture/edge-update", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusAccepted || !called {
+		t.Fatalf("fixture route status = %d called = %t", recorder.Code, called)
+	}
+
+	server = newTestServerWithOptions(t, Options{FixtureMutation: func(context.Context) (any, error) {
+		return nil, nil
+	}})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/fixture/edge-update", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized fixture route status = %d, want 401", recorder.Code)
+	}
+}
+
 func TestReadAPIsRequireAuthorization(t *testing.T) {
 	server := newTestServer(t, nil)
 	for _, path := range []string{"/api/v1/topology", "/api/v1/events", "/api/v1/history/edges/edge"} {
@@ -238,29 +273,34 @@ func recordHistoryTraffic(t *testing.T, server *Server, reportID, edgeID, source
 	}
 }
 
-func TestCoalesceInvalidationsKeepsOneEventPerWindowAndAFollowUp(t *testing.T) {
+func TestCoalesceInvalidationsEmitsLeadingEventAndOneRateLimitedFollowUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	input := make(chan struct{}, 100)
-	output := coalesceInvalidations(ctx, input, 20*time.Millisecond)
-	for range 100 {
+	interval := 50 * time.Millisecond
+	output := coalesceInvalidations(ctx, input, interval)
+	started := time.Now()
+	input <- struct{}{}
+	select {
+	case <-output:
+		if elapsed := time.Since(started); elapsed >= interval {
+			t.Fatalf("leading invalidation took %s", elapsed)
+		}
+	case <-time.After(interval):
+		t.Fatal("leading topology invalidation was delayed by a full window")
+	}
+	for range 99 {
 		input <- struct{}{}
 	}
 	select {
 	case <-output:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("burst did not produce a topology invalidation")
+		t.Fatal("burst follow-up was not rate limited")
+	case <-time.After(interval / 2):
 	}
 	select {
 	case <-output:
-		t.Fatal("one burst produced more than one invalidation window")
-	case <-time.After(30 * time.Millisecond):
-	}
-	input <- struct{}{}
-	select {
-	case <-output:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("later burst did not produce a follow-up invalidation")
+	case <-time.After(2 * interval):
+		t.Fatal("burst did not produce one trailing invalidation")
 	}
 	cancel()
 	select {
@@ -274,6 +314,10 @@ func TestCoalesceInvalidationsKeepsOneEventPerWindowAndAFollowUp(t *testing.T) {
 }
 
 func newTestServer(t *testing.T, authorizer Authorizer) *Server {
+	return newTestServerWithOptions(t, Options{Authorizer: authorizer})
+}
+
+func newTestServerWithOptions(t *testing.T, options Options) *Server {
 	t.Helper()
 	database, err := store.Open(":memory:", time.Hour)
 	if err != nil {
@@ -284,7 +328,7 @@ func newTestServer(t *testing.T, authorizer Authorizer) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(application, Options{Authorizer: authorizer})
+	return New(application, options)
 }
 
 type staticAuthorizer struct{}
