@@ -55,6 +55,9 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   expect(consoleErrors).toEqual([]);
 
   const readyElapsedMs = Date.now() - startedAt;
+  if (testInfo.project.name === "desktop-chromium") {
+    expect(readyElapsedMs).toBeLessThanOrEqual(5_000);
+  }
   const reloadStartedAt = Date.now();
   await page.reload();
   await expect(graph).toHaveAttribute("data-ready", "true", {
