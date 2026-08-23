@@ -90,15 +90,15 @@ artifacts, signing, notarization, tags, or GitHub Releases.
 
 ## Steps
 
-- [ ] Add Linux install/uninstall, default config, and hardened systemd unit.
-- [ ] Add user LaunchAgent install/uninstall, runner, config, and logs for macOS.
-- [ ] Add elevated Windows install/uninstall, Scheduled Task runner, config,
+- [x] Add Linux install/uninstall, default config, and hardened systemd unit.
+- [x] Add user LaunchAgent install/uninstall, runner, config, and logs for macOS.
+- [x] Add elevated Windows install/uninstall, Scheduled Task runner, config,
   and bounded log rotation.
-- [ ] Include only the matching platform assets in each GoReleaser archive.
-- [ ] Add safe installer fixture checks and six-archive layout validation.
-- [ ] Add hosted OS Go test/build matrix and PowerShell/shell syntax checks.
-- [ ] Update English/Chinese deployment documentation and support labels.
-- [ ] Run GoReleaser snapshot, inspect every archive, and complete `make check`.
+- [x] Include only the matching platform assets in each GoReleaser archive.
+- [x] Add safe installer fixture checks and six-archive layout validation.
+- [x] Add hosted OS Go test/build matrix and PowerShell/shell syntax checks.
+- [x] Update English/Chinese deployment documentation and support labels.
+- [x] Run GoReleaser snapshot, inspect every archive, and complete `make check`.
 
 ## Risks
 
@@ -114,13 +114,31 @@ artifacts, signing, notarization, tags, or GitHub Releases.
 - GoReleaser free supports templated archive file paths but not templated file
   contents. All packaged files are complete source-controlled platform files.
 
+## Verification record
+
+- Linux and macOS isolated-root fixtures cover first install, create-only
+  configuration, reinstall, default uninstall, and purge. The macOS fixture
+  also covers a user home containing spaces.
+- The Windows scripts parse with PowerShell 5.1 syntax. A real runner fixture
+  preserves exit code 7 while streaming about 27 MiB and retaining between two
+  and five bounded log files.
+- GoReleaser v2.17.1 produced Linux, Darwin, and Windows amd64/arm64 snapshot
+  archives. The layout gate inspected all six, confirmed platform-only files
+  and executable bits, and verified every checksum.
+- Hosted Ubuntu, macOS, and Windows jobs passed `go test ./...`, native build,
+  and their platform packaging checks. The repository `check` and image jobs
+  also passed on the published PR head before the fixture-readiness follow-up.
+- Local Go generation, formatting, vet, tests, selected race tests, and build
+  pass with Go 1.26.6. Web generation, type/format checks, 44 unit tests, and
+  production build pass. Playwright against the real fixture API passes 10
+  tests with six intentional project/viewport skips.
+- A readiness race discovered by the browser gate was fixed by synchronously
+  seeding fixture history before the HTTP server becomes healthy; a Go
+  regression test now enforces that contract.
+
 ## Current state
 
-The issue, repository agent rules, collector flags/environment precedence,
-GoReleaser v2 archive documentation, current release workflow, and deployment
-docs have been inspected. No platform installer exists yet.
-
-## Next step
-
-Implement and fixture-test the Linux service package, then commit that coherent
-platform boundary before starting macOS and Windows.
+All #27 implementation and local acceptance work is complete in Draft PR #37.
+Real arm64 Mac Tailnet behavior remains deliberately unclaimed and is a #28
+release gate. The next step is the final hosted CI run and review, followed by
+the v0.2 performance and dogfood work in #28.
