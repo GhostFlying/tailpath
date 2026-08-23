@@ -19,6 +19,19 @@ type HTTPReporter struct {
 	client   *http.Client
 }
 
+type HTTPStatusError struct {
+	StatusCode int
+	Status     string
+	Message    string
+}
+
+func (e *HTTPStatusError) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("server returned %s", e.Status)
+	}
+	return fmt.Sprintf("server returned %s: %s", e.Status, e.Message)
+}
+
 func NewHTTPReporter(serverURL string, client *http.Client) (*HTTPReporter, error) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
@@ -58,7 +71,11 @@ func (r *HTTPReporter) Send(ctx context.Context, report domain.ReportEnvelope) (
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return domain.ReportReceipt{}, fmt.Errorf("server returned %s: %s", response.Status, strings.TrimSpace(string(message)))
+		return domain.ReportReceipt{}, &HTTPStatusError{
+			StatusCode: response.StatusCode,
+			Status:     response.Status,
+			Message:    strings.TrimSpace(string(message)),
+		}
 	}
 	var receipt domain.ReportReceipt
 	if err := json.NewDecoder(response.Body).Decode(&receipt); err != nil {
