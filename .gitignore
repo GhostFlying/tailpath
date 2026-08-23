@@ -10,7 +10,10 @@ coverage/
 dist/
 node_modules/
 playwright-report/
+secrets/
 test-results/
+web/playwright-report/
+web/test-results/
 web/src/api/generated.ts
 tailpath.db*
 *.log

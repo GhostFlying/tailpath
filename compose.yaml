@@ -1,0 +1,56 @@
+name: tailpath
+
+services:
+  server:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-latest}
+    build:
+      context: .
+      args:
+        VERSION: ${TAILPATH_VERSION:-dev}
+    command:
+      - server
+      - --network=tsnet
+      - --hostname=${TAILPATH_HOSTNAME:-tailpath}
+      - --state-dir=/var/lib/tailpath/tsnet
+      - --database=/var/lib/tailpath/tailpath.db
+      - --web-dir=/opt/tailpath/web
+      - --admin-listen=127.0.0.1:8091
+    environment:
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+    secrets:
+      - tailscale-authkey
+    volumes:
+      - tailpath-data:/var/lib/tailpath
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tailpath", "healthcheck", "--url=http://127.0.0.1:8091/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  collector:
+    profiles: [collector]
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-latest}
+    build:
+      context: .
+      args:
+        VERSION: ${TAILPATH_VERSION:-dev}
+    command:
+      - collector
+      - --server=${TAILPATH_SERVER_URL:-http://tailpath:8080}
+      - --socket=/var/run/tailscale/tailscaled.sock
+    network_mode: host
+    # The host socket group varies across Linux installations. The collector
+    # runs as root only to open this read-only API and has no other host mount.
+    user: "0:0"
+    volumes:
+      - ${TAILSCALE_SOCKET:-/var/run/tailscale/tailscaled.sock}:/var/run/tailscale/tailscaled.sock:ro
+    restart: unless-stopped
+
+volumes:
+  tailpath-data:
+
+secrets:
+  tailscale-authkey:
+    file: ${TAILPATH_AUTHKEY_FILE:-./secrets/tailscale-authkey}
