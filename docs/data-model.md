@@ -18,6 +18,14 @@ again after that point cannot merge an identity into the stale canonical node.
 MagicDNS short name is the preferred UI label and remains display metadata, so
 renaming it updates presentation without changing canonical identity.
 
+Each observable canonical node owns its current inventory generation and peer
+membership. A reporter instance owns only its process-local message sequence,
+deduplication state, and the current right to update one or more observers. A
+new reporter hello transfers that right without moving or discarding observer
+inventory, so the complete replacement can withdraw peers removed across a
+collector restart. Non-owner inventory, traffic, and heartbeat messages cannot
+update the observer.
+
 A logical edge is an unordered node pair. Directional rates are kept
 separately. A-to-B prefers A's TX delta and falls back to B's RX delta, then to
 third-party Peer Relay evidence; the values from independent provenance are

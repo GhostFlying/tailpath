@@ -150,6 +150,14 @@ real Tailnet dogfooding.
       drift found during review.
 - [x] Run the full deterministic suite and focused delivery checks, then update
       the draft PR and Issue #1 acceptance state.
+- [x] Move inventory generation and peer membership from reporter-session state
+      to canonical observer runtime state, with hello-based ownership transfer
+      and stale-session fencing.
+- [x] Migrate persisted draft runtime state in memory, cover collector restart
+      and delayed old-session reports, and align the observer protocol/data
+      model documentation.
+- [ ] Make hostname optional in the NodeIdentity OpenAPI contract while keeping
+      the domain requirement for at least one stable identity or Tailscale IP.
 
 ## History cleanup
 
@@ -270,13 +278,17 @@ real Tailnet dogfooding.
 The M0 vertical slice, real Tailnet container smoke, and controlled real-DERP
 transition are implemented as atomic commits on
 `issue/1-foundation-vertical-slice`. Independent review found deployment,
-transition, relay-identity, and protocol-contract gaps; remediation is complete
-and all deterministic, browser, Compose, image, and GitHub Actions gates are
-green. The leased cleanup reduced the Draft PR from 49 commits to eight before
-human review while preserving the verified product tree.
+transition, relay-identity, and protocol-contract gaps; the initial remediation
+is complete and all deterministic, browser, Compose, image, and GitHub Actions
+gates are green. Codex review then found that reporter-session ownership still
+contains observer inventory state and that NodeIdentity incorrectly requires a
+display hostname in OpenAPI; structural remediation is in progress. The leased
+cleanup reduced the Draft PR from 49 commits to eight before human review while
+preserving the verified product tree.
 
 ## Next step
 
-Complete human review, then mark PR #2 ready and squash-merge it. The cross-host
-runbook remains available for a later operational dogfood run, but it does not
-block v0.1 path correctness.
+Complete observer-owned inventory and NodeIdentity contract remediation, run
+the focused and full deterministic checks, and resolve the Codex review threads.
+The cross-host runbook remains available for a later operational dogfood run,
+but it does not block v0.1 path correctness.

@@ -35,19 +35,29 @@ type Aggregator struct {
 }
 
 type runtimeState struct {
-	Reporters     map[string]*reporterState `json:"reporters"`
-	Nodes         map[string]*nodeState     `json:"nodes"`
-	Aliases       map[string]string         `json:"aliases"`
-	AliasLastSeen map[string]time.Time      `json:"aliasLastSeen,omitempty"`
-	Edges         map[string]*edgeState     `json:"edges"`
+	Reporters     map[string]*reporterState        `json:"reporters"`
+	Observers     map[string]*observerRuntimeState `json:"observers,omitempty"`
+	Nodes         map[string]*nodeState            `json:"nodes"`
+	Aliases       map[string]string                `json:"aliases"`
+	AliasLastSeen map[string]time.Time             `json:"aliasLastSeen,omitempty"`
+	Edges         map[string]*edgeState            `json:"edges"`
 }
 
 type reporterState struct {
-	LastSequence int64                          `json:"lastSequence"`
-	ReportIDs    map[string]struct{}            `json:"reportIds"`
-	ObserverIDs  map[string]struct{}            `json:"observerIds"`
-	Inventories  map[string]string              `json:"inventories"`
-	Memberships  map[string]map[string]struct{} `json:"memberships"`
+	LastSequence int64               `json:"lastSequence"`
+	ReportIDs    map[string]struct{} `json:"reportIds"`
+	ObserverIDs  map[string]struct{} `json:"observerIds"`
+
+	// These fields are decoded only to migrate runtime state written before
+	// inventory ownership moved to observerRuntimeState.
+	LegacyInventories map[string]string              `json:"inventories,omitempty"`
+	LegacyMemberships map[string]map[string]struct{} `json:"memberships,omitempty"`
+}
+
+type observerRuntimeState struct {
+	OwnerReporterInstanceID string              `json:"ownerReporterInstanceId,omitempty"`
+	InventoryGeneration     string              `json:"inventoryGeneration,omitempty"`
+	Membership              map[string]struct{} `json:"membership,omitempty"`
 }
 
 type nodeState struct {
@@ -113,6 +123,7 @@ func New(options Options) *Aggregator {
 func newRuntimeState() runtimeState {
 	return runtimeState{
 		Reporters:     make(map[string]*reporterState),
+		Observers:     make(map[string]*observerRuntimeState),
 		Nodes:         make(map[string]*nodeState),
 		Aliases:       make(map[string]string),
 		AliasLastSeen: make(map[string]time.Time),
@@ -146,12 +157,11 @@ func (a *Aggregator) ApplyAt(report domain.ReportEnvelope, receivedAt time.Time)
 func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.Time) (ApplyResult, error) {
 	a.pruneIndexesLocked(receivedAt)
 	reporter := a.state.Reporters[report.ReporterInstanceID]
+	newReporter := reporter == nil
 	if reporter == nil {
 		reporter = &reporterState{
 			ReportIDs:   make(map[string]struct{}),
 			ObserverIDs: make(map[string]struct{}),
-			Inventories: make(map[string]string),
-			Memberships: make(map[string]map[string]struct{}),
 		}
 		a.state.Reporters[report.ReporterInstanceID] = reporter
 	}
@@ -170,12 +180,24 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	if reporter.LastSequence > 0 && report.Sequence != reporter.LastSequence+1 {
 		result.Receipt.ResyncRequired = true
 	}
+	if report.Kind != domain.ReportObserverHello && report.Kind != domain.ReportRelaySessionUpdate &&
+		!a.reporterOwnsObserversLocked(report.ReporterInstanceID, report.Observers, receivedAt) {
+		if newReporter {
+			delete(a.state.Reporters, report.ReporterInstanceID)
+		}
+		result.Receipt.Accepted = false
+		result.Receipt.ResyncRequired = true
+		return result, nil
+	}
 
 	touchedEdges := make(map[string]domain.PathObservation)
 	for _, observation := range report.Observers {
 		observerID, _ := a.resolveIdentityLocked(observation.Observer, receivedAt)
+		if report.Kind == domain.ReportObserverHello {
+			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
+		}
 		a.touchObserverLocked(observerID, report.CollectedAt, receivedAt)
-		a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
+		observerState := a.state.Observers[observerID]
 
 		switch report.Kind {
 		case domain.ReportObserverHello, domain.ReportInventoryUpdate:
@@ -187,9 +209,9 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				}
 				members[peerID] = struct{}{}
 			}
-			a.replaceInventoryLocked(reporter, observerID, observation.InventoryGeneration, members)
+			a.replaceInventoryLocked(observerState, observerID, observation.InventoryGeneration, members)
 		case domain.ReportTrafficSample:
-			if reporter.Inventories[observerID] != observation.InventoryGeneration {
+			if observerState.InventoryGeneration != observation.InventoryGeneration {
 				result.Receipt.ResyncRequired = true
 			}
 			for _, peer := range observation.Peers {
@@ -217,7 +239,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				})
 			}
 		case domain.ReportObserverHeartbeat:
-			if reporter.Inventories[observerID] != observation.InventoryGeneration {
+			if observerState.InventoryGeneration != observation.InventoryGeneration {
 				result.Receipt.ResyncRequired = true
 			}
 		}
@@ -278,8 +300,8 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	return result, nil
 }
 
-func (a *Aggregator) replaceInventoryLocked(reporter *reporterState, observerID, generation string, members map[string]struct{}) {
-	for peerID := range reporter.Memberships[observerID] {
+func (a *Aggregator) replaceInventoryLocked(observer *observerRuntimeState, observerID, generation string, members map[string]struct{}) {
+	for peerID := range observer.Membership {
 		if _, stillVisible := members[peerID]; stillVisible {
 			continue
 		}
@@ -288,8 +310,8 @@ func (a *Aggregator) replaceInventoryLocked(reporter *reporterState, observerID,
 			delete(edge.Observations, observerID)
 		}
 	}
-	reporter.Inventories[observerID] = generation
-	reporter.Memberships[observerID] = members
+	observer.InventoryGeneration = generation
+	observer.Membership = members
 }
 
 func (a *Aggregator) applyPeerLocked(collectedAt, receivedAt time.Time, observerID, peerID string, peer domain.PeerObservation) {
@@ -430,22 +452,52 @@ func (a *Aggregator) pruneIndexesLocked(now time.Time) {
 	}
 }
 
-func (a *Aggregator) claimReporterObserverLocked(reporterID string, reporter *reporterState, observerID string) {
-	reporter.ObserverIDs[observerID] = struct{}{}
-	for previousReporterID, previous := range a.state.Reporters {
-		if previousReporterID == reporterID {
-			continue
+func (a *Aggregator) reporterOwnsObserversLocked(reporterID string, observations []domain.ObserverReport, seenAt time.Time) bool {
+	for _, observation := range observations {
+		observerID, ok := a.lookupIdentityLocked(observation.Observer, seenAt)
+		if !ok {
+			return false
 		}
-		if _, claimed := previous.ObserverIDs[observerID]; !claimed {
-			continue
-		}
-		delete(previous.ObserverIDs, observerID)
-		delete(previous.Inventories, observerID)
-		delete(previous.Memberships, observerID)
-		if len(previous.ObserverIDs) == 0 {
-			delete(a.state.Reporters, previousReporterID)
+		observer := a.state.Observers[observerID]
+		if observer == nil || observer.OwnerReporterInstanceID != reporterID {
+			return false
 		}
 	}
+	return true
+}
+
+func (a *Aggregator) lookupIdentityLocked(identity domain.NodeIdentity, seenAt time.Time) (string, bool) {
+	strong, addresses := identityAliases(identity)
+	for _, alias := range strong {
+		if nodeID := a.state.Aliases[alias]; nodeID != "" {
+			return nodeID, true
+		}
+	}
+	for _, alias := range addresses {
+		if nodeID := a.state.Aliases[alias]; nodeID != "" && a.canUseAddressMatch(identity, alias, nodeID, seenAt) {
+			return nodeID, true
+		}
+	}
+	return "", false
+}
+
+func (a *Aggregator) claimReporterObserverLocked(reporterID string, reporter *reporterState, observerID string) {
+	observer := a.state.Observers[observerID]
+	if observer == nil {
+		observer = &observerRuntimeState{Membership: make(map[string]struct{})}
+		a.state.Observers[observerID] = observer
+	}
+	previousReporterID := observer.OwnerReporterInstanceID
+	if previousReporterID != "" && previousReporterID != reporterID {
+		if previous := a.state.Reporters[previousReporterID]; previous != nil {
+			delete(previous.ObserverIDs, observerID)
+			if len(previous.ObserverIDs) == 0 {
+				delete(a.state.Reporters, previousReporterID)
+			}
+		}
+	}
+	observer.OwnerReporterInstanceID = reporterID
+	reporter.ObserverIDs[observerID] = struct{}{}
 }
 
 func (a *Aggregator) removeNodeAddressLocked(nodeID, expiredAddress string) {
@@ -489,6 +541,7 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 	if keep == nil || remove == nil || keepID == removeID {
 		return
 	}
+	removeObserverIsNewer := remove.LastReport.After(keep.LastReport)
 	keep.Identity = mergeIdentity(remove.Identity, keep.Identity)
 	keep.Observable = keep.Observable || remove.Observable
 	if remove.LastEvidence.After(keep.LastEvidence) {
@@ -506,30 +559,45 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 			a.state.Aliases[alias] = keepID
 		}
 	}
-	for _, reporter := range a.state.Reporters {
-		if generation, ok := reporter.Inventories[removeID]; ok {
-			if _, exists := reporter.Inventories[keepID]; !exists {
-				reporter.Inventories[keepID] = generation
-			}
-			delete(reporter.Inventories, removeID)
+	a.mergeObserverRuntimeStatesLocked(keepID, removeID, removeObserverIsNewer)
+	a.rebuildEdgesLocked(keepID, removeID)
+}
+
+func (a *Aggregator) mergeObserverRuntimeStatesLocked(keepID, removeID string, removeIsNewer bool) {
+	keep := a.state.Observers[keepID]
+	remove := a.state.Observers[removeID]
+	if keep == nil && remove != nil {
+		keep = remove
+		a.state.Observers[keepID] = keep
+	} else if keep != nil && remove != nil {
+		if keep.Membership == nil {
+			keep.Membership = make(map[string]struct{})
 		}
-		if members, ok := reporter.Memberships[removeID]; ok {
-			if reporter.Memberships[keepID] == nil {
-				reporter.Memberships[keepID] = make(map[string]struct{})
-			}
-			for member := range members {
-				reporter.Memberships[keepID][member] = struct{}{}
-			}
-			delete(reporter.Memberships, removeID)
+		for memberID := range remove.Membership {
+			keep.Membership[memberID] = struct{}{}
 		}
-		for _, members := range reporter.Memberships {
-			if _, ok := members[removeID]; ok {
-				delete(members, removeID)
-				members[keepID] = struct{}{}
-			}
+		if removeIsNewer || keep.OwnerReporterInstanceID == "" {
+			keep.OwnerReporterInstanceID = remove.OwnerReporterInstanceID
+			keep.InventoryGeneration = remove.InventoryGeneration
 		}
 	}
-	a.rebuildEdgesLocked(keepID, removeID)
+	delete(a.state.Observers, removeID)
+
+	for _, observer := range a.state.Observers {
+		if _, exists := observer.Membership[removeID]; exists {
+			delete(observer.Membership, removeID)
+			observer.Membership[keepID] = struct{}{}
+		}
+	}
+	for _, reporter := range a.state.Reporters {
+		delete(reporter.ObserverIDs, keepID)
+		delete(reporter.ObserverIDs, removeID)
+	}
+	if keep != nil && keep.OwnerReporterInstanceID != "" {
+		if reporter := a.state.Reporters[keep.OwnerReporterInstanceID]; reporter != nil {
+			reporter.ObserverIDs[keepID] = struct{}{}
+		}
+	}
 }
 
 func (a *Aggregator) rebuildEdgesLocked(keepID, removeID string) {
@@ -895,6 +963,9 @@ func normalizeState(state *runtimeState) {
 	if state.Reporters == nil {
 		state.Reporters = make(map[string]*reporterState)
 	}
+	if state.Observers == nil {
+		state.Observers = make(map[string]*observerRuntimeState)
+	}
 	if state.Nodes == nil {
 		state.Nodes = make(map[string]*nodeState)
 	}
@@ -907,22 +978,69 @@ func normalizeState(state *runtimeState) {
 	if state.Edges == nil {
 		state.Edges = make(map[string]*edgeState)
 	}
-	for _, reporter := range state.Reporters {
+	reporterIDs := make([]string, 0, len(state.Reporters))
+	for reporterID := range state.Reporters {
+		reporterIDs = append(reporterIDs, reporterID)
+	}
+	sort.Strings(reporterIDs)
+	for _, reporterID := range reporterIDs {
+		reporter := state.Reporters[reporterID]
 		if reporter.ReportIDs == nil {
 			reporter.ReportIDs = make(map[string]struct{})
 		}
 		if reporter.ObserverIDs == nil {
 			reporter.ObserverIDs = make(map[string]struct{})
 		}
-		if reporter.Inventories == nil {
-			reporter.Inventories = make(map[string]string)
+
+		legacyObserverIDs := make(map[string]struct{}, len(reporter.ObserverIDs)+len(reporter.LegacyInventories)+len(reporter.LegacyMemberships))
+		for observerID := range reporter.ObserverIDs {
+			legacyObserverIDs[observerID] = struct{}{}
 		}
-		if reporter.Memberships == nil {
-			reporter.Memberships = make(map[string]map[string]struct{})
+		for observerID := range reporter.LegacyInventories {
+			legacyObserverIDs[observerID] = struct{}{}
 		}
-		for observerID := range reporter.Inventories {
-			reporter.ObserverIDs[observerID] = struct{}{}
+		for observerID := range reporter.LegacyMemberships {
+			legacyObserverIDs[observerID] = struct{}{}
 		}
+		for observerID := range legacyObserverIDs {
+			observer := state.Observers[observerID]
+			if observer == nil {
+				observer = &observerRuntimeState{Membership: make(map[string]struct{})}
+				state.Observers[observerID] = observer
+			}
+			if observer.OwnerReporterInstanceID == "" {
+				observer.OwnerReporterInstanceID = reporterID
+			}
+			if observer.OwnerReporterInstanceID != reporterID {
+				continue
+			}
+			if observer.InventoryGeneration == "" {
+				observer.InventoryGeneration = reporter.LegacyInventories[observerID]
+			}
+			if observer.Membership == nil {
+				observer.Membership = make(map[string]struct{})
+			}
+			for memberID := range reporter.LegacyMemberships[observerID] {
+				observer.Membership[memberID] = struct{}{}
+			}
+		}
+		reporter.ObserverIDs = make(map[string]struct{})
+		reporter.LegacyInventories = nil
+		reporter.LegacyMemberships = nil
+	}
+	for observerID, observer := range state.Observers {
+		if observer.Membership == nil {
+			observer.Membership = make(map[string]struct{})
+		}
+		if observer.OwnerReporterInstanceID == "" {
+			continue
+		}
+		reporter := state.Reporters[observer.OwnerReporterInstanceID]
+		if reporter == nil {
+			reporter = &reporterState{ReportIDs: make(map[string]struct{}), ObserverIDs: make(map[string]struct{})}
+			state.Reporters[observer.OwnerReporterInstanceID] = reporter
+		}
+		reporter.ObserverIDs[observerID] = struct{}{}
 	}
 	for _, edge := range state.Edges {
 		if edge.Observations == nil {

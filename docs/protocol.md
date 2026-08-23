@@ -58,10 +58,11 @@ traffic.
 
 An inventory generation is a normalized content hash over the observer and its
 current peer identities. Counters, path, online state, and last-seen timestamps
-are excluded. Hello and inventory update messages replace that observer's
-previous membership for the reporter instance. A removed peer withdraws only
-that observer's current provenance; it never deletes the canonical node or
-history globally.
+are excluded. Inventory generation and membership belong to the canonical
+observer, not to the reporter process carrying the report. Hello and inventory
+update messages replace that observer's previous membership. A removed peer
+withdraws only that observer's current provenance; it never deletes the
+canonical node or history globally.
 
 Traffic and heartbeat messages reference the current generation. Relay session
 updates do not participate in LocalAPI peer inventory generations. A sample with
@@ -75,12 +76,20 @@ The server accepts the next sequence for a reporter instance, treats an exact
 report ID as idempotent, ignores stale sequence values, and requests resync when
 it sees a sequence gap.
 
-When a new reporter instance claims a canonical observer, ownership of that
-observer's sequence/inventory state moves from the previous reporter. Other
-observers carried by the previous reporter remain intact. Normal collectors
-reconnect with a fresh hello, so process restarts do not cause reporter-state
-growth without bound while persisted inventory remains independent of raw
-report retention.
+Reporter sequence and report-ID deduplication are scoped to one reporter process
+run. A complete hello establishes or transfers the right to update each named
+canonical observer. Inventory generation and membership remain on the observer
+while only its owner reporter instance changes. Other observers carried by the
+previous reporter remain intact. Inventory, traffic, and heartbeat messages from
+a non-owner reporter are rejected with a resync request; they cannot refresh
+observer liveness or edge evidence. Normal collectors respond with a fresh
+hello, so process restarts do not cause reporter-state growth without bound
+while persisted observer inventory remains independent of raw report retention.
+
+Peer Relay session updates do not use LocalAPI inventory or hello messages. A
+relay update continues to associate its trusted reporter with the relay observer
+for the current extension contract; a dedicated relay exporter handshake can
+supersede this when relay telemetry is implemented.
 
 The newest accepted traffic observation by server receive time is the primary
 path evidence. Path specificity only breaks exact receive-time ties; conflicting

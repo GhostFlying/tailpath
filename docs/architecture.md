@@ -38,7 +38,10 @@ Peer Relay node changes remain logical transitions. A known Peer Relay node is
 retained in the visible topology for as long as fresh edge provenance refers to
 it.
 
-Restart restores current reporter sequences, inventory generations, identity
-aliases, nodes, observations, and edge lifecycle directly. Raw report retention
-is not the recovery mechanism. SQLite also stores ten-second traffic buckets
-and aggregated path transitions with the provenance supporting each transition.
+Restart restores current reporter sequences, observer-owned inventory
+generations and memberships, reporter-to-observer ownership, identity aliases,
+nodes, observations, and edge lifecycle directly. A new reporter process claims
+an observer with a complete hello; ordinary messages from an old session cannot
+take ownership back. Raw report retention is not the recovery mechanism. SQLite
+also stores ten-second traffic buckets and aggregated path transitions with the
+provenance supporting each transition.
