@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -10,7 +12,76 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/GhostFlying/tailpath/internal/collector"
+	"github.com/GhostFlying/tailpath/internal/domain"
 )
+
+func TestCollectorConfigPrecedence(t *testing.T) {
+	environment := map[string]string{
+		"TAILPATH_SERVER_URL": "http://environment:8080",
+		"TAILPATH_SOCKET":     "/environment/tailscaled.sock",
+	}
+	getenv := func(key string) string { return environment[key] }
+
+	tests := []struct {
+		name       string
+		arguments  []string
+		getenv     func(string) string
+		wantServer string
+		wantSocket string
+		wantCheck  bool
+	}{
+		{name: "built-in defaults", getenv: func(string) string { return "" }, wantServer: "http://tailpath:8080"},
+		{name: "environment", getenv: getenv, wantServer: "http://environment:8080", wantSocket: "/environment/tailscaled.sock"},
+		{name: "flags", arguments: []string{"--server=http://flag:8080", "--socket=/flag/tailscaled.sock", "--check"}, getenv: getenv, wantServer: "http://flag:8080", wantSocket: "/flag/tailscaled.sock", wantCheck: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseCollectorConfig(test.arguments, test.getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.serverURL != test.wantServer || got.socket != test.wantSocket || got.check != test.wantCheck {
+				t.Fatalf("config = %#v, want server=%q socket=%q check=%v", got, test.wantServer, test.wantSocket, test.wantCheck)
+			}
+		})
+	}
+}
+
+func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
+	source := &checkSource{snapshot: collector.Snapshot{
+		Observer: domain.NodeIdentity{StableNodeID: "self-id", Hostname: "workstation"},
+		Peers: []collector.PeerSnapshot{
+			{Identity: domain.NodeIdentity{StableNodeID: "peer-a"}},
+			{Identity: domain.NodeIdentity{StableNodeID: "peer-b"}},
+		},
+	}}
+	var output bytes.Buffer
+	if err := checkCollector(context.Background(), source, &output); err != nil {
+		t.Fatal(err)
+	}
+	if source.calls != 1 {
+		t.Fatalf("Snapshot calls = %d, want one", source.calls)
+	}
+	var result collectorCheckResult
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatalf("check output is not JSON: %v", err)
+	}
+	if result.Self.StableNodeID != "self-id" || result.OS == "" || result.PeerCount != 2 {
+		t.Fatalf("check result = %#v", result)
+	}
+}
+
+type checkSource struct {
+	snapshot collector.Snapshot
+	calls    int
+}
+
+func (s *checkSource) Snapshot(context.Context) (collector.Snapshot, error) {
+	s.calls++
+	return s.snapshot, nil
+}
 
 func TestResolveAuthKey(t *testing.T) {
 	directory := t.TempDir()
