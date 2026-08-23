@@ -55,6 +55,25 @@ func TestCounterResetDoesNotCreateTraffic(t *testing.T) {
 	}
 }
 
+func TestClockRollbackUsesHealthySampleDuration(t *testing.T) {
+	start := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	source := &snapshotSource{snapshots: []Snapshot{
+		snapshot(start, 0, 0, 0, 0),
+		snapshot(start.Add(-time.Minute), 0, 0, 5, 0),
+	}}
+	reporter := &recordingReporter{}
+	c := New(source, reporter, Options{ReporterInstance: "collector", SampleInterval: 2 * time.Second})
+	if err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := reporter.reports[1].Observers[0].Peers[0].SampleDurationMS; got != 2000 {
+		t.Fatalf("clock rollback sample duration = %dms, want healthy 2000ms fallback", got)
+	}
+}
+
 func TestCollectorAdoptsServerHeartbeatAndTrafficResetsIdleTimer(t *testing.T) {
 	start := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	source := &snapshotSource{snapshots: []Snapshot{
@@ -248,6 +267,38 @@ func TestRunBacksOffAndLogsOneRecovery(t *testing.T) {
 	output := logs.String()
 	if strings.Count(output, "collector degraded") != 1 || strings.Count(output, "collector recovered") != 1 {
 		t.Fatalf("transition logs = %q", output)
+	}
+}
+
+func TestRunBoundsDegradedSummaryLogging(t *testing.T) {
+	start := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	source := &scriptedSource{
+		results: make([]Snapshot, 4),
+		errors:  []error{errors.New("down-1"), errors.New("down-2"), errors.New("down-3"), errors.New("down-4")},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var waits int
+	var logs bytes.Buffer
+	c := New(source, &recordingReporter{}, Options{
+		Now:    func() time.Time { return start.Add(time.Duration(waits) * time.Minute) },
+		Jitter: func() float64 { return 0.5 },
+		Wait: func(context.Context, time.Duration) error {
+			waits++
+			if waits == 4 {
+				cancel()
+				return context.Canceled
+			}
+			return nil
+		},
+		SummaryInterval: 2 * time.Minute,
+		Logger:          slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	if err := c.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	output := logs.String()
+	if strings.Count(output, "collector degraded") != 1 || strings.Count(output, "collector remains degraded") != 1 {
+		t.Fatalf("bounded degraded logs = %q", output)
 	}
 }
 
