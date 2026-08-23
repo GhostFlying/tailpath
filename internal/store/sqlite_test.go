@@ -78,55 +78,6 @@ func TestInMemoryDatabaseSurvivesPooledConnectionReplacement(t *testing.T) {
 	}
 }
 
-func TestInMemoryDatabaseKeepsConcurrentConnectionsBesideAnchor(t *testing.T) {
-	database, err := Open(":memory:", 7*24*time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-
-	connections := make([]*sql.Conn, 0, 7)
-	defer func() {
-		for _, connection := range connections {
-			connection.Close()
-		}
-	}()
-	for range 7 {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		connection, err := database.db.Conn(ctx)
-		cancel()
-		if err != nil {
-			t.Fatalf("acquire concurrent in-memory connection %d: %v", len(connections)+1, err)
-		}
-		connections = append(connections, connection)
-	}
-}
-
-func TestOpenConfiguresEverySQLiteConnectionForRuntimeWorkload(t *testing.T) {
-	database, err := Open(":memory:", time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-
-	for _, check := range []struct {
-		pragma string
-		want   int
-	}{
-		{pragma: "foreign_keys", want: 1},
-		{pragma: "synchronous", want: 1},
-		{pragma: "temp_store", want: 2},
-	} {
-		var got int
-		if err := database.db.QueryRow("PRAGMA " + check.pragma).Scan(&got); err != nil {
-			t.Fatalf("read PRAGMA %s: %v", check.pragma, err)
-		}
-		if got != check.want {
-			t.Fatalf("PRAGMA %s = %d, want %d", check.pragma, got, check.want)
-		}
-	}
-}
-
 func TestRelayTrafficProvidesHistoryWhenEndpointsAreUnobservable(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {

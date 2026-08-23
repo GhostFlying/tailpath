@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -46,16 +45,14 @@ func Open(path string, retention time.Duration) (*SQLite, error) {
 	if memory {
 		path = fmt.Sprintf("file:tailpath-memory-%d?mode=memory&cache=shared", memoryDatabaseSequence.Add(1))
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 	maxConnections := 1
 	var anchor *sql.Conn
 	if memory {
-		// Keep the lifetime anchor plus enough working connections for concurrent
-		// fixture API reads, writes, and canceled-request cleanup.
-		maxConnections = 8
+		maxConnections = 2
 		anchor, err = db.Conn(context.Background())
 		if err != nil {
 			db.Close()
