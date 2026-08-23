@@ -19,7 +19,7 @@ path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
 1,000 logical edges, bilateral provenance, all four paths, active/recent state,
 and clock skew. Its Go ingest/restart smoke runs in PR checks; the full desktop
-and mobile graph baseline runs through the manual `Scale baseline` workflow and
+and mobile graph gate runs through the manual `V0.2 release gate` workflow and
 uploads JSON and screenshots. Multi-release LocalAPI fixture normalization and
 explicit SSE reconnect/conflict/long-label browser cases remain v0.2 work.
 
