@@ -1,4 +1,4 @@
-name: Scale baseline
+name: V0.2 release gate
 
 on:
   workflow_dispatch:
@@ -6,10 +6,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: v0.2-release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  baseline:
+  release-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,15 +30,22 @@ jobs:
       - run: make bootstrap
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - run: make build
-      - name: Record ingest and restart baseline
+      - name: Run constrained ingest and API gate
+        env:
+          TAILPATH_PERF_DURATION: 10m
+          TAILPATH_PERF_RPS: "125"
+          TAILPATH_PERF_API_SAMPLES: "50"
+          TAILPATH_PERF_OUTPUT_DIR: perf-artifacts
+        run: ./scripts/perf-gate.sh
+      - name: Record deterministic restart smoke
         run: |
-          mkdir -p scale-artifacts
+          mkdir -p perf-artifacts
           /usr/bin/time -v \
             go test ./internal/fixtures \
               -run TestScaleScenarioAppIngestAndRestart \
               -count=1 -v -json -timeout=15m \
-              > scale-artifacts/scale-go.json \
-              2> scale-artifacts/scale-resource.txt
+              > perf-artifacts/restart-smoke.json \
+              2> perf-artifacts/restart-smoke-resource.txt
       - name: Enforce seven-day history database size
         env:
           TAILPATH_HISTORY_SCALE: "1"
@@ -43,9 +54,9 @@ jobs:
             go test ./internal/store \
               -run TestSevenDayHistoryDatabaseSize \
               -count=1 -v -json -timeout=15m \
-              > scale-artifacts/history-size.json \
-              2> scale-artifacts/history-size-resource.txt
-      - name: Record browser baseline
+              > perf-artifacts/history-size.json \
+              2> perf-artifacts/history-size-resource.txt
+      - name: Enforce browser scale gates
         env:
           TAILPATH_SCALE_E2E: "1"
           TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
@@ -53,10 +64,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: scale-baseline
+          name: v0.2-release-gate
           path: |
-            scale-artifacts/
+            perf-artifacts/
             web/test-results/**/tailpath-scale.png
-            web/test-results/**/attachments/*.json
+            web/test-results/**/scale-browser.json
           if-no-files-found: warn
           retention-days: 30
