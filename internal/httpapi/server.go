@@ -30,6 +30,7 @@ type Options struct {
 	WebDir                string
 	Logger                *slog.Logger
 	TopologyEventInterval time.Duration
+	FixtureMutation       func(context.Context) (any, error)
 }
 
 type Server struct {
@@ -291,15 +292,21 @@ func coalesceInvalidations(ctx context.Context, input <-chan struct{}, interval 
 				if !ok {
 					return
 				}
-				pending = true
 				if timer == nil {
+					select {
+					case output <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
 					timer = time.NewTimer(interval)
 					deadline = timer.C
+				} else {
+					pending = true
 				}
 			case <-deadline:
-				timer = nil
-				deadline = nil
 				if !pending {
+					timer = nil
+					deadline = nil
 					continue
 				}
 				pending = false
@@ -308,6 +315,8 @@ func coalesceInvalidations(ctx context.Context, input <-chan struct{}, interval 
 				case <-ctx.Done():
 					return
 				}
+				timer.Reset(interval)
+				deadline = timer.C
 			}
 		}
 	}()
