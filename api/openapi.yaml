@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Tailpath API
-  version: 0.1.0
-  description: Sparse observer ingest and live topology API.
+  version: 0.2.0
+  description: Sparse observer ingest, live topology, and bounded history API.
 servers:
   - url: /api/v1
 paths:
@@ -63,6 +63,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/HistoryWindow'
       responses:
         '200':
           description: Edge history.
@@ -74,7 +75,69 @@ paths:
           $ref: '#/components/responses/Problem'
         '401':
           $ref: '#/components/responses/Problem'
+  /history/nodes:
+    get:
+      operationId: getHistoryNodes
+      summary: Return canonical nodes with traffic in a fixed history window.
+      parameters:
+        - $ref: '#/components/parameters/HistoryWindow'
+      responses:
+        '200':
+          description: Matching canonical node references.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryNodes'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /history/edges:
+    get:
+      operationId: listHistoryEdges
+      summary: Return a keyset-paginated page of logical traffic edges.
+      parameters:
+        - $ref: '#/components/parameters/HistoryWindow'
+        - name: nodeId
+          in: query
+          schema:
+            type: string
+            minLength: 1
+        - name: path
+          in: query
+          description: Match when the path appeared at any point in the window.
+          schema:
+            $ref: '#/components/schemas/PathKind'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Matching logical edge page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryEdgePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
 components:
+  parameters:
+    HistoryWindow:
+      name: window
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/HistoryWindow'
   responses:
     Problem:
       description: Request failed.
@@ -403,18 +466,111 @@ components:
           type: boolean
     EdgeHistory:
       type: object
-      required: [edgeId, traffic, pathEvents]
+      required:
+        - edgeId
+        - source
+        - target
+        - from
+        - to
+        - bucketDurationMs
+        - traffic
+        - pathEvents
+        - trafficTruncated
+        - pathEventsTruncated
       properties:
         edgeId:
           type: string
+        source:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        target:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        bucketDurationMs:
+          type: integer
+          format: int64
+          minimum: 1
         traffic:
           type: array
+          maxItems: 200
           items:
             $ref: '#/components/schemas/TrafficBucket'
+        pathAnchor:
+          $ref: '#/components/schemas/PathEvent'
         pathEvents:
           type: array
+          maxItems: 500
           items:
             $ref: '#/components/schemas/PathEvent'
+        trafficTruncated:
+          type: boolean
+        pathEventsTruncated:
+          type: boolean
+    HistoryWindow:
+      type: string
+      enum: [15m, 1h, 6h, 24h, 7d]
+    HistoryNodeReference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        hostname:
+          type: string
+        dnsName:
+          type: string
+        os:
+          type: string
+    HistoryNodes:
+      type: object
+      required: [nodes]
+      properties:
+        nodes:
+          type: array
+          maxItems: 250
+          items:
+            $ref: '#/components/schemas/HistoryNodeReference'
+    HistoryEdgeSummary:
+      type: object
+      required: [edgeId, source, target, lastTrafficAt, aToBBytes, bToABytes, paths]
+      properties:
+        edgeId:
+          type: string
+        source:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        target:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        lastTrafficAt:
+          type: string
+          format: date-time
+        aToBBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        bToABytes:
+          type: integer
+          format: int64
+          minimum: 0
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathKind'
+    HistoryEdgePage:
+      type: object
+      required: [edges]
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEdgeSummary'
+        nextCursor:
+          type: string
     TrafficBucket:
       type: object
       required: [bucketStart, aToBBytes, bToABytes]
