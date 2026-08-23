@@ -50,7 +50,9 @@ turns layout into an explicit, incremental operation.
 - Initial render restores cache first. Unknown canonical nodes are seeded at a
   known-neighbor centroid plus a deterministic small offset; remaining nodes use
   a deterministic grid. Cached/existing nodes are locked while COSE lays out only
-  new nodes with fit disabled.
+  new nodes with fit disabled. Automatic COSE is bounded to graphs with at most
+  100 canonical nodes; larger graphs keep the deterministic seeded positions so
+  the browser cannot be blocked by an unbounded initial layout.
 - After structure updates, virtual marker coordinates are recomputed from the
   average positions of their current neighboring endpoints. Edge-only changes
   do not invoke COSE or edge-clearance mutation.
@@ -69,14 +71,14 @@ turns layout into an explicit, incremental operation.
 
 ## Steps
 
-- [ ] Implement versioned bounded layout-cache helpers and unit tests.
-- [ ] Mark canonical graph elements and seed cached/new node coordinates.
-- [ ] Replace signature-driven full layout with initial/incremental layout and
+- [x] Implement versioned bounded layout-cache helpers and unit tests.
+- [x] Mark canonical graph elements and seed cached/new node coordinates.
+- [x] Replace signature-driven full layout with initial/incremental layout and
   derived marker placement while preserving viewport.
-- [ ] Add drag persistence plus Fit and Relayout controls.
-- [ ] Extend Playwright for filter, recent, reconnect, refresh, explicit
+- [x] Add drag persistence plus Fit and Relayout controls.
+- [x] Extend Playwright for filter, recent, reconnect, refresh, explicit
   relayout, square nodes, and desktop/mobile behavior.
-- [ ] Run normal and scale verification, inspect screenshots, and record results.
+- [x] Run normal and scale verification, inspect screenshots, and record results.
 
 ## Tests
 
@@ -104,11 +106,26 @@ turns layout into an explicit, incremental operation.
 - localStorage can throw in privacy/quota modes. Graph rendering must remain
   fully functional with an in-memory empty cache.
 
+## Verification record
+
+- `pnpm --dir web test`: 39 tests passed.
+- `pnpm --dir web check`: TypeScript and formatting passed.
+- Normal Playwright fixture: desktop and mobile suites passed, including stable
+  coordinates/viewport across SSE, filters, Show recent, refresh, Fit, and
+  Relayout.
+- Scale Playwright fixture: 250 topology nodes, 1,000 logical edges, 505 rendered
+  nodes, all path/state variants, and nine clock-skew observers rendered without
+  console errors. Desktop `data-ready` passed the 5-second assertion; a cached
+  reload performed zero automatic layout runs and restored exact coordinates.
+- The desktop scale screenshot was visually inspected. The dense all-path view
+  remains intentionally filter-driven, while platform icons, clock warnings,
+  path colors, controls, and the legend remain visible.
+
 ## Current state
 
-Implementation has not started. Current structure-signature, clearance, fit,
-and COSE triggers have been traced.
+Implementation and issue-level verification are complete. The remaining work is
+full repository validation and review of the stacked Draft PR.
 
 ## Next step
 
-Implement and unit-test the bounded versioned cache independently of Cytoscape.
+Run `make check`, push the issue branch, and open the Draft PR against #23.
