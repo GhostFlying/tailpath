@@ -129,5 +129,8 @@ function areaPath(points: Array<[number, number]>, zero: number): string {
   if (points.length === 0) return "";
   const first = points[0];
   const last = points[points.length - 1];
-  return `M${first[0].toFixed(2)},${zero.toFixed(2)} ${linePath(points)} L${last[0].toFixed(2)},${zero.toFixed(2)} Z`;
+  const curve = points
+    .map(([x, y]) => `L${x.toFixed(2)},${y.toFixed(2)}`)
+    .join(" ");
+  return `M${first[0].toFixed(2)},${zero.toFixed(2)} ${curve} L${last[0].toFixed(2)},${zero.toFixed(2)} Z`;
 }
