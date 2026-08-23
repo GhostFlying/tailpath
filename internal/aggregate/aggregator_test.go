@@ -394,6 +394,42 @@ func TestInventoryReplacementWithdrawsOnlyObserverProvenance(t *testing.T) {
 	}
 }
 
+func TestPlatformMetadataRefreshesWithoutChangingCanonicalNode(t *testing.T) {
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	hello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "hello-linux", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer:            domain.NodeIdentity{StableNodeID: "a", Hostname: "A", OS: "linux"},
+			InventoryGeneration: "linux-inventory",
+		}},
+	}
+	if _, err := aggregator.Apply(hello); err != nil {
+		t.Fatal(err)
+	}
+	canonicalID := aggregator.state.Aliases["stable:a"]
+	update := hello
+	update.ReportID = "inventory-macos"
+	update.Sequence = 2
+	update.Kind = domain.ReportInventoryUpdate
+	update.Observers[0].Observer.OS = "macos"
+	update.Observers[0].InventoryGeneration = "macos-inventory"
+	if _, err := aggregator.Apply(update); err != nil {
+		t.Fatal(err)
+	}
+	if got := aggregator.state.Aliases["stable:a"]; got != canonicalID {
+		t.Fatalf("OS refresh changed canonical node from %q to %q", canonicalID, got)
+	}
+	if len(aggregator.state.Nodes) != 1 {
+		t.Fatalf("OS refresh created %d canonical nodes", len(aggregator.state.Nodes))
+	}
+	topology := aggregator.Snapshot()
+	if len(topology.Nodes) != 1 || topology.Nodes[0].OS != "macos" {
+		t.Fatalf("topology platform = %#v, want refreshed macos", topology.Nodes)
+	}
+}
+
 func TestOpaqueIdentityMergesAliasesAndNeverUsesHostname(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

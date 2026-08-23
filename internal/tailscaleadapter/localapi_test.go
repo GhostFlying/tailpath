@@ -1,6 +1,10 @@
 package tailscaleadapter
 
-import "testing"
+import (
+	"testing"
+
+	"tailscale.com/ipn/ipnstate"
+)
 
 func TestPeerRelayIP(t *testing.T) {
 	tests := map[string]string{
@@ -31,5 +35,12 @@ func TestNormalizeOS(t *testing.T) {
 		if got := normalizeOS(input); got != expected {
 			t.Errorf("normalizeOS(%q) = %q, want %q", input, got, expected)
 		}
+	}
+}
+
+func TestPeerIdentityCarriesNormalizedOS(t *testing.T) {
+	identity := peerIdentity(&ipnstate.PeerStatus{OS: "Darwin"})
+	if identity.OS != "macos" {
+		t.Fatalf("peer identity OS = %q, want macos", identity.OS)
 	}
 }

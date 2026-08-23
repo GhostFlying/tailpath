@@ -656,6 +656,9 @@ func mergeIdentity(current, update domain.NodeIdentity) domain.NodeIdentity {
 	if update.DNSName != "" {
 		current.DNSName = update.DNSName
 	}
+	if update.OS != "" {
+		current.OS = update.OS
+	}
 	if len(update.TailscaleIPs) > 0 {
 		current.TailscaleIPs = append([]string(nil), update.TailscaleIPs...)
 		sort.Strings(current.TailscaleIPs)
