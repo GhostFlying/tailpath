@@ -6,3 +6,4 @@ web/node_modules
 web/dist
 tailpath
 *.db
+perf-artifacts
