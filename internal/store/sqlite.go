@@ -52,7 +52,9 @@ func Open(path string, retention time.Duration) (*SQLite, error) {
 	maxConnections := 1
 	var anchor *sql.Conn
 	if memory {
-		maxConnections = 2
+		// Keep the lifetime anchor plus enough working connections for concurrent
+		// fixture API reads, writes, and canceled-request cleanup.
+		maxConnections = 8
 		anchor, err = db.Conn(context.Background())
 		if err != nil {
 			db.Close()
