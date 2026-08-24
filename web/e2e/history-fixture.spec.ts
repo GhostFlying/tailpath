@@ -12,11 +12,11 @@ test("opens seeded history from the real fixture API", async ({
 
   const connection = page
     .getByRole("button")
-    .filter({ hasText: /MacBook.*iPhone/ });
+    .filter({ hasText: /MacBook.*iPhone|iPhone.*MacBook/ });
   await expect(connection).toBeVisible();
   await connection.click();
   await expect(
-    page.getByRole("heading", { name: /MacBook.*iPhone/ }),
+    page.getByRole("heading", { name: /MacBook.*iPhone|iPhone.*MacBook/ }),
   ).toBeVisible();
   await expect(page.locator(".traffic-line-a")).toHaveAttribute("d", /L/);
   await expect(page.getByRole("list", { name: "Path timeline" })).toContainText(
