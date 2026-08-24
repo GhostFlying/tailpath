@@ -487,8 +487,12 @@ func TestCanonicalMergeRecordsDurableRedirect(t *testing.T) {
 			}},
 		}},
 	}
-	if _, err := aggregator.ApplyAt(merge, at.Add(time.Second)); err != nil {
+	result, err := aggregator.ApplyAt(merge, at.Add(time.Second))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !result.CanonicalStateChanged {
+		t.Fatal("canonical merge was not exposed to the checkpoint policy")
 	}
 	metadata := aggregator.HistoryMetadata()
 	if metadata.Redirects["n_key"] != "n_disco" {
