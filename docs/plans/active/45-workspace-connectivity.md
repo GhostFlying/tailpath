@@ -1,6 +1,6 @@
 # Workspace connectivity remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/45
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -25,11 +25,11 @@ request failures. The label conflates two different availability signals.
 
 ## Steps
 
-- [ ] Make topbar connectivity explicit and typed.
-- [ ] Map Live SSE state without changing reconnect behavior.
-- [ ] Derive History HTTP state from required index/detail requests.
-- [ ] Cover initial load, failure, retry recovery, desktop, and mobile.
-- [ ] Update History documentation and run rendered verification.
+- [x] Make topbar connectivity explicit and typed.
+- [x] Map Live SSE state without changing reconnect behavior.
+- [x] Derive History HTTP state from required index/detail requests.
+- [x] Cover initial load, failure, retry recovery, desktop, and mobile.
+- [x] Update History documentation and run rendered verification.
 
 ## Acceptance
 
@@ -40,9 +40,12 @@ request failures. The label conflates two different availability signals.
 
 ## Current state
 
-Plan opened before component changes.
+The shared topbar now requires a typed presentation and has no default. Live
+maps its existing SSE states, while History derives the state from the index
+and detail requests required by the current responsive view. Playwright covers
+HTTP failure, retry recovery, accessible labels, and unchanged Live status.
 
 ## Next step
 
-Replace the topbar default with explicit Live and History presentations, then
-exercise outage/recovery in Playwright.
+Submit the focused connectivity remediation before the collector scheduling
+clock fix.
