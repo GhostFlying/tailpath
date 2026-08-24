@@ -11,7 +11,9 @@ Peer Relay exporter ---/                              |           |
 
 Collectors sample locally every two seconds but send traffic messages only
 when a non-control peer counter changes. Inventory changes and sparse idle
-heartbeats use separate messages.
+heartbeats use separate messages. LocalAPI `CollectedAt` is telemetry data time;
+idle heartbeat deadlines use the collector process's monotonic scheduling clock
+so client wall-clock rollback cannot age out an otherwise healthy observer.
 
 The server authenticates the reporter connection with Tailscale WhoIs. Trusted
 reporters may describe another observer, which lets one tsbridge reporter carry
