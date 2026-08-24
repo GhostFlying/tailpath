@@ -50,6 +50,9 @@ changing observer protocol version 1.
 - Backoff wait is cancellable. Jitter is sampled uniformly from 0.8 through 1.2
   for each failed attempt; the unjittered exponential value is capped at sixty
   seconds.
+- Heartbeat deadlines use collector-local monotonic elapsed time. LocalAPI
+  `CollectedAt` remains report telemetry and cannot postpone an idle heartbeat
+  when the client wall clock moves backward.
 - Logging is state-based: one degraded transition, periodic degraded summary,
   one recovery after an accepted hello, and one explicit resync transition.
 - `collector --check` emits one JSON object for stable script consumption. It
