@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { HistoryWindow } from "../api/types";
-import { WorkspaceTopbar } from "../components/WorkspaceTopbar";
+import {
+  WorkspaceTopbar,
+  type WorkspaceConnection,
+} from "../components/WorkspaceTopbar";
 import { HistoryDetail } from "./HistoryDetail";
 import { HistoryEdgeList } from "./HistoryEdgeList";
 import { HistoryFilters } from "./HistoryFilters";
@@ -26,6 +29,12 @@ export default function HistoryWorkspace() {
   const isMobile = useMediaQuery("(max-width: 620px)");
   const index = useHistoryIndex(query, !(isMobile && edgeId));
   const detail = useHistoryDetail(edgeId, query.window);
+  const connection = historyConnection(
+    !(isMobile && edgeId),
+    Boolean(edgeId),
+    index,
+    detail,
+  );
 
   useEffect(() => {
     if (
@@ -78,7 +87,7 @@ export default function HistoryWorkspace() {
       className={`history-shell ${edgeId ? "has-detail" : ""}`}
       data-history-ready={String(ready)}
     >
-      <WorkspaceTopbar className="history-app-topbar" />
+      <WorkspaceTopbar className="history-app-topbar" connection={connection} />
       <HistoryFilters
         state={query}
         nodes={index.nodes?.nodes ?? []}
@@ -109,6 +118,40 @@ export default function HistoryWorkspace() {
       </div>
     </main>
   );
+}
+
+function historyConnection(
+  indexRequired: boolean,
+  detailRequired: boolean,
+  index: { page: unknown; loading: boolean; error: string | null },
+  detail: { history: unknown; loading: boolean; error: string | null },
+): WorkspaceConnection {
+  if ((indexRequired && index.error) || (detailRequired && detail.error)) {
+    return {
+      state: "error",
+      label: "Unavailable",
+      ariaLabel: "History server unavailable",
+    };
+  }
+  const ready =
+    (!indexRequired || index.page !== null) &&
+    (!detailRequired || detail.history !== null);
+  if (
+    !ready ||
+    (indexRequired && index.loading) ||
+    (detailRequired && detail.loading)
+  ) {
+    return {
+      state: "connecting",
+      label: "Connecting",
+      ariaLabel: "History server connecting",
+    };
+  }
+  return {
+    state: "reachable",
+    label: "Reachable",
+    ariaLabel: "History server reachable",
+  };
 }
 
 function useMediaQuery(query: string) {
