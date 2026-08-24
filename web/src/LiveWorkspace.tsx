@@ -5,8 +5,11 @@ import { GraphLegend } from "./components/GraphLegend";
 import { Inspector } from "./components/Inspector";
 import { TopologyFilters } from "./components/TopologyFilters";
 import { TopologyGraph } from "./components/TopologyGraph";
-import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
-import { useTopology } from "./hooks/useTopology";
+import {
+  WorkspaceTopbar,
+  type WorkspaceConnection,
+} from "./components/WorkspaceTopbar";
+import { useTopology, type ConnectionState } from "./hooks/useTopology";
 import {
   edgeIsVisible,
   emptyTrafficReason,
@@ -67,7 +70,7 @@ export default function LiveWorkspace() {
   return (
     <main className="app-shell">
       <WorkspaceTopbar
-        connection={connection}
+        connection={liveConnection(connection)}
         metrics={
           <>
             <span>
@@ -156,6 +159,35 @@ export default function LiveWorkspace() {
       </div>
     </main>
   );
+}
+
+function liveConnection(connection: ConnectionState): WorkspaceConnection {
+  switch (connection) {
+    case "live":
+      return {
+        state: "live",
+        label: "Live",
+        ariaLabel: "Live updates connected",
+      };
+    case "reconnecting":
+      return {
+        state: "reconnecting",
+        label: "Reconnecting",
+        ariaLabel: "Live updates reconnecting",
+      };
+    case "error":
+      return {
+        state: "error",
+        label: "Unavailable",
+        ariaLabel: "Live topology unavailable",
+      };
+    default:
+      return {
+        state: "connecting",
+        label: "Connecting",
+        ariaLabel: "Live updates connecting",
+      };
+  }
 }
 
 const emptyTrafficCopy: Record<

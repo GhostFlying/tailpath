@@ -3,13 +3,19 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 interface Props {
-  connection?: string;
+  connection: WorkspaceConnection;
   metrics?: ReactNode;
   className?: string;
 }
 
+export interface WorkspaceConnection {
+  state: "connecting" | "live" | "reconnecting" | "reachable" | "error";
+  label: string;
+  ariaLabel: string;
+}
+
 export function WorkspaceTopbar({
-  connection = "live",
+  connection,
   metrics,
   className = "",
 }: Props) {
@@ -26,9 +32,12 @@ export function WorkspaceTopbar({
         <NavLink to="/history">History</NavLink>
       </nav>
       {metrics ? <div className="headline-metrics">{metrics}</div> : null}
-      <div className={`live-state ${connection}`}>
+      <div
+        className={`live-state ${connection.state}`}
+        aria-label={connection.ariaLabel}
+      >
         <span />
-        {connection}
+        {connection.label}
       </div>
     </header>
   );

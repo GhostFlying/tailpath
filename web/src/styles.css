@@ -141,7 +141,8 @@ button {
   border-radius: 50%;
   background: #9da6ab;
 }
-.live-state.live > span {
+.live-state.live > span,
+.live-state.reachable > span {
   background: #16877a;
   box-shadow: 0 0 0 3px #d9efec;
 }

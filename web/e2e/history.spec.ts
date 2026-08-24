@@ -56,6 +56,7 @@ test("renders and filters the desktop history workspace", async ({
     "data-history-ready",
     "true",
   );
+  await expect(page.getByLabel("History server reachable")).toBeVisible();
   await expect(page).toHaveURL(/history\/edges\/node-mac--node-dev/);
   await expect(
     page.getByRole("heading", { name: /MacBook.*DevBox/ }),
@@ -122,7 +123,9 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(
     page.getByRole("heading", { name: /MacBook.*DevBox/ }),
   ).toBeVisible();
-  await expect(page.getByLabel("Server reachable")).toBeVisible();
+  await expect(
+    page.getByLabel("Server reachable", { exact: true }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("history-mobile-detail.png"),
     fullPage: true,
@@ -141,10 +144,16 @@ test("uses list and full-screen detail on mobile", async ({
 
 test("shows bounded empty and error states", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("desktop"));
+  let unknownFailures = 0;
   await page.route("**/api/v1/history/edges?**", async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("path") === "unknown") {
-      await route.fulfill({ status: 500, body: "unavailable" });
+      if (unknownFailures === 0) {
+        unknownFailures += 1;
+        await route.fulfill({ status: 500, body: "unavailable" });
+        return;
+      }
+      await route.fallback();
       return;
     }
     if (url.searchParams.get("path") === "direct") {
@@ -157,7 +166,10 @@ test("shows bounded empty and error states", async ({ page }, testInfo) => {
   await expect(page.getByText("No matching traffic")).toBeVisible();
   await page.getByLabel("Path seen").selectOption("unknown");
   await expect(page.getByText("History unavailable")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.getByLabel("History server unavailable")).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("No matching traffic")).toBeVisible();
+  await expect(page.getByLabel("History server reachable")).toBeVisible();
 });
 
 test("keeps pagination in the URL", async ({ page }, testInfo) => {
