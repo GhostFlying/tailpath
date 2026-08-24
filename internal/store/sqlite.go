@@ -192,14 +192,16 @@ func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffi
 		record.AToBBytes, record.BToABytes); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(edge_id) DO UPDATE SET
 		  first_traffic_at = MIN(first_traffic_at, excluded.first_traffic_at),
 		  last_traffic_at = MAX(last_traffic_at, excluded.last_traffic_at)`,
-		record.EdgeID, record.SourceID, record.TargetID, formatTime(record.ReceivedAt), formatTime(record.ReceivedAt))
-	return err
+		record.EdgeID, record.SourceID, record.TargetID, formatTime(record.ReceivedAt), formatTime(record.ReceivedAt)); err != nil {
+		return err
+	}
+	return upsertHistoryEdgeMapping(ctx, tx, record.EdgeID, record.SourceID, record.TargetID, record.ReceivedAt)
 }
 
 func recordHistoryMetadata(ctx context.Context, tx *sql.Tx, metadata domain.HistoryMetadata, updatedAt time.Time) error {
@@ -216,16 +218,26 @@ func recordHistoryMetadata(ctx context.Context, tx *sql.Tx, metadata domain.Hist
 			return err
 		}
 	}
+	redirectsChanged := false
 	for fromID, toID := range metadata.Redirects {
 		if fromID == "" || toID == "" || fromID == toID {
 			continue
 		}
+		var previous string
+		err := tx.QueryRowContext(ctx, `SELECT to_node_id FROM canonical_redirects WHERE from_node_id = ?`, fromID).Scan(&previous)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		redirectsChanged = redirectsChanged || errors.Is(err, sql.ErrNoRows) || previous != toID
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO canonical_redirects(from_node_id, to_node_id, updated_at) VALUES (?, ?, ?)
 			ON CONFLICT(from_node_id) DO UPDATE SET to_node_id = excluded.to_node_id,
 			  updated_at = excluded.updated_at`, fromID, toID, formatTime(updatedAt)); err != nil {
 			return err
 		}
+	}
+	if redirectsChanged {
+		return rebuildHistoryEdgeMap(ctx, tx, updatedAt)
 	}
 	return nil
 }
