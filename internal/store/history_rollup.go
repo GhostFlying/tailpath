@@ -222,11 +222,20 @@ func maintainPathAnchors(ctx context.Context, tx *sql.Tx, cutoff time.Time) erro
 		DELETE FROM path_events
 		WHERE observed_at < ? AND id NOT IN (
 		  SELECT anchor.id FROM path_events AS anchor
-		  JOIN history_edges AS edge ON edge.edge_id = anchor.edge_id
-		  WHERE edge.last_traffic_at >= ?
+		  JOIN history_edge_map AS anchor_map ON anchor_map.physical_edge_id = anchor.edge_id
+		  WHERE EXISTS (
+		      SELECT 1 FROM history_edges AS retained_edge
+		      JOIN history_edge_map AS retained_map
+		        ON retained_map.physical_edge_id = retained_edge.edge_id
+		      WHERE retained_map.logical_edge_id = anchor_map.logical_edge_id
+		        AND retained_edge.last_traffic_at >= ?
+		    )
 		    AND anchor.id = (
 		      SELECT previous.id FROM path_events AS previous
-		      WHERE previous.edge_id = anchor.edge_id AND previous.observed_at < ?
+		      JOIN history_edge_map AS previous_map
+		        ON previous_map.physical_edge_id = previous.edge_id
+		      WHERE previous_map.logical_edge_id = anchor_map.logical_edge_id
+		        AND previous.observed_at < ?
 		      ORDER BY previous.observed_at DESC, previous.id DESC LIMIT 1
 		    )
 		)`, formatTime(cutoff), formatTime(cutoff), formatTime(cutoff))
