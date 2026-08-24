@@ -4,10 +4,12 @@ import type { Topology } from "../api/types";
 import { createSingleFlight } from "../lib/singleFlight";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "error";
+type StreamConnectionState = Exclude<ConnectionState, "error">;
 
 export function useTopology() {
   const [topology, setTopology] = useState<Topology | null>(null);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [streamConnection, setStreamConnection] =
+    useState<StreamConnectionState>("connecting");
   const [error, setError] = useState<string | null>(null);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
@@ -27,7 +29,6 @@ export function useTopology() {
         setError(
           caught instanceof Error ? caught.message : "Topology request failed",
         );
-        setConnection("error");
       } finally {
         if (controller === requestController) controller = null;
       }
@@ -36,14 +37,14 @@ export function useTopology() {
     void runner.request();
     const events = new EventSource("/api/v1/events");
     events.addEventListener("ready", () => {
-      setConnection("live");
+      setStreamConnection("live");
       void refresh();
     });
     events.addEventListener("topology", () => {
-      setConnection("live");
+      setStreamConnection("live");
       void refresh();
     });
-    events.onerror = () => setConnection("reconnecting");
+    events.onerror = () => setStreamConnection("reconnecting");
     return () => {
       events.close();
       refreshRef.current = () => Promise.resolve();
@@ -63,5 +64,6 @@ export function useTopology() {
     return () => window.clearTimeout(timer);
   }, [topology, refresh]);
 
+  const connection: ConnectionState = error ? "error" : streamConnection;
   return { topology, connection, error, refresh };
 }
