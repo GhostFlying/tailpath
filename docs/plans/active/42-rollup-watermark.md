@@ -1,6 +1,6 @@
 # History rollup watermark remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/42
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -29,11 +29,11 @@ when the next tier's cursor has not proved coverage.
 
 ## Steps
 
-- [ ] Apply the two-minute grace to raw-to-minute rollup.
-- [ ] Limit hour rollup to complete minute-cursor coverage.
-- [ ] Limit source-tier deletion to the next tier's cursor.
-- [ ] Cover late arrival, lagging cursor, and retention boundaries.
-- [ ] Update durable history documentation and complete repository checks.
+- [x] Apply the two-minute grace to raw-to-minute rollup.
+- [x] Limit hour rollup to complete minute-cursor coverage.
+- [x] Limit source-tier deletion to the next tier's cursor.
+- [x] Cover late arrival, lagging cursor, and retention boundaries.
+- [x] Update durable history documentation and complete repository checks.
 
 ## Acceptance
 
@@ -48,9 +48,12 @@ when the next tier's cursor has not proved coverage.
 
 ## Current state
 
-Plan opened before implementation.
+Minute maintenance now closes only through `now - 2m`; hour maintenance takes
+the earlier of wall-clock hour end and complete minute coverage. Retention
+deletion uses the same minute/hour watermarks. Tests cover an arrival during
+the grace window, delayed hour closure, and deliberately lagging cursors.
 
 ## Next step
 
-Express the cursor limits directly in rollup and deletion helpers, then add
-boundary tests around the approved grace period.
+Submit the focused store remediation before the canonical history edge-map
+migration consumes these rollup guarantees.

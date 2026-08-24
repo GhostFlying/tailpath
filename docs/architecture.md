@@ -54,7 +54,10 @@ raw reports covered by a committed checkpoint. SQLite also stores ten-second
 per-observer traffic for one hour, deduplicated logical minute traffic for 48
 hours, logical hour traffic for seven days, and aggregated path transitions
 with provenance. Rollup and source-tier deletion share one transaction and only
-process ended buckets.
+process buckets behind durable coverage watermarks. Minute buckets remain open
+for a two-minute late-arrival grace period; hour rollup cannot pass complete
+minute coverage, and raw/minute deletion cannot pass the cursor of the tier
+that consumes it.
 
 History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
 resolve persisted canonical redirects before grouping, use keyset pagination,
