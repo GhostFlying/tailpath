@@ -87,7 +87,8 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
 - Node search uses `useDeferredValue` against the at-most-250 node response.
   Edge rows are memoized and backed by maps/sets instead of repeated scans.
 - Traffic SVG has a stable viewBox and at most 200 points. A-to-B renders above
-  zero, B-to-A below; tooltip values remain real non-negative rates.
+  zero, B-to-A below; buckets use their real timestamp extents, missing samples
+  remain gaps, and tooltip values remain real non-negative rates.
 - Path timeline has at most 501 states including anchor. Selection is local UI
   state and reveals provenance. Color is always paired with path text and a
   distinct symbol.

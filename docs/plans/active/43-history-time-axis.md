@@ -1,6 +1,6 @@
 # History traffic time-axis remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/43
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -25,11 +25,11 @@ Pointer lookup repeats the same index assumption.
 
 ## Steps
 
-- [ ] Add timestamp-aware, gap-preserving chart geometry.
-- [ ] Align pointer selection and tooltip placement with real bucket extents.
-- [ ] Cover sparse, unordered, out-of-window, contiguous, and mobile behavior.
-- [ ] Run unit, build, desktop/mobile Playwright, and screenshot inspection.
-- [ ] Update History documentation and record verification.
+- [x] Add timestamp-aware, gap-preserving chart geometry.
+- [x] Align pointer selection and tooltip placement with real bucket extents.
+- [x] Cover sparse, unordered, out-of-window, contiguous, and mobile behavior.
+- [x] Run unit, build, desktop/mobile Playwright, and screenshot inspection.
+- [x] Update History documentation and record verification.
 
 ## Acceptance
 
@@ -42,9 +42,14 @@ Pointer lookup repeats the same index assumption.
 
 ## Current state
 
-Plan opened before UI implementation.
+History traffic now renders constant-rate step intervals on the selected time
+domain. Noncontiguous buckets form separate SVG line/area subpaths, and pointer
+lookup returns no point inside a gap. Unit tests cover sparse ordering and
+adjacency; 12 applicable desktop/mobile Playwright cases pass, including the
+real fixture API and gap hover behavior. Desktop and mobile screenshots were
+inspected at original size with no clipping or overlap.
 
 ## Next step
 
-Replace index-based geometry and pointer selection, then exercise the real
-History detail flow in Playwright.
+Submit the focused chart remediation before separating workspace connectivity
+semantics.
