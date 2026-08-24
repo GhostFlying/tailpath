@@ -1,6 +1,6 @@
 # Stable live-graph layout implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/24
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -123,9 +123,15 @@ turns layout into an explicit, incremental operation.
 
 ## Current state
 
-Implementation and issue-level verification are complete. The remaining work is
-full repository validation and review of the stacked Draft PR.
+Implementation and verification are complete and merged into `main` through
+PR #35.
 
 ## Next step
 
-Run `make check`, push the issue branch, and open the Draft PR against #23.
+Retain the stable-layout assertions in the hosted v0.2 browser release gate.
+
+## Completion summary
+
+Canonical-node positions are bounded browser state, automatic topology updates
+preserve coordinates and viewport, and Fit and Relayout remain explicit user
+actions.

@@ -1,6 +1,6 @@
 # Native collector packaging implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/27
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -138,7 +138,17 @@ artifacts, signing, notarization, tags, or GitHub Releases.
 
 ## Current state
 
-All #27 implementation and local acceptance work is complete in Draft PR #37.
-Real arm64 Mac Tailnet behavior remains deliberately unclaimed and is a #28
-release gate. The next step is the final hosted CI run and review, followed by
-the v0.2 performance and dogfood work in #28.
+All #27 implementation and acceptance work is complete and merged into `main`
+through PR #38. Real arm64 Mac Tailnet behavior remains deliberately unclaimed
+and is a #28 release gate.
+
+## Next step
+
+Publish immutable alpha.1 archives after the hosted strict gate passes, then
+validate the Linux and macOS packages using the #28 dogfood runbooks.
+
+## Completion summary
+
+GoReleaser produces six platform archives with platform-specific install and
+uninstall entrypoints; Linux and macOS service fixtures and Windows preview CI
+validate their supported packaging boundaries.

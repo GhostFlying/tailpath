@@ -1,6 +1,6 @@
 # History workspace implementation plan
 
-Status: implemented; awaiting PR review
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/26
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -168,14 +168,20 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
 
 The workspace, real fixture history, URL behavior, responsive layouts, visual
 comparison, bundle inspection, unit tests, and full Live/History Playwright
-suite are complete. Concurrent browser validation also exposed and fixed the
-parent store's in-memory SQLite lifetime bug and canceled-request log noise in
-#25 before this branch was rebased.
+suite are complete and merged into `main` through PR #37. Concurrent browser
+validation also exposed and fixed the parent store's in-memory SQLite lifetime
+bug and canceled-request log noise in #25 before merge.
 
 The shared topbar now requires an explicit workspace signal: History reflects
 its required HTTP requests instead of inheriting Live's SSE label.
 
 ## Next step
 
-Push the rebased branch, refresh Draft PR #36, and run the repository-wide
-generated-file, race, build, and browser gates before marking it ready.
+Retain desktop/mobile History coverage and the lazy-bundle assertion in the
+hosted v0.2 browser release gate.
+
+## Completion summary
+
+History is an independent, responsive workspace with URL-owned filters and
+selection, bounded list/detail APIs, truthful directional traffic, and path
+provenance without increasing the Live route's primary bundle.

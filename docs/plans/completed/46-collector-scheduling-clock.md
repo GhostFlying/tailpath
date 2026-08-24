@@ -48,5 +48,9 @@ collector clock advances and proves the heartbeat still fires at 30 seconds.
 
 ## Next step
 
-Submit the focused collector remediation, then run the complete stacked v0.2
-verification and independent re-review.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #52 merged collector-local heartbeat scheduling and rollback regression
+coverage into `main`.

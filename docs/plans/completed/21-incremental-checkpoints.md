@@ -1,9 +1,9 @@
 # Incremental runtime checkpoints implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/21
 Parent: https://github.com/GhostFlying/tailpath/issues/18
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Context
 
@@ -99,13 +99,13 @@ transactional publish boundary.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #20 scale-harness branch.
+Implementation and verification are complete and merged into `main` through
+PR #32.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
-are rebase-merged.
+Retain the checkpoint and replay coverage as a required part of the v0.2
+release gate and dogfood restart scenarios.
 
 ## Verification
 

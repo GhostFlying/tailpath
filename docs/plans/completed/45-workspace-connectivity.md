@@ -49,5 +49,9 @@ accessible labels, and responsive status.
 
 ## Next step
 
-Submit the focused connectivity remediation before the collector scheduling
-clock fix.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #51 merged explicit Live SSE and History HTTP connectivity presentations,
+including outage and recovery coverage, into `main`.

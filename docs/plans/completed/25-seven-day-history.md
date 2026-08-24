@@ -1,6 +1,6 @@
 # Bounded seven-day history implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/25
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -154,8 +154,16 @@ seven days of logical history without summing bilateral observations.
 ## Current state
 
 Migration, storage, aggregation metadata, query, API, manual size gate, and
-full repository verification are complete.
+full repository verification are complete and merged into `main` through PR
+#36.
 
 ## Next step
 
-Push the verified branch and request review of the stacked Draft PR.
+Retain the seven-day database-size check and history API latency checks in the
+hosted v0.2 release gate.
+
+## Completion summary
+
+Tailpath retains bounded raw, minute, and hour traffic tiers, preserves path
+anchors and canonical redirects, and exposes fixed-window history APIs without
+double-counting bilateral observations.

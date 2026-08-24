@@ -54,5 +54,9 @@ deduplication, while path maintenance selects one logical anchor across aliases.
 
 ## Next step
 
-Submit the migration and store remediation before the History chart consumes
-the corrected sparse time series.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #49 merged the durable edge map, redirect-aware summaries and details, and
+logical path-anchor retention into `main`.

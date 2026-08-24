@@ -112,7 +112,8 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 - [x] Enforce the seven-day DB and scale browser gates in the manual workflow.
 - [x] Write alpha artifact, Linux smoke, Linux native, and Mac dogfood runbooks.
 - [x] Run the local short gate and complete repository checks.
-- [ ] Open the Draft PR and obtain hosted CI plus a strict workflow result.
+- [x] Open, review, and merge the implementation PRs with passing hosted CI.
+- [ ] Dispatch the strict workflow from `main` and retain its artifact.
 - [ ] Human: publish immutable `v0.2.0-alpha.1` artifacts.
 - [ ] Human-assisted: execute Linux and real arm64 Mac dogfood.
 - [ ] Obtain independent read-only review and resolve every blocker.
@@ -142,7 +143,9 @@ ten-minute run correctly failed after accepting 75,000 reports: ingest p95 was
 file error. The failure led to bounded report-ID state, WAL/NORMAL plus memory
 temporary storage, rollup-backed list summaries, and edge-filtered detail.
 
-The fixed ten-minute run accepted 75,000 of 75,000 reports in 599.996 seconds.
+The implementation and remediation stack is merged into `main` at `2bd64b9`,
+where regular CI passed. The fixed local ten-minute run accepted 75,000 of
+75,000 reports in 599.996 seconds.
 Ingest p95/p99 were 43.3/77.8 ms, scheduler lag was 200.7 ms, topology/list /
 detail p95 were 16.1/81.2/11.1 ms, and peak process RSS was 45.3 MiB with no
 HTTP failure, 500, OOM, or restart. The seven-day database was 707,936,256
@@ -153,6 +156,6 @@ controls and legends.
 
 ## Next step
 
-Complete final repository checks, push the branch, obtain hosted CI and the
-manual strict workflow artifact, then wait for the human-owned alpha tag and
-real Linux/Mac dogfood gates.
+Dispatch the manual strict workflow from `main` and retain its artifact. If it
+passes, request the human-owned alpha.1 tag and use only those immutable
+artifacts for the real Linux and arm64 Mac dogfood gates.
