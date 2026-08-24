@@ -49,14 +49,17 @@ seven days of logical history without summing bilateral observations.
   redirect targets are path-compressed to the survivor. Full node metadata and
   redirects are written atomically with checkpoint-bearing reports (at most
   once per second), and are refreshed after startup replay.
-- Rollup maintenance processes only ended minute/hour buckets. The minute
-  rollup first applies endpoint-observer preference for each edge/direction in
-  each ten-second bucket, falling back to third-party maximum, then sums those
-  logical values. Hour rollup sums already-deduplicated minute rows.
+- Rollup maintenance leaves ended minute buckets open for a two-minute
+  late-arrival grace period. The minute rollup first applies endpoint-observer
+  preference for each edge/direction in each ten-second bucket, falling back
+  to third-party maximum, then sums those logical values. Hour rollup sums
+  already-deduplicated minute rows only through complete minute coverage.
 - Maintenance cursors make ended-bucket work idempotent. Upserts replace a
   completed logical bucket, so interrupted maintenance can safely retry.
 - Raw traffic expires after one hour, minute rollups after 48 hours, and hour
-  rollups after seven days. Retention is based only on server receive time.
+  rollups after seven days. Raw and minute deletion additionally stop at the
+  consuming tier's exclusive coverage cursor. Retention is based only on
+  server receive time.
 - Path maintenance keeps the latest event before the seven-day cutoff only when
   the canonical edge still has retained traffic; all older events and anchors
   for fully expired edges are removed.
