@@ -12,6 +12,7 @@ const (
 	rawTrafficRetention    = time.Hour
 	minuteTrafficRetention = 48 * time.Hour
 	hourTrafficRetention   = 7 * 24 * time.Hour
+	minuteRollupGrace      = 2 * time.Minute
 )
 
 type logicalTraffic struct {
@@ -20,27 +21,56 @@ type logicalTraffic struct {
 }
 
 func rollupHistory(ctx context.Context, tx *sql.Tx, now time.Time) error {
-	minuteEnd := now.UTC().Truncate(time.Minute)
+	now = now.UTC()
+	minuteEnd := now.Add(-minuteRollupGrace).Truncate(time.Minute)
 	if err := rollupIntervals(ctx, tx, "minute", "traffic_buckets", "traffic_rollup_minute", time.Minute, minuteEnd, true); err != nil {
 		return err
 	}
-	hourEnd := now.UTC().Truncate(time.Hour)
+	minuteCoverage, ok, err := maintenanceCursor(ctx, tx, "minute")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("minute rollup completed without a coverage cursor")
+	}
+	hourEnd := earlierTime(now.Truncate(time.Hour), minuteCoverage.Truncate(time.Hour))
 	if err := rollupIntervals(ctx, tx, "hour", "traffic_rollup_minute", "traffic_rollup_hour", time.Hour, hourEnd, false); err != nil {
 		return err
 	}
+	hourCoverage, ok, err := maintenanceCursor(ctx, tx, "hour")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("hour rollup completed without a coverage cursor")
+	}
+	if err := deleteCoveredTraffic(ctx, tx, now, minuteCoverage, hourCoverage); err != nil {
+		return err
+	}
+	return maintainPathAnchors(ctx, tx, now.Add(-hourTrafficRetention))
+}
+
+func deleteCoveredTraffic(ctx context.Context, tx *sql.Tx, now, minuteCoverage, hourCoverage time.Time) error {
 	for _, deletion := range []struct {
 		table  string
 		cutoff time.Time
 	}{
-		{"traffic_buckets", now.Add(-rawTrafficRetention)},
-		{"traffic_rollup_minute", now.Add(-minuteTrafficRetention)},
+		{"traffic_buckets", earlierTime(now.Add(-rawTrafficRetention), minuteCoverage)},
+		{"traffic_rollup_minute", earlierTime(now.Add(-minuteTrafficRetention), hourCoverage)},
 		{"traffic_rollup_hour", now.Add(-hourTrafficRetention)},
 	} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+deletion.table+" WHERE bucket_start < ?", formatTime(deletion.cutoff)); err != nil {
 			return err
 		}
 	}
-	return maintainPathAnchors(ctx, tx, now.Add(-hourTrafficRetention))
+	return nil
+}
+
+func earlierTime(left, right time.Time) time.Time {
+	if left.Before(right) {
+		return left
+	}
+	return right
 }
 
 func rollupIntervals(
@@ -68,6 +98,9 @@ func rollupIntervals(
 			return err
 		}
 		start = start.UTC().Truncate(interval)
+		if !start.Before(end) {
+			return saveMaintenanceCursor(ctx, tx, cursorName, end)
+		}
 	}
 	for start.Before(end) {
 		next := start.Add(interval)
