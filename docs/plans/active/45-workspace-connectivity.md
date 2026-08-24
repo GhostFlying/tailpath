@@ -16,7 +16,8 @@ request failures. The label conflates two different availability signals.
 - The topbar requires an explicit typed connection presentation; it has no
   optimistic default.
 - Live presents topology SSE state as Connecting, Live, Reconnecting, or
-  Unavailable.
+  Unavailable. Topology request failure is tracked separately from SSE state so
+  a successful retry can reveal the current stream state immediately.
 - History presents the HTTP state required by its current desktop/mobile view
   as Connecting, Reachable, or Unavailable.
 - A required index or detail request failure makes History unavailable. A retry
@@ -41,9 +42,10 @@ request failures. The label conflates two different availability signals.
 ## Current state
 
 The shared topbar now requires a typed presentation and has no default. Live
-maps its existing SSE states, while History derives the state from the index
-and detail requests required by the current responsive view. Playwright covers
-HTTP failure, retry recovery, accessible labels, and unchanged Live status.
+maps its SSE state plus topology request health, while History derives the state
+from the index and detail requests required by the current responsive view.
+Playwright covers History HTTP failure/recovery, Live topology retry recovery,
+accessible labels, and responsive status.
 
 ## Next step
 
