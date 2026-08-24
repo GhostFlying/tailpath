@@ -216,7 +216,7 @@ func TestMaintainRollsUpDeduplicatedDirectionalTraffic(t *testing.T) {
 	record("relay-ignored", "n_relay", start.Add(5*time.Second), 500, 500)
 	record("relay-fallback", "n_relay", start.Add(13*time.Second), 30, 10)
 
-	if err := database.Maintain(context.Background(), start.Add(time.Minute)); err != nil {
+	if err := database.Maintain(context.Background(), start.Add(3*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	assertRollup := func(table string, wantAToB, wantBToA int64) {
@@ -230,14 +230,106 @@ func TestMaintainRollsUpDeduplicatedDirectionalTraffic(t *testing.T) {
 		}
 	}
 	assertRollup("traffic_rollup_minute", 150, 70)
-	if err := database.Maintain(context.Background(), start.Add(time.Minute)); err != nil {
+	if err := database.Maintain(context.Background(), start.Add(3*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	assertRollup("traffic_rollup_minute", 150, 70)
-	if err := database.Maintain(context.Background(), start.Add(time.Hour)); err != nil {
+	if err := database.Maintain(context.Background(), start.Add(time.Hour+2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	assertRollup("traffic_rollup_hour", 150, 70)
+}
+
+func TestMaintainWaitsForMinuteGraceAndFullHourCoverage(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	start := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	record := func(id string, at time.Time, bytes int64) {
+		t.Helper()
+		traffic := []domain.AcceptedTraffic{{
+			EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_a",
+			AToBBytes: bytes, ReceivedAt: at,
+		}}
+		if _, err := database.Record(context.Background(), sampleReport(at, at, id), at, nil, traffic, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("early", start.Add(3*time.Second), 10)
+	if err := database.Maintain(context.Background(), start.Add(2*time.Minute+59*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertTableCount(t, database, "traffic_rollup_minute", 0)
+
+	record("inside-grace", start.Add(43*time.Second), 20)
+	if err := database.Maintain(context.Background(), start.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var minuteBytes int64
+	if err := database.db.QueryRow(`SELECT a_to_b_bytes FROM traffic_rollup_minute WHERE edge_id = ?`, "n_a--n_b").Scan(&minuteBytes); err != nil {
+		t.Fatal(err)
+	}
+	if minuteBytes != 30 {
+		t.Fatalf("minute traffic after grace = %d, want 30", minuteBytes)
+	}
+
+	if err := database.Maintain(context.Background(), start.Add(time.Hour+time.Minute+59*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertTableCount(t, database, "traffic_rollup_hour", 0)
+	if err := database.Maintain(context.Background(), start.Add(time.Hour+2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var hourBytes int64
+	if err := database.db.QueryRow(`SELECT a_to_b_bytes FROM traffic_rollup_hour WHERE edge_id = ?`, "n_a--n_b").Scan(&hourBytes); err != nil {
+		t.Fatal(err)
+	}
+	if hourBytes != 30 {
+		t.Fatalf("hour traffic after minute coverage = %d, want 30", hourBytes)
+	}
+}
+
+func TestDeleteCoveredTrafficStopsAtNextTierCursor(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	insert := func(table, edgeID string, at time.Time) {
+		t.Helper()
+		columns := "edge_id, bucket_start, source_id, target_id, a_to_b_bytes, b_to_a_bytes"
+		values := "?, ?, 'a', 'b', 1, 1"
+		if table == "traffic_buckets" {
+			columns = "edge_id, bucket_start, source_id, target_id, observer_id, tx_bytes, rx_bytes, a_to_b_bytes, b_to_a_bytes"
+			values = "?, ?, 'a', 'b', 'a', 0, 0, 1, 1"
+		}
+		if _, err := database.db.Exec(`INSERT INTO `+table+`(`+columns+`) VALUES (`+values+`)`, edgeID, formatTime(at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("traffic_buckets", "raw-covered", now.Add(-3*time.Hour))
+	insert("traffic_buckets", "raw-uncovered", now.Add(-90*time.Minute))
+	insert("traffic_rollup_minute", "minute-covered", now.Add(-73*time.Hour))
+	insert("traffic_rollup_minute", "minute-uncovered", now.Add(-49*time.Hour))
+	insert("traffic_rollup_hour", "hour-expired", now.Add(-8*24*time.Hour))
+
+	tx, err := database.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteCoveredTraffic(context.Background(), tx, now, now.Add(-2*time.Hour), now.Add(-72*time.Hour)); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertTableEdgeIDs(t, database, "traffic_buckets", []string{"raw-uncovered"})
+	assertTableEdgeIDs(t, database, "traffic_rollup_minute", []string{"minute-uncovered"})
+	assertTableCount(t, database, "traffic_rollup_hour", 0)
 }
 
 func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
@@ -572,5 +664,44 @@ func sampleReport(collectedAt, lastActive time.Time, reportID string) domain.Rep
 				SampleDurationMS: 2000, LastActive: lastActive, Path: domain.PathObservation{Kind: domain.PathDERP, DERPRegion: "hkg"},
 			}},
 		}},
+	}
+}
+
+func assertTableCount(t *testing.T, database *SQLite, table string, want int) {
+	t.Helper()
+	var got int
+	if err := database.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("%s row count = %d, want %d", table, got, want)
+	}
+}
+
+func assertTableEdgeIDs(t *testing.T, database *SQLite, table string, want []string) {
+	t.Helper()
+	rows, err := database.db.Query(`SELECT edge_id FROM ` + table + ` ORDER BY edge_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var edgeID string
+		if err := rows.Scan(&edgeID); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, edgeID)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("%s edge IDs = %#v, want %#v", table, got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("%s edge IDs = %#v, want %#v", table, got, want)
+		}
 	}
 }
