@@ -52,8 +52,17 @@ Released numbered migrations are append-only. Per-observer ten-second traffic
 is retained for one hour, deduplicated logical one-minute traffic for 48 hours,
 and logical one-hour traffic for seven days. Minute rollups apply directional
 observer preference before summing time buckets and close behind a two-minute
-grace watermark. Hour rollup and source-tier deletion cannot pass the coverage
-cursor of the tier they consume. All retention uses server receive time.
+grace watermark. Hour rollup first maps physical aliases and directions into
+one logical value per minute, takes the directional maximum for aliases in the
+same minute, and then sums distinct minutes. Generated logical hour IDs are
+persisted as history aliases so later redirect rebuilds can still resolve them.
+Hour rollup and source-tier deletion cannot pass the coverage cursor of the
+tier they consume. All retention uses server receive time.
+
+Schema migration 4 removes schema-v3 hour rows and the hour cursor because an
+already-aggregated physical hour cannot reveal whether aliases overlapped.
+Maintenance rebuilds the recoverable hour range from retained minute rows; it
+does not present unreconstructable dogfood totals as exact history.
 
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including
