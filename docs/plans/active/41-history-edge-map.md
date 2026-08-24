@@ -1,6 +1,6 @@
 # Canonical history edge-map remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/41
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -28,12 +28,12 @@ summary queries off the SQL aggregation path, and retain the wrong path anchor.
 
 ## Steps
 
-- [ ] Add and backfill the append-only edge-map migration.
-- [ ] Maintain mappings on traffic insert and redirect changes.
-- [ ] Move summary/detail alias and direction handling onto the map.
-- [ ] Make path-anchor retention logical-edge aware.
-- [ ] Cover migration, bilateral deduplication, reversal, and anchor behavior.
-- [ ] Update data-model documentation and complete repository checks.
+- [x] Add and backfill the append-only edge-map migration.
+- [x] Maintain mappings on traffic insert and redirect changes.
+- [x] Move summary/detail alias and direction handling onto the map.
+- [x] Make path-anchor retention logical-edge aware.
+- [x] Cover migration, bilateral deduplication, reversal, and anchor behavior.
+- [x] Update data-model documentation and complete repository checks.
 
 ## Acceptance
 
@@ -47,9 +47,12 @@ summary queries off the SQL aggregation path, and retain the wrong path anchor.
 
 ## Current state
 
-Plan opened before migration or implementation changes.
+Migration 3 backfills `history_edge_map` without rewriting traffic tables. New
+traffic maintains its physical mapping and changed redirects rebuild the
+bounded map. Summary SQL and detail queries share direction-corrected alias
+deduplication, while path maintenance selects one logical anchor across aliases.
 
 ## Next step
 
-Implement migration 3 and its backfill, then switch history indexing and
-summary queries to the durable mapping.
+Submit the migration and store remediation before the History chart consumes
+the corrected sparse time series.
