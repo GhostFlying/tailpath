@@ -167,6 +167,58 @@ test("keeps pagination in the URL", async ({ page }, testInfo) => {
   await expect(page).toHaveURL(/cursor=page-2/);
 });
 
+test("keeps sparse traffic at real times and leaves gaps inert", async ({
+  page,
+}, testInfo) => {
+  await page.route("**/api/v1/history/edges/*?**", async (route) => {
+    const summary = edgeSummaries[0];
+    await route.fulfill({
+      json: {
+        ...historyFor(summary),
+        from: "2026-08-24T00:00:00Z",
+        to: "2026-08-24T01:00:00Z",
+        bucketDurationMs: 10_000,
+        traffic: [
+          {
+            bucketStart: "2026-08-24T00:10:00Z",
+            aToBBytes: 100,
+            bToABytes: 50,
+          },
+          {
+            bucketStart: "2026-08-24T00:50:00Z",
+            aToBBytes: 200,
+            bToABytes: 80,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/history/edges/node-mac--node-dev?window=1h");
+  const chart = page.locator(".traffic-chart");
+  await expect(chart).toBeVisible();
+  const path = await page.locator(".traffic-line-a").getAttribute("d");
+  expect(path?.match(/M/g)).toHaveLength(2);
+
+  const bounds = await chart.boundingBox();
+  expect(bounds).not.toBeNull();
+  await chart.hover({
+    position: { x: bounds!.width / 2, y: bounds!.height / 2 },
+  });
+  await expect(page.locator(".traffic-tooltip")).toBeHidden();
+  await chart.hover({
+    position: {
+      x: bounds!.width * ((10 * 60 + 5) / (60 * 60)),
+      y: bounds!.height / 2,
+    },
+  });
+  await expect(page.locator(".traffic-tooltip")).toBeVisible();
+  await expect(page.locator(".traffic-tooltip")).toContainText("10 B/s");
+  await page.screenshot({
+    path: testInfo.outputPath("history-sparse-traffic.png"),
+    fullPage: true,
+  });
+});
+
 async function installHistoryAPI(page: Page) {
   await page.route("**/api/v1/history/nodes?**", async (route) => {
     await route.fulfill({ json: { nodes } });
