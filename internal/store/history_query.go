@@ -23,10 +23,11 @@ type historyEdgeRecord struct {
 }
 
 type historyIndex struct {
-	redirects map[string]string
-	nodes     map[string]domain.NodeIdentity
-	edgeAlias map[string]string
-	edges     map[string]*historyEdgeRecord
+	redirects    map[string]string
+	nodes        map[string]domain.NodeIdentity
+	edgeAlias    map[string]string
+	edgeReversed map[string]bool
+	edges        map[string]*historyEdgeRecord
 }
 
 type storedTrafficPoint struct {
@@ -193,7 +194,8 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	index := historyIndex{
 		redirects: make(map[string]string), nodes: make(map[string]domain.NodeIdentity),
-		edgeAlias: make(map[string]string), edges: make(map[string]*historyEdgeRecord),
+		edgeAlias: make(map[string]string), edgeReversed: make(map[string]bool),
+		edges: make(map[string]*historyEdgeRecord),
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT from_node_id, to_node_id FROM canonical_redirects`)
 	if err != nil {
@@ -234,24 +236,25 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	if err := rows.Close(); err != nil {
 		return index, err
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT edge_id, source_id, target_id, first_traffic_at, last_traffic_at FROM history_edges`)
+	rows, err = s.db.QueryContext(ctx, `
+		SELECT mapping.physical_edge_id, mapping.logical_edge_id,
+		  mapping.logical_source_id, mapping.logical_target_id, mapping.direction_reversed,
+		  edge.first_traffic_at, edge.last_traffic_at
+		FROM history_edge_map AS mapping
+		JOIN history_edges AS edge ON edge.edge_id = mapping.physical_edge_id`)
 	if err != nil {
 		return index, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var originalID, sourceID, targetID, rawFirst, rawLast string
-		if err := rows.Scan(&originalID, &sourceID, &targetID, &rawFirst, &rawLast); err != nil {
+		var originalID, canonicalID, sourceID, targetID, rawFirst, rawLast string
+		var reversed bool
+		if err := rows.Scan(&originalID, &canonicalID, &sourceID, &targetID, &reversed, &rawFirst, &rawLast); err != nil {
 			return index, err
 		}
-		sourceID = resolveNodeID(index.redirects, sourceID)
-		targetID = resolveNodeID(index.redirects, targetID)
-		if sourceID == targetID {
-			continue
-		}
-		canonicalID, sourceID, targetID := domain.EdgeID(sourceID, targetID)
 		index.edgeAlias[originalID] = canonicalID
 		index.edgeAlias[canonicalID] = canonicalID
+		index.edgeReversed[originalID] = reversed
 		first, err := time.Parse(time.RFC3339Nano, rawFirst)
 		if err != nil {
 			return index, err
@@ -294,7 +297,7 @@ func (s *SQLite) loadTrafficPointsForEdges(ctx context.Context, index historyInd
 				continue
 			}
 			canonicalEdge := index.edges[canonicalID]
-			if canonicalEdge != nil && resolveNodeID(index.redirects, point.sourceID) != canonicalEdge.sourceID {
+			if canonicalEdge != nil && index.edgeReversed[point.edgeID] {
 				point.aToBBytes, point.bToABytes = point.bToABytes, point.aToBBytes
 			}
 			point.edgeID = canonicalID
@@ -343,9 +346,6 @@ func (s *SQLite) loadTrafficPointsForEdges(ctx context.Context, index historyInd
 }
 
 func (s *SQLite) loadTrafficSummaryPoints(ctx context.Context, index historyIndex, window domain.HistoryWindow, from, to time.Time) (map[string][]storedTrafficPoint, error) {
-	if len(index.redirects) != 0 {
-		return s.loadTrafficPoints(ctx, index, window, from, to)
-	}
 	result := make(map[string][]storedTrafficPoint)
 	segments, err := s.summaryTrafficSegments(ctx, from, to)
 	if err != nil {
@@ -357,7 +357,7 @@ func (s *SQLite) loadTrafficSummaryPoints(ctx context.Context, index historyInde
 			return nil, err
 		}
 		for _, point := range points {
-			canonicalID := index.edgeAlias[point.edgeID]
+			canonicalID := point.edgeID
 			if canonicalID == "" {
 				continue
 			}
@@ -472,15 +472,35 @@ func (s *SQLite) queryTrafficLayer(ctx context.Context, table string, from, to t
 }
 
 func (s *SQLite) queryTrafficSummaryLayer(ctx context.Context, table string, from, to time.Time) ([]storedTrafficPoint, error) {
-	query := `SELECT edge_id, MIN(source_id), MIN(target_id), MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes)
-		FROM ` + table + ` WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id`
+	query := `SELECT logical_edge_id, MIN(logical_source_id), MIN(logical_target_id),
+		  MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes)
+		FROM (
+		  SELECT mapping.logical_edge_id, mapping.logical_source_id, mapping.logical_target_id,
+		    traffic.bucket_start,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN traffic.b_to_a_bytes ELSE traffic.a_to_b_bytes END) AS a_to_b_bytes,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN traffic.a_to_b_bytes ELSE traffic.b_to_a_bytes END) AS b_to_a_bytes
+		  FROM ` + table + ` AS traffic
+		  JOIN history_edge_map AS mapping ON mapping.physical_edge_id = traffic.edge_id
+		  WHERE traffic.bucket_start >= ? AND traffic.bucket_start < ?
+		  GROUP BY mapping.logical_edge_id, traffic.bucket_start
+		) GROUP BY logical_edge_id`
 	if table == "traffic_buckets" {
-		query = `SELECT edge_id, MIN(source_id), MIN(target_id), MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes) FROM (
-		  SELECT edge_id, MIN(source_id) AS source_id, MIN(target_id) AS target_id, bucket_start,
+		query = `WITH physical AS (
+		  SELECT edge_id, bucket_start,
 		    COALESCE(SUM(CASE WHEN observer_id = source_id THEN a_to_b_bytes END), SUM(CASE WHEN observer_id = target_id THEN a_to_b_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN a_to_b_bytes END), 0) AS a_to_b_bytes,
 		    COALESCE(SUM(CASE WHEN observer_id = target_id THEN b_to_a_bytes END), SUM(CASE WHEN observer_id = source_id THEN b_to_a_bytes END), MAX(CASE WHEN observer_id != source_id AND observer_id != target_id THEN b_to_a_bytes END), 0) AS b_to_a_bytes
 		  FROM traffic_buckets WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id, bucket_start
-		) GROUP BY edge_id`
+		), logical AS (
+		  SELECT mapping.logical_edge_id, mapping.logical_source_id, mapping.logical_target_id,
+		    physical.bucket_start,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN physical.b_to_a_bytes ELSE physical.a_to_b_bytes END) AS a_to_b_bytes,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN physical.a_to_b_bytes ELSE physical.b_to_a_bytes END) AS b_to_a_bytes
+		  FROM physical JOIN history_edge_map AS mapping ON mapping.physical_edge_id = physical.edge_id
+		  GROUP BY mapping.logical_edge_id, physical.bucket_start
+		)
+		SELECT logical_edge_id, MIN(logical_source_id), MIN(logical_target_id),
+		  MAX(bucket_start), SUM(a_to_b_bytes), SUM(b_to_a_bytes)
+		FROM logical GROUP BY logical_edge_id`
 	}
 	rows, err := s.db.QueryContext(ctx, query, formatTime(from), formatTime(to))
 	if err != nil {
