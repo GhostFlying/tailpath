@@ -55,7 +55,8 @@ No runtime, observer, HTTP, storage, or user-facing interface changes.
 - [x] Move cold-ready sampling to the rendered readiness boundary.
 - [x] Make repeated E2E process cleanup and port ownership deterministic.
 - [x] Run focused local scale Playwright repeatedly with zero retries.
-- [ ] Run repository checks and hosted PR CI.
+- [x] Run local repository checks.
+- [ ] Obtain hosted PR CI.
 - [ ] Re-run the hosted strict v0.2 release gate from `main`.
 - [ ] Record the passing artifact in #28 and archive this plan.
 
@@ -92,14 +93,16 @@ ports before the next run.
 
 ## Next step
 
-Run full repository checks, obtain hosted PR CI, and rerun the strict workflow
-from the merged commit without retries.
+Obtain hosted PR CI, merge the focused remediation, and rerun the strict
+workflow from `main` without retries.
 
 ## Verification
 
 - `pnpm --dir web check`: passed.
 - `pnpm --dir web test`: 46 passed.
 - `pnpm --dir web build`: passed.
+- Generated Go and TypeScript output remained unchanged.
+- Go formatting, vet, and all package tests passed in Go 1.26.
 - Three focused scale runs: two projects passed per run with one worker and no
   retries; all desktop cold-ready and SSE metrics passed their thresholds.
 - Two consecutive normal E2E runs: 13 passed and seven configured skips each.
