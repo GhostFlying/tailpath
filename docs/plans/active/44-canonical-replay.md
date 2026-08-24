@@ -1,6 +1,6 @@
 # Canonical identity replay remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/44
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -25,12 +25,12 @@ stored history and restored runtime topology then refer to different nodes.
 
 ## Steps
 
-- [ ] Expose canonical-state changes from aggregation without changing the wire
+- [x] Expose canonical-state changes from aggregation without changing the wire
   protocol.
-- [ ] Force checkpoint and history metadata persistence for those changes.
-- [ ] Cover random production-style allocation across crash/replay and merge
+- [x] Force checkpoint and history metadata persistence for those changes.
+- [x] Cover random production-style allocation across crash/replay and merge
   checkpointing.
-- [ ] Update durable checkpoint documentation and complete repository checks.
+- [x] Update durable checkpoint documentation and complete repository checks.
 
 ## Acceptance
 
@@ -44,9 +44,13 @@ stored history and restored runtime topology then refer to different nodes.
 
 ## Current state
 
-Plan opened before implementation.
+`ApplyResult` now distinguishes canonical allocations and merges from ordinary
+runtime changes. The app forces those reports through the checkpoint-bearing
+transaction, while sub-second traffic for already-known identities remains
+journal-only. A restart test uses the production random allocator and proves
+that node and edge IDs remain stable across checkpoint plus journal replay.
 
 ## Next step
 
-Propagate canonical-state changes through `ApplyResult` and add restart tests
-using the real random allocator.
+Submit the focused remediation for independent review before stacking the
+history rollup fixes.
