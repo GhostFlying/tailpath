@@ -67,7 +67,7 @@ type Collector struct {
 	baseline            Snapshot
 	inventoryGeneration string
 	controlIDs          map[string]struct{}
-	lastReport          time.Time
+	lastReportScheduled time.Time
 }
 
 func New(source Source, reporter Reporter, options Options) *Collector {
@@ -177,8 +177,9 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 		c.connected = false
 		return stepResult{}, fmt.Errorf("read local status: %w", err)
 	}
+	scheduledAt := c.now()
 	if snapshot.CollectedAt.IsZero() {
-		snapshot.CollectedAt = c.now()
+		snapshot.CollectedAt = scheduledAt
 	}
 	generation := inventoryHash(snapshot)
 
@@ -196,7 +197,7 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 		}
 		c.connected = true
 		c.inventoryGeneration = generation
-		c.lastReport = snapshot.CollectedAt
+		c.lastReportScheduled = scheduledAt
 		return stepResult{helloAccepted: true}, nil
 	}
 
@@ -214,7 +215,7 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 			return stepResult{resyncRequired: true}, nil
 		}
 		c.inventoryGeneration = generation
-		c.lastReport = snapshot.CollectedAt
+		c.lastReportScheduled = scheduledAt
 	}
 
 	peers := c.changedPeers(snapshot)
@@ -227,7 +228,7 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 		}
 		c.acceptReceipt(receipt)
 		if receipt.Accepted {
-			c.lastReport = snapshot.CollectedAt
+			c.lastReportScheduled = scheduledAt
 		}
 		if !receipt.Accepted || receipt.ResyncRequired {
 			c.connected = false
@@ -236,7 +237,8 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 	}
 
 	c.baseline = snapshot
-	if snapshot.CollectedAt.Sub(c.lastReport) < c.heartbeatInterval {
+	elapsed := scheduledAt.Sub(c.lastReportScheduled)
+	if elapsed >= 0 && elapsed < c.heartbeatInterval {
 		return stepResult{}, nil
 	}
 	receipt, sendErr := c.send(ctx, domain.ReportObserverHeartbeat, snapshot, c.inventoryGeneration, nil)
@@ -246,7 +248,7 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 	}
 	c.acceptReceipt(receipt)
 	if receipt.Accepted {
-		c.lastReport = snapshot.CollectedAt
+		c.lastReportScheduled = scheduledAt
 	}
 	if !receipt.Accepted || receipt.ResyncRequired {
 		c.connected = false
