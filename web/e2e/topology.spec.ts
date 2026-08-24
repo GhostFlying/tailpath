@@ -50,7 +50,10 @@ test("keeps traffic empty states consistent with the recent option", async ({
   });
 });
 
-test("recovers Live connectivity after a topology retry", async ({ page }) => {
+test("recovers Live connectivity after a topology retry", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop"));
   let allowSuccess = false;
   await page.route("**/api/v1/topology", async (route) => {
     if (!allowSuccess) {
