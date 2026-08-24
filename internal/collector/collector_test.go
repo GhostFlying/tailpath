@@ -83,7 +83,16 @@ func TestCollectorAdoptsServerHeartbeatAndTrafficResetsIdleTimer(t *testing.T) {
 		snapshot(start.Add(51*time.Second), 0, 0, 10, 0),
 	}}
 	reporter := &recordingReporter{heartbeatIntervalMS: (30 * time.Second).Milliseconds()}
-	collector := New(source, reporter, Options{ReporterInstance: "collector"})
+	schedule := []time.Time{
+		start,
+		start.Add(20 * time.Second),
+		start.Add(40 * time.Second),
+		start.Add(51 * time.Second),
+	}
+	collector := New(source, reporter, Options{
+		ReporterInstance: "collector",
+		Now:              sequenceClock(schedule),
+	})
 
 	for range 4 {
 		if err := collector.Step(context.Background()); err != nil {
@@ -95,6 +104,38 @@ func TestCollectorAdoptsServerHeartbeatAndTrafficResetsIdleTimer(t *testing.T) {
 	}
 	if reporter.reports[2].Kind != domain.ReportObserverHeartbeat {
 		t.Fatalf("last report = %q, want heartbeat", reporter.reports[2].Kind)
+	}
+}
+
+func TestHeartbeatSchedulingIgnoresCollectedAtRollback(t *testing.T) {
+	start := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	clientAhead := start.Add(time.Hour)
+	source := &snapshotSource{snapshots: []Snapshot{
+		snapshot(clientAhead, 0, 0, 0, 0),
+		snapshot(start.Add(-time.Hour), 0, 0, 0, 0),
+		snapshot(start.Add(-time.Hour-10*time.Second), 0, 0, 0, 0),
+		snapshot(start.Add(-time.Hour-20*time.Second), 0, 0, 0, 0),
+	}}
+	reporter := &recordingReporter{heartbeatIntervalMS: (30 * time.Second).Milliseconds()}
+	c := New(source, reporter, Options{
+		ReporterInstance: "collector",
+		Now: sequenceClock([]time.Time{
+			start,
+			start.Add(10 * time.Second),
+			start.Add(20 * time.Second),
+			start.Add(30 * time.Second),
+		}),
+	})
+	for range 4 {
+		if err := c.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(reporter.reports) != 2 || reporter.reports[1].Kind != domain.ReportObserverHeartbeat {
+		t.Fatalf("reports after LocalAPI clock rollback = %#v, want hello and heartbeat", reporter.reports)
+	}
+	if !reporter.reports[1].CollectedAt.Equal(start.Add(-time.Hour - 20*time.Second)) {
+		t.Fatalf("heartbeat collectedAt = %s, want LocalAPI telemetry time", reporter.reports[1].CollectedAt)
 	}
 }
 
@@ -312,6 +353,15 @@ func TestWaitContextCancelsPromptly(t *testing.T) {
 
 type snapshotSource struct {
 	snapshots []Snapshot
+}
+
+func sequenceClock(times []time.Time) func() time.Time {
+	index := 0
+	return func() time.Time {
+		value := times[index]
+		index++
+		return value
+	}
 }
 
 type scriptedSource struct {
