@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 
@@ -288,6 +289,128 @@ func TestMaintainWaitsForMinuteGraceAndFullHourCoverage(t *testing.T) {
 	}
 	if hourBytes != 30 {
 		t.Fatalf("hour traffic after minute coverage = %d, want 30", hourBytes)
+	}
+}
+
+func TestMaintainCanonicalizesAliasesBeforeHourRollup(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	start := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a"}, LastEvidenceAt: start},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b"}, LastEvidenceAt: start},
+		{ID: "n_old", NodeIdentity: domain.NodeIdentity{DiscoKey: "old"}, LastEvidenceAt: start},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, start); err != nil {
+		t.Fatal(err)
+	}
+	record := func(reportID, edgeID, sourceID, targetID string, at time.Time, aToB, bToA int64) {
+		t.Helper()
+		traffic := []domain.AcceptedTraffic{{
+			EdgeID: edgeID, SourceID: sourceID, TargetID: targetID, ObserverID: sourceID,
+			AToBBytes: aToB, BToABytes: bToA, ReceivedAt: at,
+		}}
+		if _, err := database.Record(context.Background(), sampleReport(at, at, reportID), at, nil, traffic, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	early := start.Add(5 * time.Minute)
+	record("old-early", "n_b--n_old", "n_b", "n_old", early, 10, 0)
+	metadata.Redirects = map[string]string{"n_old": "n_a"}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, early.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// The canonical observation overlaps the old alias in the first minute,
+	// then carries additional traffic in a later minute of the same hour.
+	record("canonical-overlap", "n_a--n_b", "n_a", "n_b", early.Add(10*time.Second), 0, 7)
+	record("canonical-later", "n_a--n_b", "n_a", "n_b", start.Add(35*time.Minute), 2, 20)
+
+	if err := database.Maintain(context.Background(), start.Add(time.Hour+3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var edgeID string
+	var aToB, bToA int64
+	if err := database.db.QueryRow(`SELECT edge_id, a_to_b_bytes, b_to_a_bytes FROM traffic_rollup_hour`).Scan(&edgeID, &aToB, &bToA); err != nil {
+		t.Fatal(err)
+	}
+	if edgeID != "n_a--n_b" || aToB != 2 || bToA != 30 {
+		t.Fatalf("canonical hour = %q %d/%d, want n_a--n_b 2/30", edgeID, aToB, bToA)
+	}
+	assertTableCount(t, database, "traffic_rollup_hour", 1)
+
+	if _, err := database.db.Exec(`DELETE FROM traffic_buckets; DELETE FROM traffic_rollup_minute`); err != nil {
+		t.Fatal(err)
+	}
+	queryAt := start.Add(72 * time.Hour)
+	page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{
+		Window: domain.History7Days,
+	}, queryAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Edges) != 1 || page.Edges[0].EdgeID != "n_a--n_b" ||
+		page.Edges[0].AToBBytes != 2 || page.Edges[0].BToABytes != 30 {
+		t.Fatalf("hour-backed summary = %#v, want one 2/30 edge", page.Edges)
+	}
+	history, found, err := database.EdgeHistoryWindow(
+		context.Background(), "n_b--n_old", domain.History7Days, queryAt,
+	)
+	if err != nil || !found {
+		t.Fatalf("hour-backed detail found=%v err=%v", found, err)
+	}
+	if len(history.Traffic) != 1 || history.Traffic[0].AToBBytes != 2 || history.Traffic[0].BToABytes != 30 {
+		t.Fatalf("hour-backed detail = %#v, want one 2/30 bucket", history.Traffic)
+	}
+}
+
+func TestMaintainPersistsGeneratedLogicalHourEdge(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	start := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
+	at := start.Add(5 * time.Minute)
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: "n_b--n_old", SourceID: "n_b", TargetID: "n_old", ObserverID: "n_b",
+		AToBBytes: 10, ReceivedAt: at,
+	}}
+	if _, err := database.Record(context.Background(), sampleReport(at, at, "old-only"), at, nil, traffic, nil); err != nil {
+		t.Fatal(err)
+	}
+	metadata := domain.HistoryMetadata{Redirects: map[string]string{"n_old": "n_a"}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, at.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Maintain(context.Background(), start.Add(time.Hour+3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	var sourceID, targetID string
+	if err := database.db.QueryRow(`SELECT source_id, target_id FROM history_edges WHERE edge_id = 'n_a--n_b'`).Scan(&sourceID, &targetID); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := database.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebuildHistoryEdgeMap(context.Background(), tx, start.Add(2*time.Hour)); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var logicalID string
+	var reversed bool
+	if err := database.db.QueryRow(`SELECT logical_edge_id, direction_reversed FROM history_edge_map WHERE physical_edge_id = 'n_a--n_b'`).Scan(&logicalID, &reversed); err != nil {
+		t.Fatal(err)
+	}
+	if sourceID != "n_a" || targetID != "n_b" || logicalID != "n_a--n_b" || reversed {
+		t.Fatalf("generated edge = %s/%s mapping=%s reversed=%v", sourceID, targetID, logicalID, reversed)
 	}
 }
 
@@ -667,6 +790,94 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	}
 	if physicalID != "n_a--n_b" || logicalID != "n_a--n_b" {
 		t.Fatalf("migrated edge map = %q -> %q", physicalID, logicalID)
+	}
+}
+
+func TestOpenRepairsCanonicalHourRollupsFromSchemaV2AndV3(t *testing.T) {
+	for _, schemaVersion := range []int{2, 3} {
+		t.Run(strconv.Itoa(schemaVersion), func(t *testing.T) {
+			path := t.TempDir() + "/rollup.db"
+			raw, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tx, err := raw.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for migrationIndex := 0; migrationIndex < 2; migrationIndex++ {
+				if err := migrations[migrationIndex](tx); err != nil {
+					tx.Rollback()
+					t.Fatal(err)
+				}
+			}
+			at := time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC)
+			if _, err := tx.Exec(`
+				INSERT INTO history_edges VALUES ('n_b--n_old', 'n_b', 'n_old', ?, ?);
+				INSERT INTO canonical_redirects VALUES ('n_old', 'n_a', ?);
+				INSERT INTO traffic_rollup_minute VALUES ('n_b--n_old', ?, 'n_b', 'n_old', 10, 0);
+				INSERT INTO traffic_rollup_hour VALUES ('n_b--n_old', ?, 'n_b', 'n_old', 10, 0);
+				INSERT INTO history_maintenance VALUES ('minute', ?), ('hour', ?);`,
+				formatTime(at), formatTime(at), formatTime(at), formatTime(at), formatTime(at),
+				formatTime(at.Add(time.Hour)), formatTime(at.Add(time.Hour))); err != nil {
+				tx.Rollback()
+				t.Fatal(err)
+			}
+			if schemaVersion == 3 {
+				if err := migrations[2](tx); err != nil {
+					tx.Rollback()
+					t.Fatal(err)
+				}
+			}
+			if _, err := tx.Exec(`PRAGMA user_version = ` + strconv.Itoa(schemaVersion)); err != nil {
+				tx.Rollback()
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			if err := raw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			database, err := Open(path, 7*24*time.Hour)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			var version int
+			if err := database.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != currentSchemaVersion {
+				t.Fatalf("schema version = %d, err=%v", version, err)
+			}
+			var logicalID string
+			var reversed bool
+			if err := database.db.QueryRow(`SELECT logical_edge_id, direction_reversed FROM history_edge_map WHERE physical_edge_id = 'n_b--n_old'`).Scan(&logicalID, &reversed); err != nil {
+				t.Fatal(err)
+			}
+			if logicalID != "n_a--n_b" || !reversed {
+				t.Fatalf("migrated mapping = %q reversed=%v", logicalID, reversed)
+			}
+			assertTableCount(t, database, "traffic_rollup_minute", 1)
+			assertTableCount(t, database, "traffic_rollup_hour", 0)
+			var hourCursorCount int
+			if err := database.db.QueryRow(`SELECT COUNT(*) FROM history_maintenance WHERE name = 'hour'`).Scan(&hourCursorCount); err != nil {
+				t.Fatal(err)
+			}
+			if hourCursorCount != 0 {
+				t.Fatalf("hour cursor count = %d, want 0", hourCursorCount)
+			}
+			if err := database.Maintain(context.Background(), at.Add(time.Hour+3*time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			var edgeID string
+			var aToB, bToA int64
+			if err := database.db.QueryRow(`SELECT edge_id, a_to_b_bytes, b_to_a_bytes FROM traffic_rollup_hour`).Scan(&edgeID, &aToB, &bToA); err != nil {
+				t.Fatal(err)
+			}
+			if edgeID != "n_a--n_b" || aToB != 0 || bToA != 10 {
+				t.Fatalf("rebuilt hour = %q %d/%d, want n_a--n_b 0/10", edgeID, aToB, bToA)
+			}
+		})
 	}
 }
 

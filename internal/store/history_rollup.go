@@ -108,12 +108,17 @@ func rollupIntervals(
 		if deduplicateObservers {
 			records, err = logicalRawTraffic(ctx, tx, start, next)
 		} else {
-			records, err = summedLogicalTraffic(ctx, tx, sourceTable, start, next)
+			records, err = logicalMinuteTraffic(ctx, tx, start, next)
 		}
 		if err != nil {
 			return err
 		}
 		for _, record := range records {
+			if cursorName == "hour" {
+				if err := persistLogicalHourEdge(ctx, tx, record, next); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO `+targetTable+`(edge_id, bucket_start, source_id, target_id, a_to_b_bytes, b_to_a_bytes)
 				VALUES (?, ?, ?, ?, ?, ?)
@@ -170,9 +175,21 @@ func logicalRawTraffic(ctx context.Context, tx *sql.Tx, start, end time.Time) ([
 	return sortedLogicalTraffic(byEdge), nil
 }
 
-func summedLogicalTraffic(ctx context.Context, tx *sql.Tx, table string, start, end time.Time) ([]logicalTraffic, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT edge_id, MIN(source_id), MIN(target_id), SUM(a_to_b_bytes), SUM(b_to_a_bytes)
-		FROM `+table+` WHERE bucket_start >= ? AND bucket_start < ? GROUP BY edge_id ORDER BY edge_id`,
+func logicalMinuteTraffic(ctx context.Context, tx *sql.Tx, start, end time.Time) ([]logicalTraffic, error) {
+	rows, err := tx.QueryContext(ctx, `
+		WITH logical_minute AS (
+		  SELECT mapping.logical_edge_id, mapping.logical_source_id, mapping.logical_target_id,
+		    minute.bucket_start,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN minute.b_to_a_bytes ELSE minute.a_to_b_bytes END) AS a_to_b_bytes,
+		    MAX(CASE WHEN mapping.direction_reversed = 1 THEN minute.a_to_b_bytes ELSE minute.b_to_a_bytes END) AS b_to_a_bytes
+		  FROM traffic_rollup_minute AS minute
+		  JOIN history_edge_map AS mapping ON mapping.physical_edge_id = minute.edge_id
+		  WHERE minute.bucket_start >= ? AND minute.bucket_start < ?
+		  GROUP BY mapping.logical_edge_id, minute.bucket_start
+		)
+		SELECT logical_edge_id, MIN(logical_source_id), MIN(logical_target_id),
+		  SUM(a_to_b_bytes), SUM(b_to_a_bytes)
+		FROM logical_minute GROUP BY logical_edge_id ORDER BY logical_edge_id`,
 		formatTime(start), formatTime(end))
 	if err != nil {
 		return nil, err
@@ -187,6 +204,40 @@ func summedLogicalTraffic(ctx context.Context, tx *sql.Tx, table string, start, 
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func persistLogicalHourEdge(ctx context.Context, tx *sql.Tx, record logicalTraffic, updatedAt time.Time) error {
+	var firstTrafficAt, lastTrafficAt string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT MIN(edge.first_traffic_at), MAX(edge.last_traffic_at)
+		FROM history_edges AS edge
+		JOIN history_edge_map AS mapping ON mapping.physical_edge_id = edge.edge_id
+		WHERE mapping.logical_edge_id = ?`, record.edgeID).Scan(&firstTrafficAt, &lastTrafficAt); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(edge_id) DO UPDATE SET
+		  source_id = excluded.source_id, target_id = excluded.target_id,
+		  first_traffic_at = MIN(history_edges.first_traffic_at, excluded.first_traffic_at),
+		  last_traffic_at = MAX(history_edges.last_traffic_at, excluded.last_traffic_at)`,
+		record.edgeID, record.sourceID, record.targetID, firstTrafficAt, lastTrafficAt); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO history_edge_map(
+		  physical_edge_id, logical_edge_id, logical_source_id, logical_target_id,
+		  direction_reversed, updated_at)
+		VALUES (?, ?, ?, ?, 0, ?)
+		ON CONFLICT(physical_edge_id) DO UPDATE SET
+		  logical_edge_id = excluded.logical_edge_id,
+		  logical_source_id = excluded.logical_source_id,
+		  logical_target_id = excluded.logical_target_id,
+		  direction_reversed = excluded.direction_reversed,
+		  updated_at = excluded.updated_at`,
+		record.edgeID, record.edgeID, record.sourceID, record.targetID, formatTime(updatedAt))
+	return err
 }
 
 func sortedLogicalTraffic(records map[string]*logicalTraffic) []logicalTraffic {
