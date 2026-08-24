@@ -78,6 +78,30 @@ func TestInMemoryDatabaseSurvivesPooledConnectionReplacement(t *testing.T) {
 	}
 }
 
+func TestInMemoryDatabaseKeepsConcurrentConnectionsBesideAnchor(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	connections := make([]*sql.Conn, 0, 7)
+	defer func() {
+		for _, connection := range connections {
+			connection.Close()
+		}
+	}()
+	for range 7 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		connection, err := database.db.Conn(ctx)
+		cancel()
+		if err != nil {
+			t.Fatalf("acquire concurrent in-memory connection %d: %v", len(connections)+1, err)
+		}
+		connections = append(connections, connection)
+	}
+}
+
 func TestRelayTrafficProvidesHistoryWhenEndpointsAreUnobservable(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {
