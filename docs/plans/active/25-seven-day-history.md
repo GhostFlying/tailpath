@@ -38,7 +38,8 @@ seven days of logical history without summing bilateral observations.
 
 - Migration 1 adopts the current draft schema and compatibility columns;
   migration 2 appends history metadata, redirect, rollup, and maintenance-state
-  tables plus query indexes. Every successful migration advances
+  tables plus query indexes; migration 3 appends and backfills the durable
+  physical-to-logical edge map. Every successful migration advances
   `PRAGMA user_version` in its transaction. Released migration functions are
   append-only.
 - `history_edges` records every logical edge that has accepted traffic, its
@@ -71,8 +72,9 @@ seven days of logical history without summing bilateral observations.
   means an event or anchor for that path exists in the window, not merely that
   the last event matches.
 - Canonical node references use the opaque Tailpath ID plus current display
-  identity. Redirects are resolved before edge grouping so pre/post-merge data
-  produces one history edge.
+  identity. A persisted edge map applies redirects and direction before SQL
+  grouping so pre/post-merge data produces one history edge without falling
+  back to full point loading.
 
 ## Interfaces
 
