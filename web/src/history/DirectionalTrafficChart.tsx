@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import type { EdgeHistory } from "../api/types";
 import { formatRate } from "../lib/format";
-import { trafficGeometry } from "./historyMath";
+import { trafficGeometry, trafficPointAtX } from "./historyMath";
 
 interface Props {
   history: EdgeHistory;
@@ -11,8 +11,14 @@ export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
   history,
 }: Props) {
   const geometry = useMemo(
-    () => trafficGeometry(history.traffic, history.bucketDurationMs),
-    [history.bucketDurationMs, history.traffic],
+    () =>
+      trafficGeometry(
+        history.traffic,
+        history.bucketDurationMs,
+        history.from,
+        history.to,
+      ),
+    [history.bucketDurationMs, history.from, history.to, history.traffic],
   );
   const [hovered, setHovered] = useState<number | null>(null);
   const point = hovered === null ? null : geometry.points[hovered];
@@ -50,7 +56,7 @@ export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
                 Math.min(bounds.width, event.clientX - bounds.left),
               );
               setHovered(
-                Math.round((x / bounds.width) * (geometry.points.length - 1)),
+                trafficPointAtX(geometry.points, (x / bounds.width) * 900),
               );
             }}
           >
