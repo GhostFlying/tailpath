@@ -1,0 +1,57 @@
+# Canonical hour-rollup remediation plan
+
+Status: in progress
+Issue: https://github.com/GhostFlying/tailpath/issues/53
+Parent: https://github.com/GhostFlying/tailpath/issues/40
+Last updated: 2026-08-24
+
+## Context
+
+The hour tier currently sums minute rows by physical edge before history
+queries resolve canonical aliases. If an identity merge splits traffic across
+two physical edges in different minutes of one hour, the query-time alias
+deduplication keeps only the larger physical-hour total and permanently
+undercounts traffic after minute retention expires.
+
+## Decision
+
+- Build each hour from direction-corrected logical minute buckets. Aliases in
+  the same minute use a directional maximum; distinct minutes are summed.
+- Store the resulting hour under its logical edge ID and persist that generated
+  ID as a history edge and identity edge-map entry so later redirect rebuilds
+  can continue to resolve it.
+- Append migration 4. Existing schema-v3 hour rows cannot reveal whether
+  aliases overlapped before aggregation, so migration discards that
+  unreconstructable tier and its hour cursor. Maintenance then rebuilds the
+  covered range from retained minute rows.
+- Preserve raw-to-minute observer selection, two-minute grace, exclusive
+  coverage cursors, and cursor-bounded retention unchanged.
+
+## Steps
+
+- [ ] Add the schema-v3 semantic repair migration and upgrade coverage.
+- [ ] Canonicalize minute rows before hour aggregation.
+- [ ] Persist generated logical hour edges and stable mappings.
+- [ ] Cover reverse aliases, overlapping and disjoint minutes, minute deletion,
+      list/detail queries, and later map rebuilds.
+- [ ] Update data-model documentation and complete repository checks.
+
+## Acceptance
+
+- Reverse old-alias traffic in an early minute plus canonical traffic in a later
+  minute yields the directional sum in the hour tier.
+- Multiple physical aliases in the same minute remain deduplicated by
+  directional maximum.
+- History list and detail retain identical totals after minute rows are deleted.
+- A subsequent redirect-map rebuild continues to resolve generated hour IDs.
+- Opening a schema-v2 database builds the edge map and applies the hour repair;
+  opening schema v3 clears only the unreconstructable hour tier and cursor.
+
+## Current state
+
+Implementation has not started.
+
+## Next step
+
+Add failing store regressions, then replace physical hour aggregation with the
+logical-minute query.
