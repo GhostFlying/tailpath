@@ -31,5 +31,8 @@ repeated inspection rather than marketing presentation.
   runtime views. Label peer-only nodes separately and retain collector clock
   warnings.
 - Edge details use a desktop side panel and mobile bottom sheet.
+- Workspace connectivity must name its actual signal. Live reports SSE state;
+  History reports required HTTP request state. Shared chrome has no optimistic
+  green default.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
