@@ -135,6 +135,112 @@ func TestRestartReplaysReportsAfterCheckpoint(t *testing.T) {
 	}
 }
 
+func TestCanonicalAllocationForcesCheckpointBeforeJournalReplay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	current := now
+	options := aggregate.Options{Now: func() time.Time { return current }}
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello := helloReport(now)
+	hello.Observers[0].Peers = nil
+	application, err := New(database, options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), hello, now); err != nil {
+		t.Fatal(err)
+	}
+	firstCheckpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inventoryAt := now.Add(400 * time.Millisecond)
+	inventory := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "inventory-new-peer", ReporterInstanceID: "reporter", Sequence: 2,
+		CollectedAt: inventoryAt, Kind: domain.ReportInventoryUpdate,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, InventoryGeneration: "inventory-2",
+			Peers: []domain.PeerObservation{{Peer: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}}},
+		}},
+	}
+	if _, err := application.SubmitAt(context.Background(), inventory, inventoryAt); err != nil {
+		t.Fatal(err)
+	}
+	allocationCheckpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allocationCheckpoint.LastReportRowID <= firstCheckpoint.LastReportRowID {
+		t.Fatalf("canonical allocation remained journal-only: first=%#v allocation=%#v", firstCheckpoint, allocationCheckpoint)
+	}
+
+	trafficAt := now.Add(800 * time.Millisecond)
+	traffic := trafficReport(trafficAt)
+	traffic.ReportID = "traffic-after-allocation"
+	traffic.Sequence = 3
+	traffic.Observers[0].InventoryGeneration = "inventory-2"
+	current = trafficAt
+	if _, err := application.SubmitAt(context.Background(), traffic, trafficAt); err != nil {
+		t.Fatal(err)
+	}
+	stillAllocation, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillAllocation.LastReportRowID != allocationCheckpoint.LastReportRowID {
+		t.Fatalf("ordinary sub-second traffic unexpectedly checkpointed: allocation=%#v traffic=%#v", allocationCheckpoint, stillAllocation)
+	}
+	before := application.Aggregator.Snapshot()
+	if len(before.Edges) != 1 {
+		t.Fatalf("topology before restart = %#v", before.Edges)
+	}
+	journaled, err := database.RestoreReportsAfter(context.Background(), allocationCheckpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journaled) != 1 || journaled[0].Report.ReportID != traffic.ReportID {
+		t.Fatalf("journal after allocation checkpoint = %#v", journaled)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	restarted, err := New(database, options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := restarted.Aggregator.Snapshot()
+	if len(after.Edges) != 1 || after.Edges[0].ID != before.Edges[0].ID ||
+		after.Edges[0].Source != before.Edges[0].Source || after.Edges[0].Target != before.Edges[0].Target {
+		t.Fatalf("canonical edge changed across replay: before=%#v after=%#v", before.Edges, after.Edges)
+	}
+	for stableID, beforeID := range topologyIDsByStableNodeID(before) {
+		if got := topologyIDsByStableNodeID(after)[stableID]; got != beforeID {
+			t.Fatalf("canonical node %q changed across replay: before=%q after=%q", stableID, beforeID, got)
+		}
+	}
+	replayedCheckpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	journaled, err = database.RestoreReportsAfter(context.Background(), replayedCheckpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journaled) != 0 {
+		t.Fatalf("startup replay was not checkpointed: %#v", journaled)
+	}
+}
+
 func TestCheckpointCadenceAndReceiveTimeRollback(t *testing.T) {
 	database, err := store.Open(":memory:", 7*24*time.Hour)
 	if err != nil {
@@ -232,6 +338,14 @@ func testOptions(now func() time.Time) aggregate.Options {
 			return fmt.Sprintf("n_%03d", next)
 		},
 	}
+}
+
+func topologyIDsByStableNodeID(topology domain.Topology) map[string]string {
+	ids := make(map[string]string, len(topology.Nodes))
+	for _, node := range topology.Nodes {
+		ids[node.StableNodeID] = node.ID
+	}
+	return ids
 }
 
 func helloReport(at time.Time) domain.ReportEnvelope {
