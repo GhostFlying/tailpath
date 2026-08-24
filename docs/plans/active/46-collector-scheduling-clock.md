@@ -1,6 +1,6 @@
 # Collector heartbeat clock remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/46
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -25,11 +25,11 @@ remain below the heartbeat interval indefinitely and age out on the server.
 
 ## Steps
 
-- [ ] Separate report telemetry time from local scheduling time.
-- [ ] Reset the local deadline for every accepted report kind.
-- [ ] Cover LocalAPI timestamp rollback with advancing collector time.
-- [ ] Preserve existing sample-duration fallback and reconnect semantics.
-- [ ] Update collector documentation and complete repository checks.
+- [x] Separate report telemetry time from local scheduling time.
+- [x] Reset the local deadline for every accepted report kind.
+- [x] Cover LocalAPI timestamp rollback with advancing collector time.
+- [x] Preserve existing sample-duration fallback and reconnect semantics.
+- [x] Update collector documentation and complete repository checks.
 
 ## Acceptance
 
@@ -41,9 +41,12 @@ remain below the heartbeat interval indefinitely and age out on the server.
 
 ## Current state
 
-Plan opened before collector changes.
+Heartbeat scheduling now records collector-local time after each snapshot and
+accepted send. `CollectedAt` remains untouched for report telemetry and traffic
+duration. The rollback regression drives LocalAPI timestamps backward while the
+collector clock advances and proves the heartbeat still fires at 30 seconds.
 
 ## Next step
 
-Replace the snapshot-time deadline with a local scheduling deadline and add the
-rollback regression test.
+Submit the focused collector remediation, then run the complete stacked v0.2
+verification and independent re-review.
