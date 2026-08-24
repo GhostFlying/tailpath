@@ -64,7 +64,8 @@ test("renders the live fixture topology without overlap", async ({
   } else {
     await expect(page.getByText("active edges")).toBeHidden();
   }
-  await expect(page.locator(".live-state")).toContainText("live");
+  await expect(page.locator(".live-state")).toContainText("Live");
+  await expect(page.getByLabel("Live updates connected")).toBeVisible();
 
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toBeVisible();
