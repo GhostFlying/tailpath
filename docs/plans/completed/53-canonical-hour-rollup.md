@@ -59,5 +59,10 @@ upgrades.
 
 ## Next step
 
-Run the strict release performance workflow and Linux/macOS dogfood before the
-human `v0.2.0-alpha.1` tag decision.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #54 merged logical minute-to-hour aggregation, durable generated hour IDs,
+and the append-only schema-v3 repair into `main`; the final independent review
+found no remaining P1/P2 blocker.

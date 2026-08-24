@@ -51,5 +51,9 @@ inspected at original size with no clipping or overlap.
 
 ## Next step
 
-Submit the focused chart remediation before separating workspace connectivity
-semantics.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #50 merged timestamp-positioned sparse traffic geometry, truthful gaps, and
+bucket-bounded desktop/mobile tooltips into `main`.

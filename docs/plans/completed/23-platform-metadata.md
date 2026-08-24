@@ -1,6 +1,6 @@
 # Platform metadata and device-node implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/23
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
@@ -101,13 +101,13 @@ without changing identity reconciliation or path-marker semantics.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #22 collector-resilience branch.
+Implementation and verification are complete and merged into `main` through
+PR #34.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
-are rebase-merged.
+Retain platform metadata as display-only state while #28 validates the Linux
+and macOS collector packages on real nodes.
 
 ## Verification
 

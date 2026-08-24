@@ -55,5 +55,9 @@ the grace window, delayed hour closure, and deliberately lagging cursors.
 
 ## Next step
 
-Submit the focused store remediation before the canonical history edge-map
-migration consumes these rollup guarantees.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #48 merged the approved late-arrival grace, coverage-bound hour rollup, and
+cursor-safe source retention into `main`.

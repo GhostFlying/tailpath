@@ -1,9 +1,9 @@
 # Collector resilience and diagnostics implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/22
 Parent: https://github.com/GhostFlying/tailpath/issues/18
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Context
 
@@ -109,13 +109,13 @@ changing observer protocol version 1.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #21 incremental-checkpoints branch.
+Implementation and verification are complete and merged into `main` through
+PR #33.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, then retarget it after the dependency PRs
-are rebase-merged.
+Exercise the merged collector recovery behavior with immutable alpha.1
+artifacts during the Linux and real arm64 Mac dogfood owned by #28.
 
 ## Verification
 

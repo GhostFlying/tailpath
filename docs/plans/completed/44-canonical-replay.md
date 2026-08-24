@@ -52,5 +52,9 @@ that node and edge IDs remain stable across checkpoint plus journal replay.
 
 ## Next step
 
-Submit the focused remediation for independent review before stacking the
-history rollup fixes.
+No issue-local work remains. Release validation continues in #28.
+
+## Completion summary
+
+PR #47 merged immediate canonical-state checkpoints and production-random
+crash/replay coverage into `main`.

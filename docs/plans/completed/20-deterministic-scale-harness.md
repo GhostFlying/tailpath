@@ -1,9 +1,9 @@
 # Deterministic scale harness implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/20
 Parent: https://github.com/GhostFlying/tailpath/issues/18
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 ## Context
 
@@ -84,13 +84,13 @@ scenario before any performance optimization.
 
 ## Current state
 
-Implementation and local verification are complete. The branch is ready for a
-stacked Draft PR based on the #19 governance branch.
+Implementation and verification are complete and merged into `main` through
+PR #31.
 
 ## Next step
 
-Run GitHub Actions on the stacked PR, review the recorded baseline boundary,
-and mark the PR Ready after #19 is merged and the base is retargeted to `main`.
+Use the deterministic scenario as the shared functional and release-gate input
+for the remaining v0.2 closeout work in #28.
 
 ## Verification
 
