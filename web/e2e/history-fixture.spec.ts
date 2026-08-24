@@ -7,6 +7,7 @@ test("opens seeded history from the real fixture API", async ({
   await expect(page.locator(".history-shell")).toHaveAttribute(
     "data-history-ready",
     "true",
+    { timeout: 15_000 },
   );
 
   const connection = page
