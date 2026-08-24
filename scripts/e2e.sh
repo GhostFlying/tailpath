@@ -6,17 +6,23 @@ web_pid=""
 api_port="${TAILPATH_E2E_API_PORT:-18082}"
 admin_port="${TAILPATH_E2E_ADMIN_PORT:-18083}"
 fixture_binary="${TAILPATH_E2E_BINARY:-}"
+stop_process() {
+  pid="$1"
+  test -z "$pid" && return
+  kill -TERM "-$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 cleanup() {
-  test -z "$web_pid" || kill "$web_pid" 2>/dev/null || true
-  test -z "$api_pid" || kill "$api_pid" 2>/dev/null || true
+  stop_process "$web_pid"
+  stop_process "$api_pid"
 }
 trap cleanup EXIT INT TERM
 
 run_fixture() {
   if test -n "$fixture_binary"; then
-    "$fixture_binary" "$@"
+    exec setsid "$fixture_binary" "$@"
   else
-    go run ./cmd/tailpath "$@"
+    exec setsid go run ./cmd/tailpath "$@"
   fi
 }
 
@@ -34,7 +40,7 @@ else
 fi
 api_pid=$!
 TAILPATH_API_URL="http://127.0.0.1:$api_port" \
-  pnpm --dir web exec vite --host 127.0.0.1 --port 5173 > /tmp/tailpath-web.log 2>&1 &
+  setsid pnpm --dir web exec vite --host 127.0.0.1 --port 5173 --strictPort > /tmp/tailpath-web.log 2>&1 &
 web_pid=$!
 
 attempt=0

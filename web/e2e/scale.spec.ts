@@ -26,6 +26,30 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   await expect(graph).toHaveAttribute("data-ready", "true", {
     timeout: 120_000,
   });
+  const readyElapsedMs = Date.now() - startedAt;
+  const coldReadyMetrics = JSON.stringify(
+    {
+      project: testInfo.project.name,
+      readyElapsedMs,
+      cachedReadyElapsedMs: null,
+      topologyResponseElapsedMs: null,
+      visibleUpdateElapsedMs: null,
+      topologyNodes: null,
+      logicalEdges: null,
+      renderedNodes: 505,
+      consoleErrors,
+    },
+    null,
+    2,
+  );
+  await writeFile(testInfo.outputPath("scale-browser.json"), coldReadyMetrics);
+  await page.screenshot({
+    path: testInfo.outputPath("tailpath-scale.png"),
+    fullPage: true,
+  });
+  if (testInfo.project.name === "desktop-chromium") {
+    expect(readyElapsedMs).toBeLessThanOrEqual(5_000);
+  }
   await expect(graph).toHaveAttribute("data-device-nodes-square", "true");
   await expect(graph).toHaveAttribute("data-layout-runs", "1");
   const firstPositions = await graph.getAttribute("data-layout-positions");
@@ -55,10 +79,6 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   ).toHaveLength(9);
   expect(consoleErrors).toEqual([]);
 
-  const readyElapsedMs = Date.now() - startedAt;
-  if (testInfo.project.name === "desktop-chromium") {
-    expect(readyElapsedMs).toBeLessThanOrEqual(5_000);
-  }
   let visibleUpdateElapsedMs: number | null = null;
   let topologyResponseElapsedMs: number | null = null;
   if (testInfo.project.name === "desktop-chromium") {
