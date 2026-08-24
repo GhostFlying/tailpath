@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const currentSchemaVersion = 3
+const currentSchemaVersion = 4
 
 type migration func(*sql.Tx) error
 
@@ -15,6 +15,14 @@ var migrations = []migration{
 	migrateDraftSchema,
 	migrateBoundedHistory,
 	migrateHistoryEdgeMapping,
+	migrateCanonicalHourRollups,
+}
+
+func migrateCanonicalHourRollups(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+DELETE FROM traffic_rollup_hour;
+DELETE FROM history_maintenance WHERE name = 'hour';`)
+	return err
 }
 
 func migrateHistoryEdgeMapping(tx *sql.Tx) error {
