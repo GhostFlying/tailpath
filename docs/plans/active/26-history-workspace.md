@@ -45,7 +45,8 @@ implemented by #23/#24 and remains the shared platform/telemetry vocabulary.
 
 ## Copy and information architecture
 
-- Topbar copy is limited to `Tailpath`, `Live`, `History`, and connection state.
+- Topbar copy is limited to `Tailpath`, `Live`, `History`, and the current
+  History HTTP state (`Connecting`, `Reachable`, or `Unavailable`).
 - Filter copy is limited to fixed windows, `Find node`, and path choices.
 - List headings are `Connections`, `Last traffic`, and `Total`; rows show the
   canonical endpoint labels, path label(s), last traffic, directional totals,
@@ -170,6 +171,9 @@ comparison, bundle inspection, unit tests, and full Live/History Playwright
 suite are complete. Concurrent browser validation also exposed and fixed the
 parent store's in-memory SQLite lifetime bug and canceled-request log noise in
 #25 before this branch was rebased.
+
+The shared topbar now requires an explicit workspace signal: History reflects
+its required HTTP requests instead of inheriting Live's SSE label.
 
 ## Next step
 
