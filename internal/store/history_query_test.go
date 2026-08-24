@@ -174,6 +174,63 @@ func TestHistorySummaryUsesCompletedRollupsWithoutDoubleCountingRaw(t *testing.T
 	}
 }
 
+func TestHistoryEdgeMapDeduplicatesAliasesAndPreservesDirection(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 5, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, LastEvidenceAt: now},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, LastEvidenceAt: now},
+		{ID: "n_old", NodeIdentity: domain.NodeIdentity{DiscoKey: "old"}, LastEvidenceAt: now},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	record := func(reportID, edgeID, sourceID, targetID string, aToB, bToA int64) {
+		t.Helper()
+		traffic := []domain.AcceptedTraffic{{
+			EdgeID: edgeID, SourceID: sourceID, TargetID: targetID, ObserverID: sourceID,
+			AToBBytes: aToB, BToABytes: bToA, ReceivedAt: now,
+		}}
+		if _, err := database.Record(context.Background(), sampleReport(now, now, reportID), now, nil, traffic, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("before-merge", "n_b--n_old", "n_b", "n_old", 100, 20)
+	record("after-merge", "n_a--n_b", "n_a", "n_b", 30, 90)
+	metadata.Redirects = map[string]string{"n_old": "n_a"}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{Window: domain.History15Minutes}, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Edges) != 1 || page.Edges[0].EdgeID != "n_a--n_b" ||
+		page.Edges[0].AToBBytes != 30 || page.Edges[0].BToABytes != 100 {
+		t.Fatalf("logical alias summary = %#v, want one 30/100 edge", page.Edges)
+	}
+	history, found, err := database.EdgeHistoryWindow(context.Background(), "n_b--n_old", domain.History15Minutes, now.Add(time.Minute))
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if len(history.Traffic) != 1 || history.Traffic[0].AToBBytes != 30 || history.Traffic[0].BToABytes != 100 {
+		t.Fatalf("logical alias detail = %#v, want one 30/100 bucket", history.Traffic)
+	}
+	var logicalID string
+	var reversed bool
+	if err := database.db.QueryRow(`SELECT logical_edge_id, direction_reversed FROM history_edge_map WHERE physical_edge_id = 'n_b--n_old'`).Scan(&logicalID, &reversed); err != nil {
+		t.Fatal(err)
+	}
+	if logicalID != "n_a--n_b" || !reversed {
+		t.Fatalf("physical mapping = logical %q reversed=%v", logicalID, reversed)
+	}
+}
+
 func seededHistoryDatabase(t *testing.T) (*SQLite, time.Time) {
 	t.Helper()
 	database, err := Open(":memory:", 7*24*time.Hour)
@@ -214,6 +271,17 @@ func seededHistoryDatabase(t *testing.T) (*SQLite, time.Time) {
 	record("newest", "n_a--n_c", "n_a", "n_c", now.Add(-time.Minute), 5, 1, domain.PathDirect)
 	old := now.Add(-8 * 24 * time.Hour)
 	if _, err := database.db.Exec(`INSERT INTO history_edges VALUES ('n_b--n_c', 'n_b', 'n_c', ?, ?)`, formatTime(old), formatTime(old)); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := database.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebuildHistoryEdgeMap(context.Background(), tx, now); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	return database, now

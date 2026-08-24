@@ -1,17 +1,36 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 type migration func(*sql.Tx) error
 
 var migrations = []migration{
 	migrateDraftSchema,
 	migrateBoundedHistory,
+	migrateHistoryEdgeMapping,
+}
+
+func migrateHistoryEdgeMapping(tx *sql.Tx) error {
+	if _, err := tx.Exec(`
+CREATE TABLE history_edge_map (
+    physical_edge_id TEXT PRIMARY KEY,
+    logical_edge_id TEXT NOT NULL,
+    logical_source_id TEXT NOT NULL,
+    logical_target_id TEXT NOT NULL,
+    direction_reversed INTEGER NOT NULL CHECK (direction_reversed IN (0, 1)),
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX history_edge_map_logical_physical ON history_edge_map(logical_edge_id, physical_edge_id);`); err != nil {
+		return err
+	}
+	return rebuildHistoryEdgeMap(context.Background(), tx, time.Time{})
 }
 
 func migrate(db *sql.DB) error {
