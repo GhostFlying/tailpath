@@ -349,10 +349,27 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "expired", formatTime(cutoff.Add(-time.Hour)), path); err != nil {
 		t.Fatal(err)
 	}
-	for edgeID, lastTraffic := range map[string]time.Time{"retained": now, "expired": cutoff.Add(-time.Hour)} {
-		if _, err := database.db.Exec(`INSERT INTO history_edges VALUES (?, 'a', 'b', ?, ?)`, edgeID, formatTime(lastTraffic), formatTime(lastTraffic)); err != nil {
+	for edgeID, edge := range map[string]struct {
+		sourceID, targetID string
+		lastTraffic        time.Time
+	}{
+		"retained": {"a", "b", now},
+		"expired":  {"c", "d", cutoff.Add(-time.Hour)},
+	} {
+		if _, err := database.db.Exec(`INSERT INTO history_edges VALUES (?, ?, ?, ?, ?)`, edgeID, edge.sourceID, edge.targetID, formatTime(edge.lastTraffic), formatTime(edge.lastTraffic)); err != nil {
 			t.Fatal(err)
 		}
+	}
+	tx, err := database.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebuildHistoryEdgeMap(context.Background(), tx, now); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	if err := database.Maintain(context.Background(), now); err != nil {
 		t.Fatal(err)
@@ -376,6 +393,74 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 	want := []string{formatTime(cutoff.Add(-time.Hour)), formatTime(cutoff.Add(time.Hour))}
 	if len(retained) != len(want) || retained[0] != want[0] || retained[1] != want[1] {
 		t.Fatalf("retained path events = %#v, want %#v", retained, want)
+	}
+}
+
+func TestMaintainKeepsLatestPathAnchorAcrossEdgeAliases(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-hourTrafficRetention)
+	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
+	for _, event := range []struct {
+		edgeID string
+		at     time.Time
+	}{
+		{"n_a--n_b", cutoff.Add(-2 * time.Hour)},
+		{"n_b--n_old", cutoff.Add(-time.Hour)},
+		{"n_a--n_b", cutoff.Add(time.Hour)},
+	} {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, event.edgeID, formatTime(event.at), path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.db.Exec(`
+		INSERT INTO history_edges VALUES
+		  ('n_b--n_old', 'n_b', 'n_old', ?, ?),
+		  ('n_a--n_b', 'n_a', 'n_b', ?, ?)`,
+		formatTime(cutoff.Add(-time.Hour)), formatTime(cutoff.Add(-time.Hour)),
+		formatTime(now), formatTime(now)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.Exec(`INSERT INTO canonical_redirects VALUES ('n_old', 'n_a', ?)`, formatTime(now)); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := database.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebuildHistoryEdgeMap(context.Background(), tx, now); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Maintain(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.db.Query(`SELECT edge_id, observed_at FROM path_events ORDER BY observed_at`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var edgeID, observedAt string
+		if err := rows.Scan(&edgeID, &observedAt); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, edgeID+"@"+observedAt)
+	}
+	want := []string{
+		"n_b--n_old@" + formatTime(cutoff.Add(-time.Hour)),
+		"n_a--n_b@" + formatTime(cutoff.Add(time.Hour)),
+	}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("logical path anchors = %#v, want %#v", got, want)
 	}
 }
 
@@ -575,6 +660,13 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	if err != nil || len(history.PathEvents) != 1 || history.PathEvents[0].Observations == nil ||
 		len(history.Traffic) != 1 || history.Traffic[0].AToBBytes != 120 || history.Traffic[0].BToABytes != 40 {
 		t.Fatalf("migrated path history = %#v, err=%v", history, err)
+	}
+	var physicalID, logicalID string
+	if err := database.db.QueryRow(`SELECT physical_edge_id, logical_edge_id FROM history_edge_map`).Scan(&physicalID, &logicalID); err != nil {
+		t.Fatal(err)
+	}
+	if physicalID != "n_a--n_b" || logicalID != "n_a--n_b" {
+		t.Fatalf("migrated edge map = %q -> %q", physicalID, logicalID)
 	}
 }
 
