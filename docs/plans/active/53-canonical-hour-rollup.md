@@ -1,6 +1,6 @@
 # Canonical hour-rollup remediation plan
 
-Status: in progress
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/53
 Parent: https://github.com/GhostFlying/tailpath/issues/40
 Last updated: 2026-08-24
@@ -29,12 +29,12 @@ undercounts traffic after minute retention expires.
 
 ## Steps
 
-- [ ] Add the schema-v3 semantic repair migration and upgrade coverage.
-- [ ] Canonicalize minute rows before hour aggregation.
-- [ ] Persist generated logical hour edges and stable mappings.
-- [ ] Cover reverse aliases, overlapping and disjoint minutes, minute deletion,
+- [x] Add the schema-v3 semantic repair migration and upgrade coverage.
+- [x] Canonicalize minute rows before hour aggregation.
+- [x] Persist generated logical hour edges and stable mappings.
+- [x] Cover reverse aliases, overlapping and disjoint minutes, minute deletion,
       list/detail queries, and later map rebuilds.
-- [ ] Update data-model documentation and complete repository checks.
+- [x] Update data-model documentation and complete repository checks.
 
 ## Acceptance
 
@@ -49,9 +49,15 @@ undercounts traffic after minute retention expires.
 
 ## Current state
 
-Implementation has not started.
+Hour maintenance now canonicalizes and direction-corrects each retained minute,
+deduplicates aliases within that minute, and sums only across distinct minutes.
+The logical hour edge is persisted as a durable history alias. Migration 4
+clears unreconstructable schema-v3 hour rows and rebuilds from retained minute
+coverage. Store regressions cover overlapping and disjoint reverse aliases,
+post-minute-retention list/detail queries, map rebuilds, and schema-v2/v3
+upgrades.
 
 ## Next step
 
-Add failing store regressions, then replace physical hour aggregation with the
-logical-minute query.
+Run the strict release performance workflow and Linux/macOS dogfood before the
+human `v0.2.0-alpha.1` tag decision.
