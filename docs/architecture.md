@@ -28,12 +28,14 @@ peer counters, and excluded from user activity.
 Current topology is served from memory. Every accepted report, traffic bucket,
 and logical path transition is committed in one SQLite transaction. A typed
 candidate state is checkpointed immediately once and then at most once per
-second; the checkpoint records the last represented report rowid. Only after a
-successful transaction does ingest transfer candidate ownership and publish an
-SSE invalidation. Per-client invalidations are coalesced into 250-millisecond
-windows, and the browser merges a refresh burst into one in-flight request plus
-one follow-up. Storage failure therefore cannot advance in-memory sequence or
-inventory state.
+second during ordinary updates. A report that allocates or merges a canonical
+node forces an immediate checkpoint so journal replay can never regenerate a
+different canonical ID; the checkpoint records the last represented report
+rowid. Only after a successful transaction does ingest transfer candidate
+ownership and publish an SSE invalidation. Per-client invalidations are
+coalesced into 250-millisecond windows, and the browser merges a refresh burst
+into one in-flight request plus one follow-up. Storage failure therefore cannot
+advance in-memory sequence, inventory, or canonical identity state.
 
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
