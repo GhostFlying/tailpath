@@ -95,7 +95,7 @@ func (a *App) SubmitAt(ctx context.Context, report domain.ReportEnvelope, receiv
 	}
 	var checkpoint []byte
 	var historyMetadata *domain.HistoryMetadata
-	if a.shouldCheckpoint(receivedAt) {
+	if result.CanonicalStateChanged || a.shouldCheckpoint(receivedAt) {
 		checkpoint, err = candidate.MarshalState()
 		if err != nil {
 			return result.Receipt, fmt.Errorf("encode runtime state: %w", err)

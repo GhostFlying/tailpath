@@ -96,10 +96,11 @@ type edgeObservation struct {
 }
 
 type ApplyResult struct {
-	Receipt         domain.ReportReceipt
-	Traffic         []domain.AcceptedTraffic
-	PathTransitions []domain.PathTransition
-	Changed         bool
+	Receipt               domain.ReportReceipt
+	Traffic               []domain.AcceptedTraffic
+	PathTransitions       []domain.PathTransition
+	Changed               bool
+	CanonicalStateChanged bool
 }
 
 func New(options Options) *Aggregator {
@@ -175,6 +176,11 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 		ControlStableNodeIDs: append([]string(nil), a.controlIDs...),
 		HeartbeatIntervalMS:  a.heartbeatInterval.Milliseconds(),
 	}}
+	resolveIdentity := func(identity domain.NodeIdentity) (string, bool) {
+		nodeID, created, canonicalChanged := a.resolveIdentityLocked(identity, receivedAt)
+		result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
+		return nodeID, created
+	}
 	if _, duplicate := reporter.ReportIDs[report.ReportID]; duplicate {
 		return result, nil
 	}
@@ -197,7 +203,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 
 	touchedEdges := make(map[string]domain.PathObservation)
 	for _, observation := range report.Observers {
-		observerID, _ := a.resolveIdentityLocked(observation.Observer, receivedAt)
+		observerID, _ := resolveIdentity(observation.Observer)
 		if report.Kind == domain.ReportObserverHello {
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
 		}
@@ -208,7 +214,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 		case domain.ReportObserverHello, domain.ReportInventoryUpdate:
 			members := make(map[string]struct{}, len(observation.Peers))
 			for _, peer := range observation.Peers {
-				peerID, created := a.resolveIdentityLocked(peer.Peer, receivedAt)
+				peerID, created := resolveIdentity(peer.Peer)
 				if created {
 					a.state.Nodes[peerID].LastEvidence = receivedAt
 				}
@@ -223,7 +229,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				if peer.RxDelta == 0 && peer.TxDelta == 0 {
 					continue
 				}
-				peerID, _ := a.resolveIdentityLocked(peer.Peer, receivedAt)
+				peerID, _ := resolveIdentity(peer.Peer)
 				a.touchPeerLocked(peerID, receivedAt)
 				edgeID, source, target := domain.EdgeID(observerID, peerID)
 				if _, seen := touchedEdges[edgeID]; !seen {
@@ -251,11 +257,11 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	}
 	if report.Kind == domain.ReportRelaySessionUpdate {
 		for _, session := range report.RelaySessions {
-			relayID, _ := a.resolveIdentityLocked(session.Relay, receivedAt)
+			relayID, _ := resolveIdentity(session.Relay)
 			a.touchObserverLocked(relayID, report.CollectedAt, receivedAt)
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, relayID)
-			sourceID, _ := a.resolveIdentityLocked(session.Source, receivedAt)
-			targetID, _ := a.resolveIdentityLocked(session.Target, receivedAt)
+			sourceID, _ := resolveIdentity(session.Source)
+			targetID, _ := resolveIdentity(session.Target)
 			a.touchPeerLocked(sourceID, receivedAt)
 			a.touchPeerLocked(targetID, receivedAt)
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -374,7 +380,7 @@ func (a *Aggregator) applyRelaySessionLocked(
 	}
 }
 
-func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt time.Time) (string, bool) {
+func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt time.Time) (string, bool, bool) {
 	strong, addresses := identityAliases(identity)
 	matches := make(map[string]struct{})
 	for _, alias := range strong {
@@ -389,6 +395,7 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 	}
 
 	created := false
+	merged := false
 	var nodeID string
 	if len(matches) == 0 {
 		nodeID = a.newNodeID()
@@ -409,6 +416,7 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 		for _, id := range ids {
 			if id != nodeID {
 				a.mergeNodesLocked(nodeID, id)
+				merged = true
 			}
 		}
 		a.state.Nodes[nodeID].Identity = mergeIdentity(a.state.Nodes[nodeID].Identity, identity)
@@ -420,7 +428,7 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 		a.state.Aliases[alias] = nodeID
 		a.state.AliasLastSeen[alias] = seenAt
 	}
-	return nodeID, created
+	return nodeID, created, created || merged
 }
 
 func (a *Aggregator) canUseAddressMatch(identity domain.NodeIdentity, alias, nodeID string, seenAt time.Time) bool {
