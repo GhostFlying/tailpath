@@ -62,7 +62,7 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
   let visibleUpdateElapsedMs: number | null = null;
   let topologyResponseElapsedMs: number | null = null;
   if (testInfo.project.name === "desktop-chromium") {
-    await expect(page.locator(".live-state")).toHaveText("live");
+    await expect(page.getByLabel("Live updates connected")).toBeVisible();
     const layoutRunsBeforeUpdate = await graph.getAttribute("data-layout-runs");
     const positionsBeforeUpdate = await graph.getAttribute(
       "data-layout-positions",
