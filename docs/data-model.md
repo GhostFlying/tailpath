@@ -50,15 +50,20 @@ reactivates the edge. System telemetry and heartbeats never advance lifecycle.
 
 Released numbered migrations are append-only. Per-observer ten-second traffic
 is retained for one hour, deduplicated logical one-minute traffic for 48 hours,
-and logical one-hour traffic for seven days. Rollups process only ended buckets
-and apply directional observer preference before summing time buckets. All
-retention uses server receive time.
+and logical one-hour traffic for seven days. Minute rollups apply directional
+observer preference before summing time buckets and close behind a two-minute
+grace watermark. Hour rollup and source-tier deletion cannot pass the coverage
+cursor of the tier they consume. All retention uses server receive time.
 
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including
-direction reversal when a canonical endpoint order changes. Each edge with
-retained traffic keeps the latest path event before the seven-day cutoff as its
-window anchor; anchors disappear when the edge has no retained traffic.
+direction reversal when a canonical endpoint order changes. A durable edge map
+associates each physical time-series edge with its current logical edge and
+orientation. Multiple physical aliases in the same source bucket use the
+direction-corrected maximum rather than being summed. Each logical edge with
+retained traffic keeps the latest path event across all aliases before the
+seven-day cutoff as its window anchor; anchors disappear when the edge has no
+retained traffic.
 
 Persisted canonical identity, redirects, current inventory generations, and
 latest runtime state outlive time-series retention. A recorded history edge also

@@ -60,6 +60,8 @@ minute coverage, and raw/minute deletion cannot pass the cursor of the tier
 that consumes it.
 
 History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
-resolve persisted canonical redirects before grouping, use keyset pagination,
+join a persisted physical-to-logical edge map built from canonical redirects,
+correct direction before deduplicating alias buckets, use keyset pagination,
 and cap detail responses at 200 traffic points and 500 path transitions. A path
-anchor records the state at the start of a window without replaying topology.
+anchor records the latest logical-edge state across all aliases at the start of
+a window without replaying topology.
