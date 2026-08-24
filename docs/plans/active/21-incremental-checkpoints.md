@@ -40,6 +40,9 @@ transactional publish boundary.
 - The first changed report checkpoints immediately. Later reports checkpoint
   when server receive time is at least one second beyond the prior checkpoint;
   receive-time rollback also forces a checkpoint rather than delaying forever.
+- A report that allocates or merges a canonical node bypasses the one-second
+  cadence and checkpoints immediately. Alias and display-metadata refreshes
+  alone do not force a checkpoint.
 - Report, traffic, transition, and optional checkpoint writes share one SQLite
   transaction. A nil checkpoint payload means this report is journal-only.
 - Maintenance is explicit application work on a one-minute ticker. It deletes
