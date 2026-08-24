@@ -50,6 +50,28 @@ test("keeps traffic empty states consistent with the recent option", async ({
   });
 });
 
+test("recovers Live connectivity after a topology retry", async ({ page }) => {
+  let allowSuccess = false;
+  await page.route("**/api/v1/topology", async (route) => {
+    if (!allowSuccess) {
+      await route.fulfill({ status: 500, body: "unavailable" });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/");
+  await expect(page.getByText("Topology unavailable")).toBeVisible();
+  await expect(page.getByLabel("Live topology unavailable")).toBeVisible();
+  allowSuccess = true;
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByLabel("Live Tailnet topology")).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
+  await expect(page.getByLabel("Live updates connected")).toBeVisible();
+});
+
 test("renders the live fixture topology without overlap", async ({
   page,
 }, testInfo) => {
