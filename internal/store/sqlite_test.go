@@ -393,15 +393,8 @@ func TestMaintainPersistsGeneratedLogicalHourEdge(t *testing.T) {
 	if err := database.db.QueryRow(`SELECT source_id, target_id FROM history_edges WHERE edge_id = 'n_a--n_b'`).Scan(&sourceID, &targetID); err != nil {
 		t.Fatal(err)
 	}
-	tx, err := database.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rebuildHistoryEdgeMap(context.Background(), tx, start.Add(2*time.Hour)); err != nil {
-		tx.Rollback()
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
+	metadata.Redirects["n_a"] = "n_z"
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, start.Add(2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	var logicalID string
@@ -409,7 +402,7 @@ func TestMaintainPersistsGeneratedLogicalHourEdge(t *testing.T) {
 	if err := database.db.QueryRow(`SELECT logical_edge_id, direction_reversed FROM history_edge_map WHERE physical_edge_id = 'n_a--n_b'`).Scan(&logicalID, &reversed); err != nil {
 		t.Fatal(err)
 	}
-	if sourceID != "n_a" || targetID != "n_b" || logicalID != "n_a--n_b" || reversed {
+	if sourceID != "n_a" || targetID != "n_b" || logicalID != "n_b--n_z" || !reversed {
 		t.Fatalf("generated edge = %s/%s mapping=%s reversed=%v", sourceID, targetID, logicalID, reversed)
 	}
 }
