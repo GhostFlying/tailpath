@@ -38,5 +38,7 @@ repeated inspection rather than marketing presentation.
 - Workspace connectivity must name its actual signal. Live reports SSE state;
   History reports required HTTP request state. Shared chrome has no optimistic
   green default.
+- History windows with no traffic must render a bounded empty state with the
+  selected connection context; never leave an otherwise blank detail pane.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
