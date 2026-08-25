@@ -44,7 +44,7 @@ export const HistoryDetail = memo(function HistoryDetail({
   const lastPath = history
     ? (history.pathEvents.at(-1)?.path ?? history.pathAnchor?.path)
     : undefined;
-  const lastTraffic = history?.traffic.at(-1)?.bucketStart;
+  const lastTraffic = history?.lastTrafficAt;
 
   return (
     <article className="history-detail-pane" aria-label="History edge detail">
@@ -110,7 +110,11 @@ export const HistoryDetail = memo(function HistoryDetail({
             <i />
             <span>Last traffic</span>
             <strong>
-              {lastTraffic ? formatAgo(lastTraffic) : "No traffic"}
+              {lastTraffic ? (
+                <time dateTime={lastTraffic}>{formatAgo(lastTraffic)}</time>
+              ) : (
+                "No traffic"
+              )}
             </strong>
             <i />
             <span className="history-total">

@@ -78,3 +78,8 @@ Persisted canonical identity, redirects, current inventory generations, and
 latest runtime state outlive time-series retention. A recorded history edge also
 outlives its series so a known edge can return an empty selected window without
 being confused with an unknown edge ID.
+
+History edge detail exposes the exact server-received `lastTrafficAt` when the
+selected window contains traffic. Chart `bucketStart` values remain aggregated
+time-axis coordinates and are never used as a substitute for exact recency. A
+known edge with no traffic in the selected window omits `lastTrafficAt`.
