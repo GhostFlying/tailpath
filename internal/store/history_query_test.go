@@ -174,6 +174,124 @@ func TestHistorySummaryUsesCompletedRollupsWithoutDoubleCountingRaw(t *testing.T
 	}
 }
 
+func TestEdgeHistoryWindowUsesRetainedRawWhenRollupsAreMissing(t *testing.T) {
+	database, now := coverageHistoryDatabase(t)
+	recordCoverageTraffic(t, database, now.Add(-2*time.Hour), 42)
+
+	assertHistoryListDetailTotals(t, database, domain.History6Hours, now, 42)
+}
+
+func TestEdgeHistoryWindowUsesCoverageWithoutTierOverlap(t *testing.T) {
+	t.Run("lagging minute rollup", func(t *testing.T) {
+		database, now := coverageHistoryDatabase(t)
+		coveredAt := now.Add(-3 * time.Hour)
+		uncoveredAt := now.Add(-90 * time.Minute)
+		recordCoverageTraffic(t, database, coveredAt, 400)
+		recordCoverageTraffic(t, database, uncoveredAt, 30)
+		insertCoverageRollup(t, database, "traffic_rollup_minute", coveredAt, 40)
+		insertCoverageRollup(t, database, "traffic_rollup_minute", uncoveredAt, 300)
+		insertCoverageCursor(t, database, "minute", now.Add(-2*time.Hour))
+
+		assertHistoryListDetailTotals(t, database, domain.History6Hours, now, 70)
+	})
+
+	t.Run("lagging hour and minute rollups", func(t *testing.T) {
+		database, now := coverageHistoryDatabase(t)
+		hourAt := now.Add(-6 * 24 * time.Hour)
+		minuteFallbackAt := now.Add(-60 * time.Hour)
+		minuteAt := now.Add(-3 * time.Hour)
+		rawFallbackAt := now.Add(-90 * time.Minute)
+		for _, sample := range []struct {
+			at    time.Time
+			bytes int64
+		}{
+			{hourAt, 1_000},
+			{minuteFallbackAt, 2_000},
+			{minuteAt, 3_000},
+			{rawFallbackAt, 40},
+		} {
+			recordCoverageTraffic(t, database, sample.at, sample.bytes)
+		}
+		insertCoverageRollup(t, database, "traffic_rollup_hour", hourAt, 10)
+		insertCoverageRollup(t, database, "traffic_rollup_hour", minuteFallbackAt, 200)
+		insertCoverageRollup(t, database, "traffic_rollup_minute", minuteFallbackAt, 20)
+		insertCoverageRollup(t, database, "traffic_rollup_minute", minuteAt, 30)
+		insertCoverageRollup(t, database, "traffic_rollup_minute", rawFallbackAt, 400)
+		insertCoverageCursor(t, database, "hour", now.Add(-72*time.Hour))
+		insertCoverageCursor(t, database, "minute", now.Add(-2*time.Hour))
+
+		assertHistoryListDetailTotals(t, database, domain.History7Days, now, 100)
+	})
+}
+
+func coverageHistoryDatabase(t *testing.T) (*SQLite, time.Time) {
+	t.Helper()
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, LastEvidenceAt: now},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, LastEvidenceAt: now},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	return database, now
+}
+
+func recordCoverageTraffic(t *testing.T, database *SQLite, at time.Time, bytes int64) {
+	t.Helper()
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_a",
+		AToBBytes: bytes, ReceivedAt: at,
+	}}
+	if _, err := database.Record(context.Background(), sampleReport(at, at, formatTime(at)), at, nil, traffic, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertCoverageRollup(t *testing.T, database *SQLite, table string, at time.Time, bytes int64) {
+	t.Helper()
+	if _, err := database.db.Exec(`INSERT INTO `+table+`
+		(edge_id, bucket_start, source_id, target_id, a_to_b_bytes, b_to_a_bytes)
+		VALUES ('n_a--n_b', ?, 'n_a', 'n_b', ?, 0)`, formatTime(at), bytes); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertCoverageCursor(t *testing.T, database *SQLite, name string, at time.Time) {
+	t.Helper()
+	if _, err := database.db.Exec(`INSERT INTO history_maintenance(name, value) VALUES (?, ?)`, name, formatTime(at)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertHistoryListDetailTotals(t *testing.T, database *SQLite, window domain.HistoryWindow, now time.Time, want int64) {
+	t.Helper()
+	page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{Window: window}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Edges) != 1 || page.Edges[0].AToBBytes != want || page.Edges[0].BToABytes != 0 {
+		t.Fatalf("history list = %#v, want one edge with %d/0 bytes", page.Edges, want)
+	}
+	history, found, err := database.EdgeHistoryWindow(context.Background(), "n_a--n_b", window, now)
+	if err != nil || !found {
+		t.Fatalf("history detail found=%v err=%v", found, err)
+	}
+	var aToB, bToA int64
+	for _, point := range history.Traffic {
+		aToB += point.AToBBytes
+		bToA += point.BToABytes
+	}
+	if aToB != want || bToA != 0 {
+		t.Fatalf("history detail totals = %d/%d, want %d/0; traffic=%#v", aToB, bToA, want, history.Traffic)
+	}
+}
+
 func TestHistoryEdgeMapDeduplicatesAliasesAndPreservesDirection(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {

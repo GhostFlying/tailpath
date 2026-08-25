@@ -284,7 +284,10 @@ func (s *SQLite) loadTrafficPoints(ctx context.Context, index historyIndex, wind
 }
 
 func (s *SQLite) loadTrafficPointsForEdges(ctx context.Context, index historyIndex, window domain.HistoryWindow, from, to time.Time, edgeIDs []string) (map[string][]storedTrafficPoint, error) {
-	segments := trafficSegments(window, from, to)
+	segments, err := s.detailTrafficSegments(ctx, window, from, to)
+	if err != nil {
+		return nil, err
+	}
 	bySourceBucket := make(map[string]storedTrafficPoint)
 	for _, segment := range segments {
 		points, err := s.queryTrafficLayer(ctx, segment.table, segment.from, segment.to, edgeIDs)
@@ -425,20 +428,37 @@ type trafficSegment struct {
 	from, to time.Time
 }
 
-func trafficSegments(window domain.HistoryWindow, from, to time.Time) []trafficSegment {
+func (s *SQLite) detailTrafficSegments(ctx context.Context, window domain.HistoryWindow, from, to time.Time) ([]trafficSegment, error) {
 	rawStart := laterTime(from, to.Add(-rawTrafficRetention))
-	minuteStart := laterTime(from, to.Add(-minuteTrafficRetention))
-	var segments []trafficSegment
-	if window == domain.History7Days && from.Before(minuteStart) {
-		segments = append(segments, trafficSegment{"traffic_rollup_hour", from, minuteStart})
+	if window == domain.History15Minutes || window == domain.History1Hour {
+		return []trafficSegment{{"traffic_buckets", from, to}}, nil
 	}
-	if (window == domain.History6Hours || window == domain.History24Hours || window == domain.History7Days) && minuteStart.Before(rawStart) {
-		segments = append(segments, trafficSegment{"traffic_rollup_minute", minuteStart, rawStart})
+
+	minuteFrom := from
+	segments := make([]trafficSegment, 0, 3)
+	if window == domain.History7Days {
+		minuteStart := laterTime(from, to.Add(-minuteTrafficRetention))
+		hourEnd, err := s.maintenanceCoverage(ctx, "hour", from, minuteStart)
+		if err != nil {
+			return nil, err
+		}
+		if from.Before(hourEnd) {
+			segments = append(segments, trafficSegment{"traffic_rollup_hour", from, hourEnd})
+		}
+		minuteFrom = hourEnd
 	}
-	if rawStart.Before(to) {
-		segments = append(segments, trafficSegment{"traffic_buckets", rawStart, to})
+
+	minuteEnd, err := s.maintenanceCoverage(ctx, "minute", minuteFrom, rawStart)
+	if err != nil {
+		return nil, err
 	}
-	return segments
+	if minuteFrom.Before(minuteEnd) {
+		segments = append(segments, trafficSegment{"traffic_rollup_minute", minuteFrom, minuteEnd})
+	}
+	if minuteEnd.Before(to) {
+		segments = append(segments, trafficSegment{"traffic_buckets", minuteEnd, to})
+	}
+	return segments, nil
 }
 
 func (s *SQLite) queryTrafficLayer(ctx context.Context, table string, from, to time.Time, edgeIDs []string) ([]storedTrafficPoint, error) {
