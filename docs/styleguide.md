@@ -42,5 +42,8 @@ repeated inspection rather than marketing presentation.
   selected connection context; never leave an otherwise blank detail pane.
 - Shared mobile workspace navigation keeps identical geometry across routes;
   active state and connection status must not resize or shift its tabs.
+- Mobile History rows reserve separate identity and traffic-metadata columns;
+  recency and directional totals use explicit grid spacing rather than visual
+  transforms, while long connection names truncate before metadata moves.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
