@@ -35,7 +35,9 @@ jobs:
         if: always()
         with:
           name: topology-screenshots
-          path: web/test-results/**/tailpath-topology.png
+          path: |
+            web/test-results/**/tailpath-topology.png
+            web/test-results/**/tailpath-sparse-entry.png
           if-no-files-found: ignore
           retention-days: 14
 
