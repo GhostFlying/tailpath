@@ -39,6 +39,7 @@ jobs:
             web/test-results/**/tailpath-topology.png
             web/test-results/**/tailpath-sparse-entry.png
             web/test-results/**/history-15m-empty.png
+            web/test-results/**/mobile-tabs-*.png
           if-no-files-found: ignore
           retention-days: 14
 

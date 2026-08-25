@@ -40,5 +40,7 @@ repeated inspection rather than marketing presentation.
   green default.
 - History windows with no traffic must render a bounded empty state with the
   selected connection context; never leave an otherwise blank detail pane.
+- Shared mobile workspace navigation keeps identical geometry across routes;
+  active state and connection status must not resize or shift its tabs.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
