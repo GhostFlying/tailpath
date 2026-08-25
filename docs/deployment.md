@@ -39,6 +39,23 @@ identity directory. `docker compose down` followed by `docker compose up` must
 therefore retain the same enrolled identity. Do not use `down -v` unless the
 database and Tailnet identity are intentionally being destroyed together.
 
+## Image channels
+
+Semantic-version tags and `latest` are stable release artifacts. Every fully
+successful `main` CI run also publishes an immutable
+`edge-<full-commit-sha>` multi-architecture image, then advances the mutable
+`edge` tag to the newest successfully published commit in `main` history.
+Failed checks and pull requests cannot publish either edge tag. Edge images are
+dogfood artifacts: they have no stable, backup, or rollback compatibility
+contract and do not include native collector release archives.
+
+Operators may configure a dogfood Compose deployment with `:edge`, but it must
+not update itself automatically. Before an explicit update, record the running
+image ID and remote edge digest, check whether the range introduces a numbered
+database migration, and retain the old image until restart, Live, History, and
+collector reconnect checks pass. Production deployments should use a
+versioned release tag or digest instead.
+
 Linux collectors can run natively or through the optional `collector`
 host-network Compose profile with the tailscaled LocalAPI socket mounted
 read-only. The collector reaches the server through its Tailnet hostname or
