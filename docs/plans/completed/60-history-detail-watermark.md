@@ -56,14 +56,14 @@ queried, so directional totals cannot be double-counted.
 ## Current state
 
 Coverage-aware detail segmentation and all regression fixtures are implemented
-on PR #61. Missing watermarks now select retained raw rows; lagging minute and
-hour watermarks produce adjacent hour/minute/raw ranges whose directional
-totals agree with the History list.
+and merged through PR #61. Missing watermarks now select retained raw rows;
+lagging minute and hour watermarks produce adjacent hour/minute/raw ranges whose
+directional totals agree with the History list.
 
 ## Next step
 
-Wait for hosted checks and human review, then rebase-merge PR #61 before the
-final v0.2 release candidate verification.
+Retain the coverage-aware list/detail parity fixtures as migration and
+maintenance regression coverage.
 
 ## Verification record
 
@@ -82,3 +82,10 @@ final v0.2 release candidate verification.
   through this host's failing container IPv4 route. Equivalent checks used the
   locked Go image with the existing module cache; hosted CI remains the
   canonical final `make check` result.
+
+## Completion summary
+
+PR #61 was rebase-merged into the final v0.2 candidate. Hosted main CI, the
+unchanged strict release gate, and an independent follow-up review all passed;
+History list and detail now remain consistent when maintenance coverage is
+missing or delayed.

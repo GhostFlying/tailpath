@@ -1,6 +1,6 @@
 # Deterministic strict browser gate remediation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/56
 Parent: https://github.com/GhostFlying/tailpath/issues/28
 Last updated: 2026-08-25
@@ -56,9 +56,9 @@ No runtime, observer, HTTP, storage, or user-facing interface changes.
 - [x] Make repeated E2E process cleanup and port ownership deterministic.
 - [x] Run focused local scale Playwright repeatedly with zero retries.
 - [x] Run local repository checks.
-- [ ] Obtain hosted PR CI.
-- [ ] Re-run the hosted strict v0.2 release gate from `main`.
-- [ ] Record the passing artifact in #28 and archive this plan.
+- [x] Obtain hosted PR CI.
+- [x] Re-run the hosted strict v0.2 release gate from `main`.
+- [x] Record the passing artifact in #28 and archive this plan.
 
 ## Tests
 
@@ -89,12 +89,15 @@ runs. Desktop cold ready measured 2,490/2,559/2,712 ms and visible SSE update
 measured 381/343/340 ms. Desktop and mobile screenshots were nonblank with the
 expected 250 nodes, 1,000 logical edges, controls, and legends. Two consecutive
 normal E2E runs each passed 13 applicable tests and released all fixture/Vite
-ports before the next run.
+ports before the next run. PR #57 then passed hosted CI and was rebase-merged.
+The final strict run 32844395543 passed with one worker and zero retries:
+desktop cold/cached ready measured 1,740/1,537 ms, mobile cold/cached ready
+measured 1,759/1,460 ms, and visible SSE update measured 303 ms.
 
 ## Next step
 
-Obtain hosted PR CI, merge the focused remediation, and rerun the strict
-workflow from `main` without retries.
+Keep the deterministic scale browser configuration as the v0.2 regression
+baseline; future threshold changes require new measured evidence.
 
 ## Verification
 
@@ -110,4 +113,7 @@ workflow from `main` without retries.
 
 ## Completion summary
 
-Pending.
+Removed retry and concurrency masking from the strict browser gate, moved the
+startup measurement to the rendered readiness boundary, and made repeated
+fixture cleanup deterministic. Hosted PR and final release-candidate gates
+passed without retries.
