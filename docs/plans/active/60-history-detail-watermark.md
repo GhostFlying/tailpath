@@ -1,6 +1,6 @@
 # History detail rollup coverage fix plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/60
 Parent: https://github.com/GhostFlying/tailpath/issues/28
 Last updated: 2026-08-25
@@ -40,10 +40,10 @@ queried, so directional totals cannot be double-counted.
 
 ## Steps
 
-- [ ] Add missing and lagging watermark regression fixtures.
-- [ ] Replace fixed-age detail segmentation with coverage-aware segmentation.
-- [ ] Verify list/detail directional parity and non-overlapping tier totals.
-- [ ] Run focused store/API tests and full repository checks.
+- [x] Add missing and lagging watermark regression fixtures.
+- [x] Replace fixed-age detail segmentation with coverage-aware segmentation.
+- [x] Verify list/detail directional parity and non-overlapping tier totals.
+- [x] Run focused store/API tests and full repository checks.
 
 ## Tests
 
@@ -55,11 +55,30 @@ queried, so directional totals cannot be double-counted.
 
 ## Current state
 
-The independent post-dogfood review classified the mismatch as a v0.2 release
-blocker. The issue and dedicated worktree are open; implementation has not
-started.
+Coverage-aware detail segmentation and all regression fixtures are implemented
+on PR #61. Missing watermarks now select retained raw rows; lagging minute and
+hour watermarks produce adjacent hour/minute/raw ranges whose directional
+totals agree with the History list.
 
 ## Next step
 
-Add regression tests that reproduce list/detail disagreement before changing
-the tier selector.
+Wait for hosted checks and human review, then rebase-merge PR #61 before the
+final v0.2 release candidate verification.
+
+## Verification record
+
+- Before the fix, the new fixtures reproduced list/detail mismatches of
+  `42/0`, `70/340`, and `100/640` bytes for missing, minute-lagging, and
+  hour-plus-minute-lagging coverage respectively.
+- After the fix, focused store and HTTP API tests pass and all three fixtures
+  report identical list/detail directional totals without overlap.
+- Generated Go and TypeScript files remain unchanged. Go 1.26.6 formatting,
+  vet, all tests, and build pass. Web type/format checks, 46 unit tests, and the
+  production build pass.
+- Playwright against the built fixture binary passes 13 normal tests with seven
+  expected project/viewport skips. The deterministic 250-node/1,000-edge scale
+  fixture passes on desktop and mobile.
+- The canonical dev-container build could not refresh its Debian package index
+  through this host's failing container IPv4 route. Equivalent checks used the
+  locked Go image with the existing module cache; hosted CI remains the
+  canonical final `make check` result.
