@@ -853,42 +853,6 @@
 }
 
 @media (max-width: 620px) {
-  .history-shell .topbar {
-    height: 64px;
-    grid-template-columns: 1fr auto 14px;
-    padding-inline: 16px;
-  }
-
-  .history-shell .brand strong {
-    font-size: 16px;
-  }
-
-  .history-shell .workspace-tabs {
-    gap: 24px;
-    margin-right: 16px;
-  }
-
-  .history-shell .workspace-tabs a {
-    font-size: 14px;
-  }
-
-  .history-shell .live-state {
-    grid-column: 3;
-    width: 14px;
-    min-width: 0;
-    justify-content: center;
-    gap: 0;
-    overflow: hidden;
-    color: transparent;
-    font-size: 0;
-  }
-
-  .history-shell .live-state > span {
-    width: 9px;
-    height: 9px;
-    flex: none;
-  }
-
   .history-filters {
     height: 62px;
     display: grid;
@@ -931,7 +895,7 @@
   }
 
   .history-workspace {
-    height: calc(100% - 126px);
+    height: calc(100% - 114px);
     display: block;
   }
 
