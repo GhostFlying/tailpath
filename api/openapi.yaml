@@ -494,6 +494,10 @@ components:
           type: integer
           format: int64
           minimum: 1
+        lastTrafficAt:
+          type: string
+          format: date-time
+          description: Exact server-received time of the last traffic in the selected window. Omitted when the window is empty.
         traffic:
           type: array
           maxItems: 200
