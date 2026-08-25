@@ -37,7 +37,8 @@ mutable `edge` channel only when an operator explicitly upgrades it.
       and shell syntax locally.
 - [x] Run the canonical generated-file, Go, web, build, and browser checks using
       the cached devcontainer-equivalent toolchains.
-- [ ] Open a ready PR with the complete workflow and documentation changes.
+- [x] Open PR #76 with the complete workflow and documentation changes; hosted
+      PR CI passed while both package-write jobs were explicitly skipped.
 - [ ] After merge, verify the immutable and mutable multi-architecture manifests,
       OCI revision, and embedded version.
 - [ ] Import `edge` on the dogfood host, preserve `tailpath-data`, recreate only
@@ -46,6 +47,6 @@ mutable `edge` channel only when an operator explicitly upgrades it.
 ## Current state
 
 The gated publish and promotion jobs, selector tests, and deployment docs are
-implemented and pass local verification. Opening the ready PR and observing its
-hosted CI are next. Deployment remains blocked on that PR merging and producing
-its first successful edge artifact.
+implemented and pass local and hosted PR verification. PR #76 is ready for
+final status-commit CI and human review. Deployment remains blocked on that PR
+merging and producing its first successful edge artifact.
