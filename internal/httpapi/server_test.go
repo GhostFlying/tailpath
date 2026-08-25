@@ -217,7 +217,7 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		t.Fatalf("recent detail status = %d: %s", recorder.Code, recorder.Body.String())
 	}
 	var history domain.EdgeHistory
-	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || history.EdgeID != "n_a--n_b" || len(history.Traffic) != 1 {
+	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || history.EdgeID != "n_a--n_b" || len(history.Traffic) != 1 || history.LastTrafficAt == nil || !history.LastTrafficAt.Equal(now.Add(-time.Minute)) {
 		t.Fatalf("recent history = %#v, err=%v", history, err)
 	}
 
@@ -227,7 +227,8 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("known empty status = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || len(history.Traffic) != 0 {
+	history = domain.EdgeHistory{}
+	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || len(history.Traffic) != 0 || history.LastTrafficAt != nil {
 		t.Fatalf("known empty history = %#v, err=%v", history, err)
 	}
 

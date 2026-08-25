@@ -81,10 +81,17 @@ func TestEdgeHistoryWindowReturnsAnchorBoundsAndKnownEmpty(t *testing.T) {
 	if aToB != 13 || bToA != 11 {
 		t.Fatalf("detail traffic = %d/%d", aToB, bToA)
 	}
+	wantLastTrafficAt := now.Add(-2 * time.Minute)
+	if history.LastTrafficAt == nil || !history.LastTrafficAt.Equal(wantLastTrafficAt) {
+		t.Fatalf("last traffic = %v, want %s", history.LastTrafficAt, wantLastTrafficAt)
+	}
 
 	empty, found, err := database.EdgeHistoryWindow(ctx, "n_b--n_c", domain.History7Days, now)
 	if err != nil || !found || len(empty.Traffic) != 0 || len(empty.PathEvents) != 0 {
 		t.Fatalf("known empty history = %#v, found=%v err=%v", empty, found, err)
+	}
+	if empty.LastTrafficAt != nil {
+		t.Fatalf("known empty last traffic = %s, want nil", empty.LastTrafficAt)
 	}
 	if _, found, err := database.EdgeHistoryWindow(ctx, "missing", domain.History1Hour, now); err != nil || found {
 		t.Fatalf("unknown edge found=%v err=%v", found, err)
@@ -127,6 +134,41 @@ func TestHistoryWindowResolutionContract(t *testing.T) {
 	}
 	if domain.HistoryWindow("invalid").Valid() {
 		t.Fatal("invalid history window accepted")
+	}
+}
+
+func TestEdgeHistoryWindowUsesExactTrafficTimeAcrossCoarseBuckets(t *testing.T) {
+	for _, item := range []struct {
+		name   string
+		window domain.HistoryWindow
+		age    time.Duration
+	}{
+		{name: "24 hour", window: domain.History24Hours, age: 2*time.Hour + 37*time.Second},
+		{name: "7 day", window: domain.History7Days, age: 72*time.Hour + 17*time.Minute + 23*time.Second},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			database, now := coverageHistoryDatabase(t)
+			at := now.Add(-item.age)
+			recordCoverageTraffic(t, database, at, 42)
+
+			page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{Window: item.window}, now)
+			if err != nil || len(page.Edges) != 1 {
+				t.Fatalf("history list = %#v, err=%v", page, err)
+			}
+			history, found, err := database.EdgeHistoryWindow(context.Background(), "n_a--n_b", item.window, now)
+			if err != nil || !found || len(history.Traffic) != 1 {
+				t.Fatalf("history detail = %#v, found=%v err=%v", history, found, err)
+			}
+			if history.LastTrafficAt == nil || !history.LastTrafficAt.Equal(at) {
+				t.Fatalf("last traffic = %v, want %s", history.LastTrafficAt, at)
+			}
+			if !page.Edges[0].LastTrafficAt.Equal(*history.LastTrafficAt) {
+				t.Fatalf("list last traffic %s != detail %s", page.Edges[0].LastTrafficAt, history.LastTrafficAt)
+			}
+			if history.Traffic[0].BucketStart.Equal(*history.LastTrafficAt) {
+				t.Fatalf("exact traffic time unexpectedly equals %s bucket start", item.window)
+			}
+		})
 	}
 }
 

@@ -171,6 +171,10 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 		From:   from, To: to, BucketDurationMS: window.Resolution().Milliseconds(),
 		Traffic: []domain.TrafficBucket{}, PathEvents: []domain.PathEvent{},
 	}
+	if !edge.lastTrafficAt.Before(from) && edge.lastTrafficAt.Before(to) {
+		lastTrafficAt := edge.lastTrafficAt
+		history.LastTrafficAt = &lastTrafficAt
+	}
 	for _, point := range points[canonicalID] {
 		history.Traffic = append(history.Traffic, domain.TrafficBucket{
 			BucketStart: point.bucketStart, AToBBytes: point.aToBBytes, BToABytes: point.bToABytes,
