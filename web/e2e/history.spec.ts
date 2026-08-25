@@ -61,6 +61,18 @@ test("renders and filters the desktop history workspace", async ({
   await expect(
     page.getByRole("heading", { name: /MacBook.*DevBox/ }),
   ).toBeVisible();
+  const listLastTraffic = page
+    .locator(".history-edge-row")
+    .first()
+    .locator("time");
+  const detailLastTraffic = page.locator(".history-detail-summary time");
+  await expect(detailLastTraffic).toHaveAttribute(
+    "datetime",
+    (await listLastTraffic.getAttribute("datetime")) ?? "",
+  );
+  await expect(detailLastTraffic).toHaveText(
+    (await listLastTraffic.textContent()) ?? "",
+  );
   await expect(page.getByLabel(/MacBook to DevBox above zero/)).toBeVisible();
   await expect(page.locator(".traffic-line-a")).toHaveAttribute("d", /L/);
   await expect(page.locator(".traffic-line-b")).toHaveAttribute("d", /L/);
@@ -284,6 +296,7 @@ function historyFor(summary: (typeof edgeSummaries)[number]) {
     from: new Date(from).toISOString(),
     to: new Date(to).toISOString(),
     bucketDurationMs: 12 * 60_000,
+    lastTrafficAt: summary.lastTrafficAt,
     traffic,
     pathAnchor: {
       observedAt: new Date(from - 60_000).toISOString(),
