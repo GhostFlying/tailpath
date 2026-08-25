@@ -1,8 +1,8 @@
 name: CI
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   pull_request:
@@ -150,3 +150,106 @@ jobs:
         run: |
           docker image inspect tailpath:test --format '{{json .Config.Volumes}}' \
             | jq -e '. == {"/var/lib/tailpath": {}}'
+
+  publish-edge:
+    name: Publish immutable edge image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, native-platforms, native-archives, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve edge version
+        id: version
+        run: echo "value=edge-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: metadata
+        with:
+          images: ghcr.io/ghostflying/tailpath
+          tags: type=raw,value=edge-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+
+  promote-edge:
+    name: Promote edge image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish-edge
+    runs-on: ubuntu-latest
+    concurrency:
+      group: tailpath-edge-promotion
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve newest published main image
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          OWN_TAG: edge-${{ github.sha }}
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          owner_type="$(gh api "/users/$OWNER" --jq .type)"
+          case "$owner_type" in
+            Organization) package_path="/orgs/$OWNER/packages/container/tailpath/versions" ;;
+            User) package_path="/users/$OWNER/packages/container/tailpath/versions" ;;
+            *) echo "unsupported repository owner type: $owner_type" >&2; exit 1 ;;
+          esac
+
+          tags_file="$RUNNER_TEMP/edge-tags"
+          for attempt in 1 2 3 4 5 6; do
+            gh api --paginate "$package_path?per_page=100" \
+              --jq '.[] | .metadata.container.tags[]?' > "$tags_file"
+            if grep -Fxq "$OWN_TAG" "$tags_file"; then
+              break
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              echo "published tag $OWN_TAG was not visible through the package API" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          tag="$(scripts/select-edge-tag.sh origin/main "$tags_file")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Move edge pointer
+        env:
+          SOURCE_TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          image=ghcr.io/ghostflying/tailpath
+          docker buildx imagetools create \
+            --tag "$image:edge" \
+            "$image:$SOURCE_TAG"
+          source_digest="$(docker buildx imagetools inspect "$image:$SOURCE_TAG" | awk '$1 == "Digest:" {print $2; exit}')"
+          edge_digest="$(docker buildx imagetools inspect "$image:edge" | awk '$1 == "Digest:" {print $2; exit}')"
+          test -n "$source_digest"
+          test "$source_digest" = "$edge_digest"
+          printf 'Promoted `%s@%s` to `edge`.\n' "$SOURCE_TAG" "$edge_digest" >> "$GITHUB_STEP_SUMMARY"

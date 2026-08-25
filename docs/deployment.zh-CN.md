@@ -34,6 +34,19 @@ chmod 0444 secrets/tailscale-authkey
 所以 `docker compose down` 后再 `docker compose up` 必须继续使用同一个已注册身份。
 除非明确要一起删除数据库和 Tailnet identity，否则不要执行 `down -v`。
 
+## Image channels
+
+SemVer tags 和 `latest` 属于稳定 release artifacts。每次 `main` CI 全部成功后，
+还会发布一个不可变的 `edge-<full-commit-sha>` multi-architecture image，再把可变的
+`edge` tag 推进到 `main` 历史中最新成功发布的 commit。失败的 checks 和 pull
+requests 都不能发布 edge tag。Edge image 只用于 dogfood，不提供稳定性、backup
+或 rollback compatibility contract，也不包含原生 collector release archives。
+
+Dogfood Compose 可以配置为使用 `:edge`，但不能自动更新。每次人工升级前应记录
+正在运行的 image ID 和远端 edge digest，检查升级区间是否引入 numbered database
+migration，并保留旧 image，直到 restart、Live、History 和 collector reconnect
+检查全部通过。Production deployment 应使用版本化 release tag 或 digest。
+
 Linux collector 可原生运行或使用可选的 `collector` host-network Compose
 profile，并只读挂载 tailscaled LocalAPI socket。Collector 通过 Tailnet hostname
 或 Tailscale IP 访问 server，不使用 Docker service DNS；server 名称不是 `tailpath`

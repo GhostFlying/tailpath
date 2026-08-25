@@ -36,6 +36,8 @@ build: ## Build the binary and web application.
 
 check: ## Run generated-file, formatting, test, and build checks.
 	./scripts/check-generated.sh
+	sh -n scripts/select-edge-tag.sh scripts/tests/select-edge-tag.sh
+	./scripts/tests/select-edge-tag.sh
 	test -z "$$(gofmt -l $$(find cmd internal -name '*.go' -type f))"
 	go vet ./...
 	go test ./...
