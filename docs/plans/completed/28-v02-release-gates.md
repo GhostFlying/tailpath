@@ -1,6 +1,6 @@
 # v0.2 release gates and dogfood implementation plan
 
-Status: active
+Status: complete
 Issue: https://github.com/GhostFlying/tailpath/issues/28
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-25
@@ -116,8 +116,8 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 - [x] Human: publish immutable `v0.2.0-alpha.1` artifacts.
 - [x] Execute immutable Linux container and native collector dogfood.
 - [x] Record macOS as preview and defer real arm64 qualification to #58.
-- [ ] Obtain independent read-only review and resolve every blocker.
-- [ ] Human: publish `v0.2.0` after the recorded release decision.
+- [x] Obtain independent read-only review and resolve every blocker.
+- [x] Human: publish `v0.2.0` after the recorded release decision.
 
 ## Risks
 
@@ -137,21 +137,34 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 
 ## Current state
 
-The hosted strict workflow passed for commit `bae04b3`, and the human-published
-`v0.2.0-alpha.1` tag resolves to that exact candidate. All six archive checksums
-and the immutable OCI image were verified. Linux digest-pinned container and
-native collector dogfood passed Direct to DERP to Direct, restart/resync,
-History, stale provenance, systemd, outage recovery, and configuration
-preservation gates.
+Independent post-dogfood review found one History detail rollup-coverage
+blocker. PR #61 fixed it with missing and lagging watermark regression tests;
+the follow-up independent review found no remaining blocker. Final main CI run
+32842497565 passed on commit
+`ddbaf71599f3d61269a4c803282d6f65dc68fd63`.
 
-An available arm64 macOS 26.3 sandbox provided a logged-in GUI session, but it
-had no Tailscale client, denied writes to `/Applications`, and provided no
-system-level installation/extension approval path. It cannot satisfy the GUI
-safesocket gate and is not accepted as partial real-node evidence. macOS remains
-preview-only; #58 owns future qualification.
+Strict run 32843024047 retained an isolated hosted-runner ingest latency miss
+without data loss, errors, restarts, OOM, or threshold changes. The exact
+unchanged rerun 32844395543 passed 75,000/75,000 accepted reports at 125.001
+reports/s, all latency and memory thresholds, the 707,948,544-byte seven-day
+database gate, restart smoke, and one-worker zero-retry desktop/mobile browser
+gates.
+
+The human-published annotated `v0.2.0` tag resolves to the final commit. Release
+workflow 32846103839 passed, all six archives matched `checksums.txt`, the Linux
+amd64 binary reports `0.2.0`, and the public OCI index
+`sha256:4f49284436c923a408416c35471193ee00f5c9a8d1543249500dc00a7b41d330`
+contains Linux amd64 and arm64 images. macOS and Windows remain preview-only;
+#58 owns future real arm64 Mac qualification.
 
 ## Next step
 
-Obtain the independent post-dogfood read-only review. Resolve every blocker,
-run final `make check`, and prepare the human release decision with Linux
-evidence and the explicit macOS/Windows preview disposition.
+Merge the documentation-only archive PR, then close the release-gate issue and
+parent v0.2 milestone.
+
+## Completion summary
+
+The strict scale, restart, History, browser, immutable dogfood, independent
+review, final CI, archive, and multi-architecture image gates are complete.
+The final release preserves the passive observation boundary and records
+macOS/Windows support as preview rather than weakening the evidence contract.
