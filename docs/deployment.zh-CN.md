@@ -74,8 +74,10 @@ launchctl print "gui/$(id -u)/com.tailpath.collector"
 Installer 使用 `~/Library/Application Support/Tailpath`、用户级 LaunchAgent 和
 `~/Library/Logs/Tailpath`。它会被动检查 LocalAPI；Tailscale GUI safesocket
 不可用时只警告，不阻止文件安装。`./uninstall.sh` 保留配置和日志，
-`./uninstall.sh --purge` 才删除。完成 v0.2 的真实 arm64 Mac gate 前，macOS
-支持仍标记为 alpha。
+`./uninstall.sh --purge` 才删除。macOS package 当前为 preview：CI、archive
+layout 和 installer fixture 已通过，但在
+[#58](https://github.com/GhostFlying/tailpath/issues/58) 的真实节点 qualification
+完整通过前，不声明受支持的真实节点 contract。
 
 Windows 解压 archive 后，在提升权限的 Windows PowerShell 5.1 中执行：
 

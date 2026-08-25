@@ -85,8 +85,10 @@ The installer uses `~/Library/Application Support/Tailpath`, a user
 LaunchAgent, and `~/Library/Logs/Tailpath`. It performs a passive LocalAPI check
 and warns, without blocking installation, when the Tailscale GUI safesocket is
 not available. `./uninstall.sh` preserves configuration and logs;
-`./uninstall.sh --purge` removes them. macOS support remains alpha until the
-v0.2 real-arm64-node gate is recorded.
+`./uninstall.sh --purge` removes them. The macOS package is a preview: CI,
+archive-layout, and installer-fixture checks pass, but no supported real-node
+contract exists until the qualification tracked in
+[#58](https://github.com/GhostFlying/tailpath/issues/58) passes in full.
 
 On Windows, extract the archive and run `install.ps1` from an elevated Windows
 PowerShell 5.1 process:

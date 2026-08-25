@@ -15,8 +15,9 @@ identity/path aggregation, SQLite, SSE, and a fixture plus real-node graph.
 
 ## v0.2: Usable alpha
 
-macOS support, Windows preview, history, stable layout, reconnect/resync,
-native collector packaging, and the 250-node/1,000-edge performance gate.
+Linux server and collector support, macOS and Windows preview packaging,
+history, stable layout, reconnect/resync, and the 250-node/1,000-edge
+performance gate.
 
 ## v0.3: Peer Relay
 

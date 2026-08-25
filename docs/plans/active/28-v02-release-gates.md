@@ -3,7 +3,7 @@
 Status: active
 Issue: https://github.com/GhostFlying/tailpath/issues/28
 Parent: https://github.com/GhostFlying/tailpath/issues/18
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 ## Context
 
@@ -82,11 +82,10 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 - Real Linux dogfood installs the alpha archive and validates systemd,
   `collector --check`, server outage, recovery, and configuration-preserving
   reinstall/uninstall behavior.
-- Real arm64 Mac dogfood installs the alpha archive as the logged-in GUI user
-  and records GUI safesocket access, `collector --check`, LaunchAgent start
-  after login, Direct ordinary traffic, server outage, recovery, logs, and
-  config preservation. This evidence is required before changing macOS from
-  pending-alpha validation to validated alpha.
+- macOS remains preview-only in v0.2. Hosted build, archive layout, and installer
+  fixtures are release gates; real arm64 GUI safesocket and LaunchAgent
+  qualification is deferred to #58 and is required before any later support
+  promotion.
 - Windows remains CI-only preview. It is not a release blocker beyond hosted
   build, script parsing, archive layout, and bounded-runner fixture success.
 
@@ -100,8 +99,8 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
   strict gate and final `make check`; do not waive thresholds by changing the
   workflow in the fix PR.
 - The human release owner alone creates `v0.2.0`. The decision record links the
-  exact passing workflow, Linux/Mac evidence, independent review, resolved
-  blockers, final commit, image digest, and checksums.
+  exact passing workflow, Linux evidence, macOS preview disposition, independent
+  review, resolved blockers, final commit, image digest, and checksums.
 
 ## Steps
 
@@ -113,9 +112,10 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 - [x] Write alpha artifact, Linux smoke, Linux native, and Mac dogfood runbooks.
 - [x] Run the local short gate and complete repository checks.
 - [x] Open, review, and merge the implementation PRs with passing hosted CI.
-- [ ] Dispatch the strict workflow from `main` and retain its artifact.
-- [ ] Human: publish immutable `v0.2.0-alpha.1` artifacts.
-- [ ] Human-assisted: execute Linux and real arm64 Mac dogfood.
+- [x] Dispatch the strict workflow from `main` and retain its artifact.
+- [x] Human: publish immutable `v0.2.0-alpha.1` artifacts.
+- [x] Execute immutable Linux container and native collector dogfood.
+- [x] Record macOS as preview and defer real arm64 qualification to #58.
 - [ ] Obtain independent read-only review and resolve every blocker.
 - [ ] Human: publish `v0.2.0` after the recorded release decision.
 
@@ -137,25 +137,21 @@ captures, changes Tailscale preferences, or mutates ACLs or Grants.
 
 ## Current state
 
-The local short gate and full constrained path are implemented. The first
-ten-minute run correctly failed after accepting 75,000 reports: ingest p95 was
-589 ms, scheduler lag reached 226 seconds, and History hit a read-only temporary
-file error. The failure led to bounded report-ID state, WAL/NORMAL plus memory
-temporary storage, rollup-backed list summaries, and edge-filtered detail.
+The hosted strict workflow passed for commit `bae04b3`, and the human-published
+`v0.2.0-alpha.1` tag resolves to that exact candidate. All six archive checksums
+and the immutable OCI image were verified. Linux digest-pinned container and
+native collector dogfood passed Direct to DERP to Direct, restart/resync,
+History, stale provenance, systemd, outage recovery, and configuration
+preservation gates.
 
-The implementation and remediation stack is merged into `main` at `2bd64b9`,
-where regular CI passed. The fixed local ten-minute run accepted 75,000 of
-75,000 reports in 599.996 seconds.
-Ingest p95/p99 were 43.3/77.8 ms, scheduler lag was 200.7 ms, topology/list /
-detail p95 were 16.1/81.2/11.1 ms, and peak process RSS was 45.3 MiB with no
-HTTP failure, 500, OOM, or restart. The seven-day database was 707,936,256
-bytes. Scale Playwright passed desktop and mobile; desktop cold ready was 3,386
-ms and the edge-only SSE update became visible in 464 ms without layout or
-viewport movement. Screenshots were inspected and were nonblank with complete
-controls and legends.
+An available arm64 macOS 26.3 sandbox provided a logged-in GUI session, but it
+had no Tailscale client, denied writes to `/Applications`, and provided no
+system-level installation/extension approval path. It cannot satisfy the GUI
+safesocket gate and is not accepted as partial real-node evidence. macOS remains
+preview-only; #58 owns future qualification.
 
 ## Next step
 
-Dispatch the manual strict workflow from `main` and retain its artifact. If it
-passes, request the human-owned alpha.1 tag and use only those immutable
-artifacts for the real Linux and arm64 Mac dogfood gates.
+Obtain the independent post-dogfood read-only review. Resolve every blocker,
+run final `make check`, and prepare the human release decision with Linux
+evidence and the explicit macOS/Windows preview disposition.
