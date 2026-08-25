@@ -34,6 +34,9 @@ repeated inspection rather than marketing presentation.
   observed, not on the process that reports it. One reporter may export several
   runtime views. Label peer-only nodes separately and retain collector clock
   warnings.
+- Runtime status reports known views as `N runtimes reporting`, adding
+  `N reporting · M stale` only when previously known views expire. Do not use
+  an `N of M` ratio without an explicit expected-runtime inventory.
 - Edge details use a desktop side panel and mobile bottom sheet.
 - Workspace connectivity must name its actual signal. Live reports SSE state;
   History reports required HTTP request state. Shared chrome has no optimistic

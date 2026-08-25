@@ -1,6 +1,7 @@
 import { Activity, Search, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import type { PathKind } from "../api/types";
+import { runtimeReportingLabel } from "../lib/format";
 import type { PathFilter } from "../lib/graph";
 
 export const paths: { value: PathFilter; label: string }[] = [
@@ -21,7 +22,7 @@ interface Props {
   counts: Record<PathKind, number>;
   edgeCount: number;
   liveRuntimes: number;
-  totalRuntimes: number;
+  staleRuntimes: number;
   skewedRuntimes: number;
 }
 
@@ -121,7 +122,7 @@ export function TopologyFilters(props: Props) {
         <Activity size={16} />
         <div>
           <strong>
-            {props.liveRuntimes} of {props.totalRuntimes} runtimes reporting
+            {runtimeReportingLabel(props.liveRuntimes, props.staleRuntimes)}
           </strong>
           {props.skewedRuntimes > 0 ? (
             <span className="clock-warning">

@@ -52,6 +52,7 @@ export default function LiveWorkspace() {
   const liveRuntimes =
     topology?.observers.filter((observer) => observer.online).length ?? 0;
   const totalRuntimes = topology?.observers.length ?? 0;
+  const staleRuntimes = totalRuntimes - liveRuntimes;
 
   useEffect(() => {
     if (selectedEdge && !edgeIsVisible(selectedEdge, pathFilter, showRecent)) {
@@ -84,11 +85,7 @@ export default function LiveWorkspace() {
               active edges
             </span>
             <span>
-              <strong>
-                {topology?.observers.filter((observer) => observer.online)
-                  .length ?? 0}
-              </strong>{" "}
-              live runtimes
+              <strong>{liveRuntimes}</strong> live runtimes
             </span>
           </>
         }
@@ -105,7 +102,7 @@ export default function LiveWorkspace() {
           counts={counts}
           edgeCount={countedEdges.length}
           liveRuntimes={liveRuntimes}
-          totalRuntimes={totalRuntimes}
+          staleRuntimes={staleRuntimes}
           skewedRuntimes={skewedRuntimes}
         />
 

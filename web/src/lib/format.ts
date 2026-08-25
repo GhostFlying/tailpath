@@ -42,6 +42,17 @@ export function formatAgo(timestamp: string, now = Date.now()): string {
   return `${Math.floor(minutes / 60)}h ago`;
 }
 
+export function runtimeReportingLabel(
+  reportingRuntimes: number,
+  staleRuntimes: number,
+): string {
+  if (staleRuntimes > 0) {
+    return `${reportingRuntimes} reporting · ${staleRuntimes} stale`;
+  }
+  const runtimeLabel = reportingRuntimes === 1 ? "runtime" : "runtimes";
+  return `${reportingRuntimes} ${runtimeLabel} reporting`;
+}
+
 export function pathLabel(path: PathObservation): string {
   switch (path.kind) {
     case "direct":

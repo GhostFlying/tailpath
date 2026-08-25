@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatCompactRate, formatRate, nodeLabel, pathLabel } from "./format";
+import {
+  formatCompactRate,
+  formatRate,
+  nodeLabel,
+  pathLabel,
+  runtimeReportingLabel,
+} from "./format";
 
 describe("formatRate", () => {
   it("uses compact decimal units", () => {
@@ -14,6 +20,18 @@ describe("formatCompactRate", () => {
     expect(formatCompactRate(530)).toBe("530 B/s");
     expect(formatCompactRate(2000)).toBe("2.0 KB/s");
     expect(formatCompactRate(12_500)).toBe("13 KB/s");
+  });
+});
+
+describe("runtimeReportingLabel", () => {
+  it("does not imply an expected total when every known runtime reports", () => {
+    expect(runtimeReportingLabel(0, 0)).toBe("0 runtimes reporting");
+    expect(runtimeReportingLabel(1, 0)).toBe("1 runtime reporting");
+    expect(runtimeReportingLabel(2, 0)).toBe("2 runtimes reporting");
+  });
+
+  it("separates reporting and stale known runtimes", () => {
+    expect(runtimeReportingLabel(2, 1)).toBe("2 reporting · 1 stale");
   });
 });
 

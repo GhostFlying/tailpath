@@ -51,6 +51,59 @@ test("keeps traffic empty states consistent with the recent option", async ({
   });
 });
 
+test("reports known runtime freshness without implying expected coverage", async ({
+  page,
+}, testInfo) => {
+  let includeStaleRuntime = false;
+  const observedAt = "2026-08-26T00:00:00Z";
+  await page.route("**/api/v1/topology", async (route) => {
+    await route.fulfill({
+      json: {
+        generatedAt: observedAt,
+        nodes: [],
+        edges: [],
+        observers: [
+          runtimeObserver("smallbox", true, false, observedAt),
+          runtimeObserver("devbox", true, false, observedAt),
+          ...(includeStaleRuntime
+            ? [runtimeObserver("aliyun-relay", false, true, observedAt)]
+            : []),
+        ],
+      },
+    });
+  });
+
+  await page.goto("/");
+  const runtimeSummary = page.locator(".runtime-summary");
+  const runtimeStatus = runtimeSummary.locator("strong");
+  if (testInfo.project.name.startsWith("desktop")) {
+    await expect(runtimeStatus).toHaveText("2 runtimes reporting");
+    await expect(runtimeStatus).not.toContainText(" of ");
+  } else {
+    await expect(runtimeSummary).toBeHidden();
+  }
+
+  includeStaleRuntime = true;
+  await page.reload();
+  if (testInfo.project.name.startsWith("desktop")) {
+    await expect(runtimeStatus).toHaveText("2 reporting · 1 stale");
+    await expect(runtimeStatus).not.toContainText(" of ");
+    await expect(runtimeSummary).toContainText("1 clock warning");
+  } else {
+    await expect(runtimeSummary).toBeHidden();
+  }
+
+  const recentSwitch = page.getByRole("switch", { name: "Show recent" });
+  await recentSwitch.click();
+  await expect(recentSwitch).toHaveAttribute("aria-checked", "false");
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `tailpath-runtime-status-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
+});
+
 test("centers a readable sparse component when traffic enters an empty graph", async ({
   page,
 }, testInfo) => {
@@ -347,6 +400,23 @@ function parsePositions(value: string): Map<string, string> {
         return [entry.slice(0, separator), entry.slice(separator + 1)] as const;
       }),
   );
+}
+
+function runtimeObserver(
+  id: string,
+  online: boolean,
+  clockSkewed: boolean,
+  observedAt: string,
+) {
+  return {
+    id,
+    hostname: id,
+    online,
+    lastSeen: observedAt,
+    lastCollectedAt: observedAt,
+    clockSkewMs: clockSkewed ? 90_000 : 0,
+    clockSkewed,
+  };
 }
 
 function numericPositions(value: string) {
