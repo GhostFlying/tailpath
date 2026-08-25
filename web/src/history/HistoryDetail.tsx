@@ -102,36 +102,46 @@ export const HistoryDetail = memo(function HistoryDetail({
               </button>
             ))}
           </div>
-          <div className="history-detail-summary">
-            <span>Last path</span>
-            <strong className={`path-text ${lastPath?.kind ?? "unknown"}`}>
-              {lastPath ? pathLabel(lastPath) : "Unknown"}
-            </strong>
-            <i />
-            <span>Last traffic</span>
-            <strong>
-              {lastTraffic ? (
-                <time dateTime={lastTraffic}>{formatAgo(lastTraffic)}</time>
-              ) : (
-                "No traffic"
-              )}
-            </strong>
-            <i />
-            <span className="history-total">
-              <ArrowUp size={14} /> {formatBytes(totals.aToB)}
-            </span>
-            <i />
-            <span className="history-total">
-              <ArrowDown size={14} /> {formatBytes(totals.bToA)}
-            </span>
-          </div>
-          <DirectionalTrafficChart history={history} />
-          <PathTimeline history={history} />
-          {history.trafficTruncated || history.pathEventsTruncated ? (
-            <p className="history-truncation-note">
-              Latest retained points shown
-            </p>
-          ) : null}
+          {history.traffic.length === 0 ? (
+            <div className="history-detail-empty">
+              <Waypoints size={27} />
+              <strong>No traffic in this window</strong>
+              <span>Choose a longer window to see earlier activity.</span>
+            </div>
+          ) : (
+            <>
+              <div className="history-detail-summary">
+                <span>Last path</span>
+                <strong className={`path-text ${lastPath?.kind ?? "unknown"}`}>
+                  {lastPath ? pathLabel(lastPath) : "Unknown"}
+                </strong>
+                <i />
+                <span>Last traffic</span>
+                <strong>
+                  {lastTraffic ? (
+                    <time dateTime={lastTraffic}>{formatAgo(lastTraffic)}</time>
+                  ) : (
+                    "No traffic"
+                  )}
+                </strong>
+                <i />
+                <span className="history-total">
+                  <ArrowUp size={14} /> {formatBytes(totals.aToB)}
+                </span>
+                <i />
+                <span className="history-total">
+                  <ArrowDown size={14} /> {formatBytes(totals.bToA)}
+                </span>
+              </div>
+              <DirectionalTrafficChart history={history} />
+              <PathTimeline history={history} />
+              {history.trafficTruncated || history.pathEventsTruncated ? (
+                <p className="history-truncation-note">
+                  Latest retained points shown
+                </p>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </article>

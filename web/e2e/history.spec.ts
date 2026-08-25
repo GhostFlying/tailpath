@@ -191,6 +191,60 @@ test("keeps pagination in the URL", async ({ page }, testInfo) => {
   await expect(page).toHaveURL(/cursor=page-2/);
 });
 
+test("shows a bounded empty detail when desktop History changes to 15m", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop"));
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.route("**/api/v1/history/edges?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("window") === "15m") {
+      await route.fulfill({ json: { edges: [] } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/v1/history/edges/*?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("window") === "15m") {
+      const summary = edgeSummaries[0];
+      await route.fulfill({
+        json: { ...historyFor(summary), traffic: [], pathEvents: [] },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/history?window=24h");
+  await expect(page).toHaveURL(/history\/edges\/node-mac--node-dev/);
+  await page
+    .getByRole("button", { name: "15m", exact: true })
+    .filter({ visible: true })
+    .click();
+
+  await expect(page).toHaveURL(/window=15m/);
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  await expect(page.getByText("No matching traffic")).toBeVisible();
+  await expect(page.locator(".history-detail-empty")).toContainText(
+    "No traffic in this window",
+  );
+  await expect(
+    page.getByRole("heading", { name: /MacBook.*DevBox/ }),
+  ).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("history-15m-empty.png"),
+    fullPage: true,
+  });
+});
+
 test("keeps sparse traffic at real times and leaves gaps inert", async ({
   page,
 }, testInfo) => {

@@ -401,6 +401,26 @@
   height: 100%;
 }
 
+.history-detail-empty {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--history-muted);
+  text-align: center;
+}
+
+.history-detail-empty strong {
+  color: #273239;
+  font-size: 13px;
+}
+
+.history-detail-empty span {
+  font-size: 11px;
+}
+
 .history-detail-content {
   min-height: 100%;
   padding: 20px 26px 42px;
