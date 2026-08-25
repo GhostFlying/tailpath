@@ -334,6 +334,7 @@ type EdgeHistory struct {
 	From                time.Time            `json:"from"`
 	To                  time.Time            `json:"to"`
 	BucketDurationMS    int64                `json:"bucketDurationMs"`
+	LastTrafficAt       *time.Time           `json:"lastTrafficAt,omitempty"`
 	Traffic             []TrafficBucket      `json:"traffic"`
 	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
 	PathEvents          []PathEvent          `json:"pathEvents"`

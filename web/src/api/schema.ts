@@ -271,6 +271,11 @@ export interface components {
             to: string;
             /** Format: int64 */
             bucketDurationMs: number;
+            /**
+             * Format: date-time
+             * @description Exact server-received time of the last traffic in the selected window. Omitted when the window is empty.
+             */
+            lastTrafficAt?: string;
             traffic: components["schemas"]["TrafficBucket"][];
             pathAnchor?: components["schemas"]["PathEvent"];
             pathEvents: components["schemas"]["PathEvent"][];

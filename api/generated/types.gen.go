@@ -43,9 +43,12 @@ const (
 
 // EdgeHistory defines model for EdgeHistory.
 type EdgeHistory struct {
-	BucketDurationMs    int64                `json:"bucketDurationMs"`
-	EdgeId              string               `json:"edgeId"`
-	From                time.Time            `json:"from"`
+	BucketDurationMs int64     `json:"bucketDurationMs"`
+	EdgeId           string    `json:"edgeId"`
+	From             time.Time `json:"from"`
+
+	// LastTrafficAt Exact server-received time of the last traffic in the selected window. Omitted when the window is empty.
+	LastTrafficAt       *time.Time           `json:"lastTrafficAt,omitempty"`
 	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
 	PathEvents          []PathEvent          `json:"pathEvents"`
 	PathEventsTruncated bool                 `json:"pathEventsTruncated"`
