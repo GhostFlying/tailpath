@@ -8,12 +8,12 @@ import type {
 import { formatCompactRate, nodeLabel } from "./format";
 import { platformPresentation } from "./platform";
 
-export const minimumEdgeCenterDistance = 160;
+export const minimumEdgeCenterDistance = 220;
 export const minimumTrafficWidth = 1.5;
 export const maximumTrafficWidth = 5.5;
 export const trafficVisualFloor = 1024;
 export const trafficVisualCeiling = 100 * 1024 * 1024;
-const edgeEndpointAndLabelPadding = 124;
+const edgeEndpointAndLabelPadding = 160;
 const edgeLabelCharacterWidth = 5;
 
 export type PathFilter = "all" | PathKind;

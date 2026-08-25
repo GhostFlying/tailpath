@@ -65,7 +65,7 @@ describe("buildElements", () => {
 
   it("budgets edge length from label width with an arrow-clearance floor", () => {
     expect(edgeIdealLength("")).toBe(minimumEdgeCenterDistance);
-    expect(edgeIdealLengthForWidth(80)).toBe(204);
+    expect(edgeIdealLengthForWidth(80)).toBe(240);
     expect(edgeIdealLengthForWidth(20)).toBe(minimumEdgeCenterDistance);
   });
 

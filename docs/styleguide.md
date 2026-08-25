@@ -11,6 +11,9 @@ repeated inspection rather than marketing presentation.
 - Keep controls compact, cards at eight-pixel radius or less, and avoid nested
   cards or decorative gradients.
 - Preserve stable graph dimensions and node positions during live updates.
+- Center a sparse component when it is the first visible topology or replaces
+  an empty live graph. Bound automatic sparse-graph zoom so a two-node edge
+  uses the workspace without turning device nodes into oversized controls.
 - Default to the active/recent subgraph; expose filters rather than rendering a
   topology hairball.
 - Path filtering and the `Show recent` option hide nodes that are not endpoints
@@ -18,7 +21,8 @@ repeated inspection rather than marketing presentation.
   non-matches. Active edges are always included; v0.1 has no recent-only mode.
 - Keep graph edge labels to one compact total rate; path text is redundant with
   path color and structure. Derive layout edge length from the rendered label
-  budget and preserve minimum clearance for arrowheads. Use a logarithmic
+  budget and enforce minimum clearance for node bodies, arrowheads, and labels
+  after sparse layout and cache restoration. Use a logarithmic
   line-width scale to distinguish light chatter from bulk traffic; arrowheads
   carry direction, while the inspector shows both directional rates.
 - Treat path kind and activity as independent visual dimensions. Activity owns

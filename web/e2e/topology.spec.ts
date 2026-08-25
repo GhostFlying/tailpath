@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { minimumEdgeCenterDistance } from "../src/lib/graph";
 
 test("keeps traffic empty states consistent with the recent option", async ({
   page,
@@ -48,6 +49,98 @@ test("keeps traffic empty states consistent with the recent option", async ({
     path: testInfo.outputPath("tailpath-empty-traffic.png"),
     fullPage: true,
   });
+});
+
+test("centers a readable sparse component when traffic enters an empty graph", async ({
+  page,
+}, testInfo) => {
+  let edgeVisible = false;
+  await page.route("**/api/v1/topology", async (route) => {
+    const generatedAt = new Date().toISOString();
+    await route.fulfill({
+      json: {
+        generatedAt,
+        nextChangeAt: new Date(Date.now() + 400).toISOString(),
+        nodes: [
+          {
+            id: "smallbox",
+            stableNodeId: "smallbox",
+            hostname: "smallbox",
+            os: "linux",
+            observable: true,
+            online: true,
+            lastEvidenceAt: generatedAt,
+            clockSkewed: false,
+          },
+          {
+            id: "iphone181",
+            stableNodeId: "iphone181",
+            hostname: "iphone181",
+            os: "ios",
+            observable: false,
+            online: false,
+            lastEvidenceAt: generatedAt,
+            clockSkewed: false,
+          },
+        ],
+        edges: edgeVisible
+          ? [
+              {
+                id: "iphone181--smallbox",
+                source: "iphone181",
+                target: "smallbox",
+                path: {
+                  kind: "direct",
+                  directEndpoint: "10.3.228.65:41641",
+                },
+                state: "active",
+                aToBBytesPerSecond: 19_000_000,
+                bToABytesPerSecond: 130_000_000,
+                lastActive: generatedAt,
+                observations: [],
+              },
+            ]
+          : [],
+        observers: [],
+      },
+    });
+  });
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await expect(graph).toHaveAttribute("data-edge-count", "0");
+
+  edgeVisible = true;
+  await expect(graph).toHaveAttribute("data-edge-count", "1", {
+    timeout: 5_000,
+  });
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  const positions = numericPositions(
+    (await graph.getAttribute("data-layout-positions")) ?? "",
+  );
+  expect(positions.size).toBe(2);
+  expect(
+    positionDistance(positions.get("smallbox"), positions.get("iphone181")),
+  ).toBeGreaterThanOrEqual(minimumEdgeCenterDistance - 0.5);
+  await expectSparseContentCentered(graph, positions);
+
+  await page.screenshot({
+    path: testInfo.outputPath("tailpath-sparse-entry.png"),
+    fullPage: true,
+  });
+
+  await page.reload();
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await expect(graph).toHaveAttribute("data-layout-runs", "0");
+  const restored = numericPositions(
+    (await graph.getAttribute("data-layout-positions")) ?? "",
+  );
+  expect(restored).toEqual(positions);
+  expect(
+    positionDistance(restored.get("smallbox"), restored.get("iphone181")),
+  ).toBeGreaterThanOrEqual(minimumEdgeCenterDistance - 0.5);
+  await expectSparseContentCentered(graph, restored);
 });
 
 test("recovers Live connectivity after a topology retry", async ({
@@ -254,6 +347,49 @@ function parsePositions(value: string): Map<string, string> {
         return [entry.slice(0, separator), entry.slice(separator + 1)] as const;
       }),
   );
+}
+
+function numericPositions(value: string) {
+  return new Map(
+    [...parsePositions(value)].map(([id, position]) => {
+      const [x, y] = position.split(",").map(Number);
+      return [id, { x, y }] as const;
+    }),
+  );
+}
+
+function positionDistance(
+  left: { x: number; y: number } | undefined,
+  right: { x: number; y: number } | undefined,
+) {
+  if (!left || !right) return 0;
+  return Math.hypot(right.x - left.x, right.y - left.y);
+}
+
+async function expectSparseContentCentered(
+  graph: Locator,
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+) {
+  const viewport = (await graph.getAttribute("data-viewport")) ?? "";
+  const match = viewport.match(/^([\d.]+):(-?[\d.]+),(-?[\d.]+)$/);
+  expect(match, `viewport ${viewport}`).not.toBeNull();
+  const [, rawZoom, rawPanX, rawPanY] = match!;
+  const zoom = Number(rawZoom);
+  const panX = Number(rawPanX);
+  const panY = Number(rawPanY);
+  expect(zoom).toBeLessThanOrEqual(1.25);
+  const values = [...positions.values()];
+  const center = values.reduce(
+    (sum, position) => ({
+      x: sum.x + position.x / values.length,
+      y: sum.y + position.y / values.length,
+    }),
+    { x: 0, y: 0 },
+  );
+  const box = await graph.boundingBox();
+  if (!box) throw new Error("graph has no bounding box");
+  expect(Math.abs(center.x * zoom + panX - box.width / 2)).toBeLessThan(40);
+  expect(Math.abs(center.y * zoom + panY - box.height / 2)).toBeLessThan(70);
 }
 
 async function expectCommonPositions(
