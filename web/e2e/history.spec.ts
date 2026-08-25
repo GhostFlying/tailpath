@@ -154,6 +154,71 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(page.getByLabel("History connections")).toBeVisible();
 });
 
+test("separates mobile History identity, recency, and traffic totals", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("mobile"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const longSummary = {
+    ...edgeSummaries[0],
+    source: {
+      ...edgeSummaries[0].source,
+      label: "smallbox-with-a-very-long-hostname",
+    },
+    target: { ...edgeSummaries[0].target, label: "iphone181" },
+  };
+  await page.route("**/api/v1/history/edges?**", async (route) => {
+    await route.fulfill({ json: { edges: [longSummary] } });
+  });
+
+  await page.goto("/history?window=24h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  const row = page.locator(".history-edge-row").first();
+  const identity = row.locator(".history-row-identity");
+  const metadata = row.locator(".history-row-metadata");
+  const chevron = row.locator(".history-row-chevron");
+  const time = metadata.locator("time");
+  const totals = metadata.locator(".history-row-totals > span");
+  await expect(row).toBeVisible();
+
+  const [identityBox, metadataBox, chevronBox, timeBox, firstTotalBox] =
+    await Promise.all([
+      identity.boundingBox(),
+      metadata.boundingBox(),
+      chevron.boundingBox(),
+      time.boundingBox(),
+      totals.first().boundingBox(),
+    ]);
+  if (
+    !identityBox ||
+    !metadataBox ||
+    !chevronBox ||
+    !timeBox ||
+    !firstTotalBox
+  ) {
+    throw new Error("mobile History row has incomplete geometry");
+  }
+  expect(identityBox.x + identityBox.width + 8).toBeLessThanOrEqual(
+    metadataBox.x,
+  );
+  expect(metadataBox.x + metadataBox.width + 8).toBeLessThanOrEqual(
+    chevronBox.x,
+  );
+  expect(timeBox.y + timeBox.height + 4).toBeLessThanOrEqual(firstTotalBox.y);
+  expect(
+    await identity
+      .locator(".history-row-pair")
+      .evaluate((element) => element.scrollWidth > element.clientWidth),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("history-mobile-metadata.png"),
+    fullPage: true,
+  });
+});
+
 test("shows bounded empty and error states", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("desktop"));
   let unknownFailures = 0;

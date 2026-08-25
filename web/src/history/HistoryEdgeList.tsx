@@ -105,20 +105,26 @@ const HistoryEdgeRow = memo(function HistoryEdgeRow({
       </span>
       <span className="history-row-identity">
         <strong>
-          {edge.source.label} <span>↔</span> {edge.target.label}
+          <span className="history-row-pair">
+            {edge.source.label} ↔ {edge.target.label}
+          </span>
           {selected ? (
             <Activity size={14} aria-label="Selected connection" />
           ) : null}
         </strong>
         <small className={`path-text ${path.kind}`}>{path.label}</small>
       </span>
-      <time dateTime={edge.lastTrafficAt}>{formatAgo(edge.lastTrafficAt)}</time>
-      <span className="history-row-totals">
-        <span>
-          <ArrowUp size={13} /> {formatBytes(edge.aToBBytes)}
-        </span>
-        <span>
-          <ArrowDown size={13} /> {formatBytes(edge.bToABytes)}
+      <span className="history-row-metadata">
+        <time dateTime={edge.lastTrafficAt}>
+          {formatAgo(edge.lastTrafficAt)}
+        </time>
+        <span className="history-row-totals">
+          <span>
+            <ArrowUp size={13} /> {formatBytes(edge.aToBBytes)}
+          </span>
+          <span>
+            <ArrowDown size={13} /> {formatBytes(edge.bToABytes)}
+          </span>
         </span>
       </span>
       <ChevronRight className="history-row-chevron" size={19} />
