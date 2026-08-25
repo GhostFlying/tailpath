@@ -22,9 +22,8 @@ Tailpath 是面向 Tailscale 网络的被动式实时拓扑与流量路径查看
 的空闲心跳，并用它关联控制 freshness window。
 
 发布产物是一个 `tailpath` 多子命令二进制和一个 OCI image。v0.2 以 Linux
-server 和 collector 为支持目标；macOS collector 在真实 arm64 节点验证完成前
-标记为 alpha，Windows collector 是未经真实节点验证的 preview。Server 仅支持
-Linux Compose 部署。
+server 和 collector 为支持目标；macOS 和 Windows collector 均提供可构建、
+可安装的 preview，但不声明真实节点支持。Server 仅支持 Linux Compose 部署。
 
 原生 collector 安装脚本和各平台后台服务方式见[部署说明](docs/deployment.zh-CN.md)。
 
