@@ -5,6 +5,12 @@ Issue: https://github.com/GhostFlying/tailpath/issues/27
 Parent: https://github.com/GhostFlying/tailpath/issues/18
 Last updated: 2026-08-24
 
+> Support disposition superseded on 2026-08-25: v0.2 ships the macOS
+> collector as an unverified preview. Real arm64 Mac qualification, including
+> bounded log delivery, moved to follow-up issue #58 and no longer blocks the
+> v0.2 release. The original implementation contract below is retained as a
+> historical record.
+
 ## Context
 
 GoReleaser already cross-compiles one static `tailpath` binary for Linux,
