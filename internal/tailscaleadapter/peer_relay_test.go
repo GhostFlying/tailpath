@@ -2,6 +2,7 @@ package tailscaleadapter
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/netip"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 
 	"tailscale.com/client/local"
 	"tailscale.com/net/udprelay/status"
+	"tailscale.com/types/key"
 
 	"github.com/GhostFlying/tailpath/internal/collector"
 	"github.com/GhostFlying/tailpath/internal/domain"
@@ -135,15 +137,19 @@ func TestRelayClientIDUsesEndpointOnlyWithoutShortDisco(t *testing.T) {
 }
 
 func TestRelaySessionDisambiguatesCollidingShortDiscoByEndpoint(t *testing.T) {
+	var discoKeys map[key.NodePublic]key.DiscoPublic
+	if err := json.Unmarshal(readRelayFixture(t, "peer-disco-keys.json"), &discoKeys); err != nil {
+		t.Fatal(err)
+	}
 	sessions, err := adaptRelaySessions([]status.ServerSession{{
 		VNI: 7,
 		Client1: status.ClientInfo{
-			Endpoint: netip.MustParseAddrPort("192.0.2.20:52002"), ShortDisco: "d:collision",
+			Endpoint: netip.MustParseAddrPort("192.0.2.20:52002"), ShortDisco: "d:50d20b455ecf12bc",
 		},
 		Client2: status.ClientInfo{
-			Endpoint: netip.MustParseAddrPort("192.0.2.10:51001"), ShortDisco: "d:collision",
+			Endpoint: netip.MustParseAddrPort("192.0.2.10:51001"), ShortDisco: "d:50d20b455ecf12bc",
 		},
-	}}, nil)
+	}}, discoKeys)
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("sessions=%#v error=%v", sessions, err)
 	}
@@ -153,6 +159,31 @@ func TestRelaySessionDisambiguatesCollidingShortDiscoByEndpoint(t *testing.T) {
 	}
 	if session.Source.Endpoint != "192.0.2.10:51001" || session.Target.Endpoint != "192.0.2.20:52002" {
 		t.Fatalf("endpoint fallback did not stabilize direction: %#v", session)
+	}
+	if session.Source.Identity != nil || session.Target.Identity != nil {
+		t.Fatalf("colliding short disco retained ambiguous identity: %#v", session)
+	}
+}
+
+func TestRelaySessionSkipsOnlyIndistinguishableCollision(t *testing.T) {
+	sessions, err := adaptRelaySessions([]status.ServerSession{
+		{
+			VNI:     7,
+			Client1: status.ClientInfo{ShortDisco: "d:collision"},
+			Client2: status.ClientInfo{ShortDisco: "d:collision"},
+		},
+		{
+			VNI: 8,
+			Client1: status.ClientInfo{
+				Endpoint: netip.MustParseAddrPort("192.0.2.10:51001"), ShortDisco: "d:left",
+			},
+			Client2: status.ClientInfo{
+				Endpoint: netip.MustParseAddrPort("192.0.2.20:52002"), ShortDisco: "d:right",
+			},
+		},
+	}, nil)
+	if err != nil || len(sessions) != 1 || sessions[0].VNI != 8 {
+		t.Fatalf("sessions=%#v error=%v", sessions, err)
 	}
 }
 

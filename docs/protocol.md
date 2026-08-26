@@ -59,9 +59,11 @@ short disco hint even when full identity evidence later appears or the underlay
 endpoint moves. Without a short hint, an endpoint change conservatively creates
 a new client baseline because Tailscale v1.102.2 exposes no other stable
 per-client value. If both clients in one session have the same short hint, the
-native adapter uses their endpoints to keep the two scoped IDs distinct; an
-endpoint change in that collision case also establishes a new baseline. The
-client ID, short disco hint, and endpoint never become
+native adapter discards identity enrichment derived from that ambiguous hint
+and uses distinct endpoints to keep the two scoped IDs separate. If the
+endpoints are also indistinguishable, it omits that session while retaining
+other readable sessions. An endpoint change in the collision case establishes
+a new baseline. The client ID, short disco hint, and endpoint never become
 global aliases. The relay is the provenance observer and must include its
 StableNodeID so the path can retain the canonical relay node. Relay traffic is
 fallback evidence and is never added to duplicate endpoint evidence. Reporter

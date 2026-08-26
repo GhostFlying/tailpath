@@ -108,8 +108,10 @@ func adaptRelaySessions(
 			return relayClientSortKey(clients[left]) < relayClientSortKey(clients[right])
 		})
 		if relayClientSortKey(clients[0]) == relayClientSortKey(clients[1]) {
+			clients[0].Identity = nil
+			clients[1].Identity = nil
 			if clients[0].Endpoint == clients[1].Endpoint {
-				return nil, fmt.Errorf("relay VNI %d has indistinguishable clients", session.VNI)
+				continue
 			}
 			for index := range clients {
 				material := relayClientStableKey(clients[index]) + "\x00" + clients[index].Endpoint

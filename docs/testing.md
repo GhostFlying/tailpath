@@ -36,7 +36,9 @@ hint, reverse full-identity lexical order, and remove the short hint entirely.
 They prove enrichment and ordinary endpoint movement preserve scoped IDs and
 direction, while endpoint-only identity changes establish a new baseline. A
 same-session short-hint collision proves the endpoint fallback keeps both
-clients distinct and direction deterministic.
+clients distinct and direction deterministic without accepting ambiguous full
+identity. An indistinguishable collision is omitted without dropping another
+readable session, and server tests reject canonical self-edges defensively.
 Forbidden, failed, malformed, and transport-failed optional enrichment keeps
 readable session counters and emits only bounded degraded/recovered state.
 

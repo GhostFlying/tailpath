@@ -302,6 +302,9 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			sourceID, targetID, sourceStatus, targetStatus, canonicalChanged :=
 				a.resolveRelaySessionLocked(relayID, session, receivedAt)
 			result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
+			if sourceID == targetID {
+				continue
+			}
 			a.touchPeerLocked(sourceID, receivedAt)
 			a.touchPeerLocked(targetID, receivedAt)
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -476,7 +479,9 @@ func (a *Aggregator) resolveRelaySessionLocked(
 	session.SourceStatus = sourceStatus
 	session.TargetStatus = targetStatus
 
-	if sourceStatus == domain.IdentityResolved && targetStatus == domain.IdentityResolved {
+	if sourceID == targetID {
+		// Ambiguous or conflicting identity evidence must never establish a pair.
+	} else if sourceStatus == domain.IdentityResolved && targetStatus == domain.IdentityResolved {
 		changed = a.recordRelayPairLocked(relayID, observation.VNI, sourceID, targetID, seenAt) || changed
 	} else {
 		changed = a.reconcileRelayScopeLocked(scope, seenAt) || changed
