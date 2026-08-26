@@ -63,7 +63,9 @@ observer identity described in a report.
 Relay client resolution is `resolved`, `partial`, `anonymous`, or `conflict`.
 Topology and History may expose that status together with sanitized session ID
 and VNI provenance. Underlay endpoints are removed before durable storage and
-never appear in API responses or logs.
+never appear in API responses or logs. The raw journal stores only whether a
+short disco hint was present, not its value, so restart replay preserves
+`partial` status without turning the hint into durable identity evidence.
 
 Collectors keep only the newest unsent state during an outage. Reconnect sends
 a fresh hello and baseline; a long outage delta is not presented as current

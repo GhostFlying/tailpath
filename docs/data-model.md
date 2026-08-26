@@ -56,6 +56,12 @@ Relay clients are `resolved` when strong canonical evidence identifies them,
 hint exists, and `conflict` when evidence points at incompatible canonical
 nodes. Missing status in older payloads remains valid.
 
+SQLite stores identity status in a backward-compatible JSON envelope around
+the existing node identity. Databases containing the earlier bare identity JSON
+decode with an empty status, so v0.3 requires no numbered schema migration.
+History node search, edge summaries, and details resolve redirects before
+selecting the surviving identity and status.
+
 The latest server-received fresh observation selects `peer_relay`, `direct`,
 `derp`, or `unknown`. Path specificity only breaks receive-time ties.
 Conflicting fresh observations retain provenance and expose a transitioning

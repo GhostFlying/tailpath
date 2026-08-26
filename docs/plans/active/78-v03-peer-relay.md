@@ -81,8 +81,11 @@ auto/off sampling, baseline/reset handling, sparse relay delta reports, bounded
 diagnostics, and native runner configuration. Issue #87 now implements
 checkpointed relay scopes, stable anonymous clients, conservative one-sided
 inference, conflict handling, and endpoint-over-relay traffic preference.
+Issue #79 adds defense-in-depth journal/checkpoint sanitization,
+backward-compatible History identity status, redirect/restart integration, and
+seven-day relay fallback retention coverage.
 
 ## Next step
 
-Land #83 and #87 after review, then implement #79 durable relay provenance,
-retention, restart integration, and bounded query behavior.
+Land #83, #87, and #79 after review, then implement #85 resolved, anonymous,
+and conflicting relay presentation in Live and History.

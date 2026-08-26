@@ -47,6 +47,13 @@ pair; VNI-only and conflicting evidence remain anonymous instead of guessing.
 Scoped client IDs never enter the global alias index, and canonical merges
 atomically rewrite scoped references, current edges, and redirects.
 
+The storage boundary independently sanitizes relay journals and checkpoints.
+It removes underlay endpoint fields, replaces journaled short disco values with
+a constant presence marker, and re-encodes typed path provenance containing
+only relay identity, VNI, session ID, and resolution status. Existing logical
+edge mappings apply scoped-node redirects before rollup and query, so relay
+fallback traffic and anchors remain attached to the surviving endpoint pair.
+
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
 observers report different ends of the same Direct connection. DERP region and
