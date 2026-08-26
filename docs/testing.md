@@ -18,6 +18,12 @@ integration uses a fake source/reporter, HTTP tests use an in-process server,
 and the collector hello is decoded through the OpenAPI-generated Go model.
 Frontend unit tests use Vitest.
 
+Playwright acceptance runs against a fresh `web/dist` bundle served directly
+by the fixture server on the same origin as `/api`. Vite remains a development
+tool and is intentionally outside ordinary, scale, and relay-scale browser
+gates; this avoids development-only StrictMode request replacement interacting
+with a proxy while exercising the assets shipped in the image.
+
 Sparse relay collector tests prove that first samples, resets, removals,
 reappearance, LocalAPI degradation, report outages, and reconnects do not
 create synthetic catch-up traffic. They also inject endpoint, session, and

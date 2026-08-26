@@ -2,7 +2,6 @@
 set -eu
 
 api_pid=""
-web_pid=""
 api_port="${TAILPATH_E2E_API_PORT:-18082}"
 admin_port="${TAILPATH_E2E_ADMIN_PORT:-18083}"
 fixture_binary="${TAILPATH_E2E_BINARY:-}"
@@ -13,10 +12,11 @@ stop_process() {
   wait "$pid" 2>/dev/null || true
 }
 cleanup() {
-  stop_process "$web_pid"
   stop_process "$api_pid"
 }
 trap cleanup EXIT INT TERM
+
+pnpm --dir web build
 
 run_fixture() {
   if test -n "$fixture_binary"; then
@@ -48,9 +48,6 @@ else
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
 fi
 api_pid=$!
-TAILPATH_API_URL="http://127.0.0.1:$api_port" \
-  setsid pnpm --dir web exec vite --host 127.0.0.1 --port 5173 --strictPort > /tmp/tailpath-web.log 2>&1 &
-web_pid=$!
 
 attempt=0
 until curl --fail --silent "http://127.0.0.1:$admin_port/healthz" >/dev/null; do
@@ -63,19 +60,19 @@ until curl --fail --silent "http://127.0.0.1:$admin_port/healthz" >/dev/null; do
 done
 
 attempt=0
-until curl --fail --silent http://127.0.0.1:5173/ >/dev/null; do
+until curl --fail --silent "http://127.0.0.1:$api_port/" >/dev/null; do
   attempt=$((attempt + 1))
   if test "$attempt" -ge 60; then
-    cat /tmp/tailpath-web.log
+    cat /tmp/tailpath-fixture.log
     exit 1
   fi
   sleep 1
 done
 
 if test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
-  pnpm --dir web test:e2e scale.spec.ts
+  TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e scale.spec.ts
 elif test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
-  pnpm --dir web test:e2e relay-scale.spec.ts
+  TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e relay-scale.spec.ts
 else
-  pnpm --dir web test:e2e
+  TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e
 fi
