@@ -22,7 +22,12 @@ performance gate.
 ## v0.3: Peer Relay
 
 Relay session telemetry, disco/VNI reconciliation, three-party provenance, and
-relay expansion.
+relay expansion. The existing native collector capability-detects passive relay
+server status on Linux. Unresolved clients remain visible as scoped anonymous
+nodes and merge only from strong identity evidence; underlay endpoints are
+current-state diagnostics and never retained in History. v0.3 exits after a
+real relay host passes relay-only, partial-observer, three-party provenance,
+restart, path-transition, privacy, and existing scale gates.
 
 ## v0.4: tsnet and tsbridge
 
