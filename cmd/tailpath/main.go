@@ -84,6 +84,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	heartbeat := flags.Duration("heartbeat-interval", time.Minute, "observer freshness heartbeat interval")
 	unsafeBroadListen := flags.Bool("unsafe-allow-non-tailnet-listen", false, "allow tailscaled mode to bind a non-Tailscale address; API WhoIs remains required")
 	scaleFixture := flags.Bool("scale", false, "load the 250-node/1,000-edge test fixture")
+	relayScaleFixture := flags.Bool("relay-scale", false, "load the 250-node/1,000-relay-session test fixture")
 	emptyFixture := flags.Bool("empty", false, "start without generated reports (fixture-server only)")
 	if fixture {
 		*networkMode = "plain"
@@ -95,13 +96,22 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	if *scaleFixture && !fixture {
 		return errors.New("scale fixture is only available with fixture-server")
 	}
+	if *relayScaleFixture && !fixture {
+		return errors.New("relay scale fixture is only available with fixture-server")
+	}
 	if *emptyFixture && !fixture {
 		return errors.New("empty fixture is only available with fixture-server")
 	}
-	if *scaleFixture && *emptyFixture {
-		return errors.New("scale and empty fixtures are mutually exclusive")
+	selectedFixtures := 0
+	for _, selected := range []bool{*scaleFixture, *relayScaleFixture, *emptyFixture} {
+		if selected {
+			selectedFixtures++
+		}
 	}
-	if *scaleFixture && *heartbeat == time.Minute {
+	if selectedFixtures > 1 {
+		return errors.New("scale, relay-scale, and empty fixtures are mutually exclusive")
+	}
+	if (*scaleFixture || *relayScaleFixture) && *heartbeat == time.Minute {
 		*heartbeat = 10 * time.Minute
 	}
 	if *heartbeat < 10*time.Second || *heartbeat > 10*time.Minute {
@@ -214,6 +224,14 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 				return map[string]any{"sequence": sequence, "triggeredAt": at}, nil
 			}
 			go runScaleRuntime(ctx, scenario, application.Aggregator, logger, runtime)
+		} else if *relayScaleFixture {
+			scenario, err := fixtures.NewRelayScaleScenario(fixtures.DefaultRelayScaleConfig())
+			if err != nil {
+				return err
+			}
+			if err := scenario.Load(ctx, application, time.Now().UTC()); err != nil {
+				return fmt.Errorf("load relay scale fixture: %w", err)
+			}
 		} else if !*emptyFixture {
 			if err := fixtures.New(application, logger).Start(ctx); err != nil {
 				return err

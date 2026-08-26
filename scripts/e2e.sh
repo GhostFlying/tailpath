@@ -26,9 +26,18 @@ run_fixture() {
   fi
 }
 
-if test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
+if test "${TAILPATH_SCALE_E2E:-0}" = "1" && test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
+  echo "TAILPATH_SCALE_E2E and TAILPATH_RELAY_SCALE_E2E are mutually exclusive" >&2
+  exit 1
+elif test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
   run_fixture fixture-server \
     --scale \
+    --listen="127.0.0.1:$api_port" \
+    --admin-listen="127.0.0.1:$admin_port" \
+    --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
+elif test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
+  run_fixture fixture-server \
+    --relay-scale \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
@@ -65,6 +74,8 @@ done
 
 if test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
   pnpm --dir web test:e2e scale.spec.ts
+elif test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
+  pnpm --dir web test:e2e relay-scale.spec.ts
 else
   pnpm --dir web test:e2e
 fi
