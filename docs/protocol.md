@@ -24,8 +24,8 @@ remain valid.
 
 Every envelope has a UUID report ID, reporter instance UUID, monotonic sequence,
 and collection timestamp. Normal messages may contain several observer peer
-views. A relay update instead contains one or more sessions with explicit relay,
-source, and target identities; the two forms cannot be mixed.
+views. A relay update instead contains one or more sessions with an explicit
+relay identity and two scoped relay clients; the two forms cannot be mixed.
 
 ## Sparse reporting
 
@@ -49,14 +49,21 @@ represent an interval; traffic-bearing peer and relay samples require a positive
 duration. The server must not derive a real-time rate from time between sparse
 HTTP reports.
 
-Relay sessions additionally carry a session ID, VNI, optional source/target
-network endpoints, directional counters, and directional deltas. The relay is
-the provenance observer and must include its StableNodeID so the path can retain
-the canonical relay node, while source and target form the logical edge and may
-be reconciled best effort from other strong identities. Relay traffic is
+Relay sessions additionally carry a session ID, unsigned 24-bit VNI,
+directional counters, and directional deltas. Each endpoint has a non-empty
+`sessionClientId` plus optional full identity, short disco hint, and underlay
+endpoint. The two scoped client IDs must differ. Only a full identity is global
+canonical evidence; the client ID, short disco hint, and endpoint never become
+global aliases. The relay is the provenance observer and must include its
+StableNodeID so the path can retain the canonical relay node. Relay traffic is
 fallback evidence and is never added to duplicate endpoint evidence. Reporter
 transport identity is authenticated with WhoIs independently of the trusted
 observer identity described in a report.
+
+Relay client resolution is `resolved`, `partial`, `anonymous`, or `conflict`.
+Topology and History may expose that status together with sanitized session ID
+and VNI provenance. Underlay endpoints are removed before durable storage and
+never appear in API responses or logs.
 
 Collectors keep only the newest unsent state during an outage. Reconnect sends
 a fresh hello and baseline; a long outage delta is not presented as current

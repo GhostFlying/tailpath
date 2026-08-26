@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,7 +247,9 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 		Version: domain.ProtocolVersion, ReportID: "relay", ReporterInstanceID: "relay-reporter", Sequence: 1,
 		CollectedAt: now, Kind: domain.ReportRelaySessionUpdate,
 		RelaySessions: []domain.RelaySessionObservation{{
-			Relay: node("relay", "Relay-HZ"), Source: node("a", "A"), Target: node("b", "B"),
+			Relay:     node("relay", "Relay-HZ"),
+			Source:    domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A")), Endpoint: "192.0.2.10:41641"},
+			Target:    domain.RelaySessionClient{SessionClientID: "right", Identity: identity(node("b", "B")), Endpoint: "[2001:db8::10]:41641"},
 			SessionID: "session", VNI: 7,
 			SourceToTargetBytes: 1200, TargetToSourceBytes: 400,
 			SourceToTargetDelta: 1200, TargetToSourceDelta: 400,
@@ -269,6 +272,10 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	if edge.Path.Kind != domain.PathPeerRelay || edge.Path.PeerRelayStableNodeID != "relay" {
 		t.Fatalf("relay path = %#v", edge.Path)
 	}
+	if edge.Path.PeerRelayVNI == nil || *edge.Path.PeerRelayVNI != 7 ||
+		edge.Observations[0].RelaySession == nil || edge.Observations[0].RelaySession.VNI != 7 {
+		t.Fatalf("relay session provenance = %#v", edge.Observations)
+	}
 	if edge.AToBBytesPerSecond != 600 || edge.BToABytesPerSecond != 200 {
 		t.Fatalf("relay rates = %.0f/%.0f, want 600/200", edge.AToBBytesPerSecond, edge.BToABytesPerSecond)
 	}
@@ -283,6 +290,13 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	}
 	if relayID == "" || edge.Observations[0].ObserverID != relayID {
 		t.Fatalf("relay observer identity = %q, nodes = %#v", edge.Observations[0].ObserverID, topology.Nodes)
+	}
+	checkpoint, err := aggregator.MarshalState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(checkpoint), "192.0.2.10") || strings.Contains(string(checkpoint), "2001:db8") {
+		t.Fatalf("relay underlay endpoint entered checkpoint: %s", checkpoint)
 	}
 }
 
@@ -821,4 +835,8 @@ func newTestAggregator(now func() time.Time) *Aggregator {
 
 func node(id, hostname string) domain.NodeIdentity {
 	return domain.NodeIdentity{StableNodeID: id, Hostname: hostname}
+}
+
+func identity(value domain.NodeIdentity) *domain.NodeIdentity {
+	return &value
 }

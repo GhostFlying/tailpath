@@ -18,6 +18,14 @@ const (
 	N7d  HistoryWindow = "7d"
 )
 
+// Defines values for IdentityStatus.
+const (
+	Anonymous IdentityStatus = "anonymous"
+	Conflict  IdentityStatus = "conflict"
+	Partial   IdentityStatus = "partial"
+	Resolved  IdentityStatus = "resolved"
+)
+
 // Defines values for PathKind.
 const (
 	Derp      PathKind = "derp"
@@ -78,11 +86,12 @@ type HistoryEdgeSummary struct {
 
 // HistoryNodeReference defines model for HistoryNodeReference.
 type HistoryNodeReference struct {
-	DnsName  *string `json:"dnsName,omitempty"`
-	Hostname *string `json:"hostname,omitempty"`
-	Id       string  `json:"id"`
-	Label    string  `json:"label"`
-	Os       *string `json:"os,omitempty"`
+	DnsName        *string         `json:"dnsName,omitempty"`
+	Hostname       *string         `json:"hostname,omitempty"`
+	Id             string          `json:"id"`
+	IdentityStatus *IdentityStatus `json:"identityStatus,omitempty"`
+	Label          string          `json:"label"`
+	Os             *string         `json:"os,omitempty"`
 }
 
 // HistoryNodes defines model for HistoryNodes.
@@ -92,6 +101,9 @@ type HistoryNodes struct {
 
 // HistoryWindow defines model for HistoryWindow.
 type HistoryWindow string
+
+// IdentityStatus defines model for IdentityStatus.
+type IdentityStatus string
 
 // NodeIdentity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 type NodeIdentity struct {
@@ -114,6 +126,9 @@ type ObservationProvenance struct {
 	ObserverId  string          `json:"observerId"`
 	Path        PathObservation `json:"path"`
 	ReceivedAt  time.Time       `json:"receivedAt"`
+
+	// RelaySession Sanitized third-party provenance; underlay endpoints are never exposed.
+	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
 }
 
 // ObserverReport For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas.
@@ -152,6 +167,7 @@ type PathObservation struct {
 	DirectEndpoint        *string  `json:"directEndpoint,omitempty"`
 	Kind                  PathKind `json:"kind"`
 	PeerRelayStableNodeId *string  `json:"peerRelayStableNodeId,omitempty"`
+	PeerRelayVni          *int64   `json:"peerRelayVni,omitempty"`
 }
 
 // PeerObservation defines model for PeerObservation.
@@ -177,6 +193,18 @@ type Problem struct {
 	Title  string  `json:"title"`
 }
 
+// RelaySessionClient One endpoint of a relay session. sessionClientId, discoShort, and endpoint are scoped hints and never global canonical identity aliases.
+type RelaySessionClient struct {
+	DiscoShort *string `json:"discoShort,omitempty"`
+
+	// Endpoint Current underlay endpoint; accepted only as volatile provenance.
+	Endpoint *string `json:"endpoint,omitempty"`
+
+	// Identity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
+	Identity        *NodeIdentity `json:"identity,omitempty"`
+	SessionClientId string        `json:"sessionClientId"`
+}
+
 // RelaySessionObservation A Peer Relay observer's view of traffic between two Tailnet nodes. The logical edge is source-target while relay supplies third-party provenance.
 type RelaySessionObservation struct {
 	LastActive time.Time `json:"lastActive"`
@@ -186,18 +214,24 @@ type RelaySessionObservation struct {
 	SampleDurationMs int64        `json:"sampleDurationMs"`
 	SessionId        string       `json:"sessionId"`
 
-	// Source At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
-	Source              NodeIdentity `json:"source"`
-	SourceEndpoint      *string      `json:"sourceEndpoint,omitempty"`
-	SourceToTargetBytes int64        `json:"sourceToTargetBytes"`
-	SourceToTargetDelta int64        `json:"sourceToTargetDelta"`
+	// Source One endpoint of a relay session. sessionClientId, discoShort, and endpoint are scoped hints and never global canonical identity aliases.
+	Source              RelaySessionClient `json:"source"`
+	SourceToTargetBytes int64              `json:"sourceToTargetBytes"`
+	SourceToTargetDelta int64              `json:"sourceToTargetDelta"`
 
-	// Target At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
-	Target              NodeIdentity `json:"target"`
-	TargetEndpoint      *string      `json:"targetEndpoint,omitempty"`
-	TargetToSourceBytes int64        `json:"targetToSourceBytes"`
-	TargetToSourceDelta int64        `json:"targetToSourceDelta"`
-	Vni                 int64        `json:"vni"`
+	// Target One endpoint of a relay session. sessionClientId, discoShort, and endpoint are scoped hints and never global canonical identity aliases.
+	Target              RelaySessionClient `json:"target"`
+	TargetToSourceBytes int64              `json:"targetToSourceBytes"`
+	TargetToSourceDelta int64              `json:"targetToSourceDelta"`
+	Vni                 int64              `json:"vni"`
+}
+
+// RelaySessionProvenance Sanitized third-party provenance; underlay endpoints are never exposed.
+type RelaySessionProvenance struct {
+	SessionId            string         `json:"sessionId"`
+	SourceIdentityStatus IdentityStatus `json:"sourceIdentityStatus"`
+	TargetIdentityStatus IdentityStatus `json:"targetIdentityStatus"`
+	Vni                  int64          `json:"vni"`
 }
 
 // ReportEnvelope Normal observer messages contain observers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the two forms.
@@ -253,16 +287,17 @@ type TopologyEdgeState string
 
 // TopologyNode defines model for TopologyNode.
 type TopologyNode struct {
-	ClockSkewed    bool      `json:"clockSkewed"`
-	DiscoKey       *string   `json:"discoKey,omitempty"`
-	DnsName        *string   `json:"dnsName,omitempty"`
-	Hostname       *string   `json:"hostname,omitempty"`
-	Id             string    `json:"id"`
-	LastEvidenceAt time.Time `json:"lastEvidenceAt"`
-	NodeId         *string   `json:"nodeId,omitempty"`
-	NodeKey        *string   `json:"nodeKey,omitempty"`
-	Observable     bool      `json:"observable"`
-	Online         bool      `json:"online"`
+	ClockSkewed    bool            `json:"clockSkewed"`
+	DiscoKey       *string         `json:"discoKey,omitempty"`
+	DnsName        *string         `json:"dnsName,omitempty"`
+	Hostname       *string         `json:"hostname,omitempty"`
+	Id             string          `json:"id"`
+	IdentityStatus *IdentityStatus `json:"identityStatus,omitempty"`
+	LastEvidenceAt time.Time       `json:"lastEvidenceAt"`
+	NodeId         *string         `json:"nodeId,omitempty"`
+	NodeKey        *string         `json:"nodeKey,omitempty"`
+	Observable     bool            `json:"observable"`
+	Online         bool            `json:"online"`
 
 	// Os Reported operating system for display only; never identity evidence.
 	Os           *string   `json:"os,omitempty"`

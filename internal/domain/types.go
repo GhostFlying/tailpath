@@ -36,6 +36,15 @@ const (
 	EdgeRecent EdgeState = "recent"
 )
 
+type IdentityStatus string
+
+const (
+	IdentityResolved  IdentityStatus = "resolved"
+	IdentityPartial   IdentityStatus = "partial"
+	IdentityAnonymous IdentityStatus = "anonymous"
+	IdentityConflict  IdentityStatus = "conflict"
+)
+
 type NodeIdentity struct {
 	StableNodeID string   `json:"stableNodeId"`
 	NodeID       string   `json:"nodeId,omitempty"`
@@ -96,11 +105,17 @@ type PathObservation struct {
 	DirectEndpoint        string   `json:"directEndpoint,omitempty"`
 	DERPRegion            string   `json:"derpRegion,omitempty"`
 	PeerRelayStableNodeID string   `json:"peerRelayStableNodeId,omitempty"`
+	PeerRelayVNI          *int64   `json:"peerRelayVni,omitempty"`
 }
 
 func (p PathObservation) Equal(other PathObservation) bool {
 	return p.Kind == other.Kind && p.DirectEndpoint == other.DirectEndpoint &&
-		p.DERPRegion == other.DERPRegion && p.PeerRelayStableNodeID == other.PeerRelayStableNodeID
+		p.DERPRegion == other.DERPRegion && p.PeerRelayStableNodeID == other.PeerRelayStableNodeID &&
+		equalOptionalInt64(p.PeerRelayVNI, other.PeerRelayVNI)
+}
+
+func equalOptionalInt64(left, right *int64) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 type PeerObservation struct {
@@ -121,19 +136,41 @@ type ObserverReport struct {
 }
 
 type RelaySessionObservation struct {
-	Relay               NodeIdentity `json:"relay"`
-	Source              NodeIdentity `json:"source"`
-	Target              NodeIdentity `json:"target"`
-	SessionID           string       `json:"sessionId"`
-	VNI                 int64        `json:"vni"`
-	SourceEndpoint      string       `json:"sourceEndpoint,omitempty"`
-	TargetEndpoint      string       `json:"targetEndpoint,omitempty"`
-	SourceToTargetBytes int64        `json:"sourceToTargetBytes"`
-	TargetToSourceBytes int64        `json:"targetToSourceBytes"`
-	SourceToTargetDelta int64        `json:"sourceToTargetDelta"`
-	TargetToSourceDelta int64        `json:"targetToSourceDelta"`
-	SampleDurationMS    int64        `json:"sampleDurationMs"`
-	LastActive          time.Time    `json:"lastActive"`
+	Relay               NodeIdentity       `json:"relay"`
+	Source              RelaySessionClient `json:"source"`
+	Target              RelaySessionClient `json:"target"`
+	SessionID           string             `json:"sessionId"`
+	VNI                 int64              `json:"vni"`
+	SourceToTargetBytes int64              `json:"sourceToTargetBytes"`
+	TargetToSourceBytes int64              `json:"targetToSourceBytes"`
+	SourceToTargetDelta int64              `json:"sourceToTargetDelta"`
+	TargetToSourceDelta int64              `json:"targetToSourceDelta"`
+	SampleDurationMS    int64              `json:"sampleDurationMs"`
+	LastActive          time.Time          `json:"lastActive"`
+}
+
+type RelaySessionClient struct {
+	SessionClientID string        `json:"sessionClientId"`
+	Identity        *NodeIdentity `json:"identity,omitempty"`
+	DiscoShort      string        `json:"discoShort,omitempty"`
+	Endpoint        string        `json:"endpoint,omitempty"`
+}
+
+func (client RelaySessionClient) IdentityStatus() IdentityStatus {
+	if client.Identity != nil && client.Identity.HasIdentity() {
+		return IdentityResolved
+	}
+	if client.DiscoShort != "" {
+		return IdentityPartial
+	}
+	return IdentityAnonymous
+}
+
+func (client RelaySessionClient) IdentityOrEmpty() NodeIdentity {
+	if client.Identity == nil {
+		return NodeIdentity{}
+	}
+	return *client.Identity
 }
 
 type ReportEnvelope struct {
@@ -212,20 +249,25 @@ func (r ReportEnvelope) Validate() error {
 }
 
 func (s RelaySessionObservation) Validate() error {
-	if !s.Relay.HasIdentity() || !s.Source.HasIdentity() || !s.Target.HasIdentity() {
-		return errors.New("relay, source, and target identities are required")
-	}
 	if strings.TrimSpace(s.Relay.StableNodeID) == "" {
 		return errors.New("relay StableNodeID is required")
 	}
-	if s.Source.IdentityKey() == s.Target.IdentityKey() {
-		return errors.New("relay session source and target must differ")
+	if strings.TrimSpace(s.Source.SessionClientID) == "" || strings.TrimSpace(s.Target.SessionClientID) == "" {
+		return errors.New("relay session client IDs are required")
+	}
+	if s.Source.SessionClientID == s.Target.SessionClientID {
+		return errors.New("relay session clients must differ")
+	}
+	for _, client := range []RelaySessionClient{s.Source, s.Target} {
+		if client.Identity != nil && !client.Identity.HasIdentity() {
+			return errors.New("relay session client identity must contain canonical evidence")
+		}
 	}
 	if strings.TrimSpace(s.SessionID) == "" {
 		return errors.New("relay sessionId is required")
 	}
-	if s.VNI < 0 {
-		return errors.New("relay VNI cannot be negative")
+	if s.VNI < 0 || s.VNI > 1<<24-1 {
+		return errors.New("relay VNI must be an unsigned 24-bit value")
 	}
 	if s.SourceToTargetBytes < 0 || s.TargetToSourceBytes < 0 ||
 		s.SourceToTargetDelta < 0 || s.TargetToSourceDelta < 0 {
@@ -252,19 +294,28 @@ type ReportReceipt struct {
 
 type TopologyNode struct {
 	NodeIdentity
-	ID             string    `json:"id"`
-	Observable     bool      `json:"observable"`
-	Online         bool      `json:"online"`
-	LastEvidenceAt time.Time `json:"lastEvidenceAt"`
-	ClockSkewed    bool      `json:"clockSkewed"`
+	ID             string         `json:"id"`
+	Observable     bool           `json:"observable"`
+	Online         bool           `json:"online"`
+	LastEvidenceAt time.Time      `json:"lastEvidenceAt"`
+	ClockSkewed    bool           `json:"clockSkewed"`
+	IdentityStatus IdentityStatus `json:"identityStatus,omitempty"`
+}
+
+type RelaySessionProvenance struct {
+	SessionID            string         `json:"sessionId"`
+	VNI                  int64          `json:"vni"`
+	SourceIdentityStatus IdentityStatus `json:"sourceIdentityStatus"`
+	TargetIdentityStatus IdentityStatus `json:"targetIdentityStatus"`
 }
 
 type ObservationProvenance struct {
-	ObserverID  string          `json:"observerId"`
-	Path        PathObservation `json:"path"`
-	CollectedAt time.Time       `json:"collectedAt"`
-	ReceivedAt  time.Time       `json:"receivedAt"`
-	ClockSkewed bool            `json:"clockSkewed"`
+	ObserverID   string                  `json:"observerId"`
+	Path         PathObservation         `json:"path"`
+	CollectedAt  time.Time               `json:"collectedAt"`
+	ReceivedAt   time.Time               `json:"receivedAt"`
+	ClockSkewed  bool                    `json:"clockSkewed"`
+	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
 }
 
 type TopologyEdge struct {
@@ -396,11 +447,12 @@ func (window HistoryWindow) Valid() bool {
 }
 
 type HistoryNodeReference struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Hostname string `json:"hostname,omitempty"`
-	DNSName  string `json:"dnsName,omitempty"`
-	OS       string `json:"os,omitempty"`
+	ID             string         `json:"id"`
+	Label          string         `json:"label"`
+	Hostname       string         `json:"hostname,omitempty"`
+	DNSName        string         `json:"dnsName,omitempty"`
+	OS             string         `json:"os,omitempty"`
+	IdentityStatus IdentityStatus `json:"identityStatus,omitempty"`
 }
 
 type HistoryNodes struct {

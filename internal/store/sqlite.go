@@ -117,7 +117,7 @@ func (s *SQLite) RecordWithMetadata(
 	transitions []domain.PathTransition,
 	metadata *domain.HistoryMetadata,
 ) (bool, error) {
-	payload, err := json.Marshal(report)
+	payload, err := json.Marshal(reportWithoutRelayEndpoints(report))
 	if err != nil {
 		return false, err
 	}
@@ -176,6 +176,18 @@ func (s *SQLite) RecordWithMetadata(
 		return false, err
 	}
 	return true, nil
+}
+
+func reportWithoutRelayEndpoints(report domain.ReportEnvelope) domain.ReportEnvelope {
+	if len(report.RelaySessions) == 0 {
+		return report
+	}
+	report.RelaySessions = append([]domain.RelaySessionObservation(nil), report.RelaySessions...)
+	for index := range report.RelaySessions {
+		report.RelaySessions[index].Source.Endpoint = ""
+		report.RelaySessions[index].Target.Endpoint = ""
+	}
+	return report
 }
 
 func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffic) error {
