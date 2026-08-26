@@ -25,7 +25,10 @@ ordinary direct-path observations, node identifiers, and traffic history remain
 in the local SQLite database. Peer Relay underlay endpoints are more narrowly
 scoped: they may be used during current report processing but are stripped
 before the report journal, checkpoint, path events, History, API output, and
-logs. There is no outbound product telemetry.
+logs. Short disco hints are replaced by a constant presence marker in the raw
+report journal, preserving `partial` replay semantics without retaining the
+value; they are omitted from checkpoints and History. There is no outbound
+product telemetry.
 
 Container deployments should pass reusable auth keys through
 `TS_AUTHKEY=file:/run/secrets/...`, then zero the secret after enrollment. The

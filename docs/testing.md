@@ -33,6 +33,12 @@ ambiguity, conflicting fresh endpoint pairs, scoped-identifier isolation, and
 endpoint-over-relay directional traffic precedence. Race tests cover the
 aggregator and atomic application commit path.
 
+Durable relay tests scan the SQLite database and WAL for synthetic endpoint and
+disco canaries, exercise checkpoint restart before and after a scoped merge,
+and query the removed physical edge through its redirect. A seven-day test
+runs third-party relay traffic through real minute/hour rollup and retention,
+then verifies directional totals and the sanitized pre-window path anchor.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
