@@ -54,7 +54,9 @@ and History workspaces, using shape, icon, and text in addition to path color.
   endpoint appears in either workspace.
 - `PATH=/tmp/tailpath-go/bin:$PATH CI=1 make check`: passed, including generated
   files, Go vet/tests, web type/format/tests/build, and desktop/mobile E2E.
-- Pending: hosted PR checks.
+- Hosted PR checks passed: repository check, image build, Linux/macOS/Windows
+  native collectors, archive layout, and Conventional Commit title. Edge
+  promotion skipped as designed for a non-main branch.
 
 ## Current state
 
@@ -64,4 +66,4 @@ identity-status vocabulary.
 
 ## Next step
 
-Open the stacked PR and verify hosted checks.
+Mark the stacked PR ready for human review.
