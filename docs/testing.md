@@ -9,10 +9,14 @@ aging, reporter ownership transfer, retention, storage-failure atomicity,
 eight-day restart recovery, client clock skew, relay-session ingest, and
 migration behavior.
 
-The LocalAPI adapter currently has upstream-shaped IPv4 and IPv6 Peer Relay
-endpoint cases. Collector integration uses a fake source/reporter, HTTP tests
-use an in-process server, and the collector hello is decoded through the
-OpenAPI-generated Go model. Frontend unit tests use Vitest.
+The LocalAPI adapter has upstream-shaped IPv4 and IPv6 Peer Relay endpoint
+cases and a fake transport restricted to passive relay-session and disco-key
+reads. Adapter tests distinguish unsupported, disabled, enabled, transient,
+malformed, reordered, and ambiguous-disco inputs; they assert stable scoped
+IDs, directional counters, and unique full-disco enrichment. Collector
+integration uses a fake source/reporter, HTTP tests use an in-process server,
+and the collector hello is decoded through the OpenAPI-generated Go model.
+Frontend unit tests use Vitest.
 
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
