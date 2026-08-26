@@ -44,19 +44,25 @@ baseline.
 
 ## Verification
 
-- Pending: relay generator and integration tests.
-- Pending: desktop/mobile relay-scale browser fixture.
-- Pending: mixed-path regression gate and v0.3 strict workflow dry run.
+- Relay generator contract, aggregation, SQLite/checkpoint restart, History,
+  de-duplication, and database/WAL/log/export privacy tests pass for 250 nodes,
+  eight relay observers, and 1,000 sessions.
+- `CI=1 TAILPATH_RELAY_SCALE_E2E=1 ./scripts/e2e.sh`: desktop and mobile passed;
+  desktop cold/cached ready measured 2,610/2,186 ms and mobile 2,376/1,797 ms,
+  with no console errors.
+- `CI=1 TAILPATH_SCALE_E2E=1 ./scripts/e2e.sh`: the unchanged mixed-path
+  desktop/mobile baseline passed (two project-specific cases skipped).
+- Sequence-gap resync and durable Direct-to-Peer-Relay transition tests pass.
+- Pending: v0.3 hosted strict workflow dry run.
 - Pending: `make check` and hosted PR checks.
 
 ## Current state
 
-The mixed-path scale fixture labels one quarter of endpoint observations as
-Peer Relay, but it does not submit third-party relay sessions. Subsystem tests
-cover individual v0.3 semantics; no single gate currently proves 1,000 relay
-sessions through reconciliation, durable History, and the browser.
+The separate relay generator, fixture-server mode, persistence smoke, and
+browser gate are implemented. The original mixed-path fixture remains
+unchanged for comparable performance results.
 
 ## Next step
 
-Implement the separate relay scale generator while preserving the existing
-fixture digest and performance contract.
+Run repository-wide checks, then open the stacked PR and execute the hosted
+manual workflow.
