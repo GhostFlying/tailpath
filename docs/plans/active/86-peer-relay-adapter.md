@@ -37,7 +37,8 @@ leaking Tailscale types past the adapter boundary.
 - Passed: `go test ./internal/tailscaleadapter ./internal/collector`.
 - Passed: passive-route, capability, stable-ordering, counter, and identity
   enrichment fixture coverage.
-- Pending: `make check`.
+- Passed: `make check`, including production build and 20 Playwright tests
+  with 10 expected project-specific skips.
 
 ## Current state
 
@@ -47,4 +48,5 @@ collector scheduling or report behavior changed.
 
 ## Next step
 
-Run the full repository gate and prepare the stacked adapter PR for review.
+Review and merge the stacked adapter PR, then implement #83 against the typed
+runtime snapshot.
