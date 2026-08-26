@@ -7,9 +7,12 @@ import (
 )
 
 type Diagnostic struct {
-	Self      domain.NodeIdentity `json:"self"`
-	OS        string              `json:"os"`
-	PeerCount int                 `json:"peerCount"`
+	Self              domain.NodeIdentity `json:"self"`
+	OS                string              `json:"os"`
+	PeerCount         int                 `json:"peerCount"`
+	RelayCapability   RelayCapability     `json:"relayCapability"`
+	RelayEnabled      bool                `json:"relayEnabled"`
+	RelaySessionCount int                 `json:"relaySessionCount"`
 }
 
 type DiagnosticSource interface {

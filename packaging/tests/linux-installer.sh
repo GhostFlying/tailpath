@@ -21,6 +21,7 @@ test -x "$install_root/usr/local/bin/tailpath"
 test -f "$install_root/etc/systemd/system/tailpath-collector.service"
 test "$(stat -c %a "$install_root/etc/default/tailpath-collector")" = "600"
 grep -Fx 'TAILPATH_SERVER_URL="http://tailpath.example.ts.net:8080"' "$install_root/etc/default/tailpath-collector"
+grep -Fx 'TAILPATH_RELAY_TELEMETRY="auto"' "$install_root/etc/default/tailpath-collector"
 grep -Fx 'TAILPATH_SOCKET="/run/tailscale/tailscaled.sock"' "$install_root/etc/default/tailpath-collector"
 
 printf '\n# operator edit\n' >> "$install_root/etc/default/tailpath-collector"

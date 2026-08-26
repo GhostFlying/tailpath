@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	mathrand "math/rand"
 	"sort"
 	"time"
@@ -47,6 +49,7 @@ type Options struct {
 	Jitter            func() float64
 	Wait              func(context.Context, time.Duration) error
 	Logger            *slog.Logger
+	RelayTelemetry    bool
 }
 
 type Collector struct {
@@ -62,6 +65,10 @@ type Collector struct {
 	jitter              func() float64
 	wait                func(context.Context, time.Duration) error
 	logger              *slog.Logger
+	relaySource         RelaySource
+	relayTelemetry      bool
+	relayBaseline       *RelaySnapshot
+	relayCapability     RelayCapability
 	sequence            int64
 	connected           bool
 	baseline            Snapshot
@@ -101,7 +108,7 @@ func New(source Source, reporter Reporter, options Options) *Collector {
 	if options.Logger == nil {
 		options.Logger = slog.Default()
 	}
-	return &Collector{
+	result := &Collector{
 		source:            source,
 		reporter:          reporter,
 		sampleInterval:    options.SampleInterval,
@@ -114,8 +121,13 @@ func New(source Source, reporter Reporter, options Options) *Collector {
 		jitter:            options.Jitter,
 		wait:              options.Wait,
 		logger:            options.Logger,
+		relayTelemetry:    options.RelayTelemetry,
 		controlIDs:        make(map[string]struct{}),
 	}
+	if options.RelayTelemetry {
+		result.relaySource, _ = source.(RelaySource)
+	}
+	return result
 }
 
 func (c *Collector) Run(ctx context.Context) error {
@@ -172,6 +184,25 @@ type stepResult struct {
 }
 
 func (c *Collector) step(ctx context.Context) (stepResult, error) {
+	wasConnected := c.connected
+	result, err := c.stepOrdinary(ctx)
+	if err != nil {
+		c.relayBaseline = nil
+		return result, err
+	}
+	if !c.relayTelemetry || c.relaySource == nil {
+		return result, nil
+	}
+	if result.resyncRequired || !c.connected {
+		c.relayBaseline = nil
+		return result, nil
+	}
+	relayResync, err := c.stepRelay(ctx, result.helloAccepted || !wasConnected)
+	result.resyncRequired = result.resyncRequired || relayResync
+	return result, err
+}
+
+func (c *Collector) stepOrdinary(ctx context.Context) (stepResult, error) {
 	snapshot, err := c.source.Snapshot(ctx)
 	if err != nil {
 		c.connected = false
@@ -254,6 +285,154 @@ func (c *Collector) step(ctx context.Context) (stepResult, error) {
 		c.connected = false
 	}
 	return stepResult{resyncRequired: !receipt.Accepted || receipt.ResyncRequired}, nil
+}
+
+func (c *Collector) stepRelay(ctx context.Context, establishBaseline bool) (bool, error) {
+	snapshot, err := c.relaySource.PeerRelaySnapshot(ctx)
+	if err != nil {
+		c.setRelayCapability(RelayTransientFailure)
+		c.relayBaseline = nil
+		return false, nil
+	}
+	c.setRelayCapability(snapshot.Capability)
+	if snapshot.Capability != RelayEnabled {
+		c.relayBaseline = nil
+		return false, nil
+	}
+	if establishBaseline || c.relayBaseline == nil {
+		c.relayBaseline = &snapshot
+		return false, nil
+	}
+	sessions, err := c.changedRelaySessions(snapshot)
+	c.relayBaseline = &snapshot
+	if err != nil {
+		c.setRelayCapability(RelayTransientFailure)
+		return false, nil
+	}
+	if len(sessions) == 0 {
+		return false, nil
+	}
+	receipt, err := c.sendRelay(ctx, snapshot.CollectedAt, c.baseline.Observer, sessions)
+	if err != nil {
+		c.connected = false
+		c.relayBaseline = nil
+		return false, err
+	}
+	c.acceptReceipt(receipt)
+	if !receipt.Accepted || receipt.ResyncRequired {
+		c.connected = false
+		c.relayBaseline = nil
+		return true, nil
+	}
+	return false, nil
+}
+
+func (c *Collector) changedRelaySessions(snapshot RelaySnapshot) ([]domain.RelaySessionObservation, error) {
+	previous := make(map[string]RelaySessionSnapshot, len(c.relayBaseline.Sessions))
+	for _, session := range c.relayBaseline.Sessions {
+		previous[session.SessionID] = session
+	}
+	duration := snapshot.CollectedAt.Sub(c.relayBaseline.CollectedAt)
+	if duration <= 0 {
+		duration = c.sampleInterval
+	}
+	result := make([]domain.RelaySessionObservation, 0, len(snapshot.Sessions))
+	for _, session := range snapshot.Sessions {
+		old, ok := previous[session.SessionID]
+		if !ok || old.Source.SessionClientID != session.Source.SessionClientID ||
+			old.Target.SessionClientID != session.Target.SessionClientID {
+			continue
+		}
+		if session.Source.BytesSent < old.Source.BytesSent || session.Target.BytesSent < old.Target.BytesSent {
+			continue
+		}
+		sourceDelta := session.Source.BytesSent - old.Source.BytesSent
+		targetDelta := session.Target.BytesSent - old.Target.BytesSent
+		if sourceDelta == 0 && targetDelta == 0 {
+			continue
+		}
+		sourceBytes, err := relayCounter(session.Source.BytesSent)
+		if err != nil {
+			return nil, err
+		}
+		targetBytes, err := relayCounter(session.Target.BytesSent)
+		if err != nil {
+			return nil, err
+		}
+		sourceDeltaValue, err := relayCounter(sourceDelta)
+		if err != nil {
+			return nil, err
+		}
+		targetDeltaValue, err := relayCounter(targetDelta)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, domain.RelaySessionObservation{
+			Relay:     c.baseline.Observer,
+			Source:    relayReportClient(session.Source),
+			Target:    relayReportClient(session.Target),
+			SessionID: session.SessionID, VNI: session.VNI,
+			SourceToTargetBytes: sourceBytes, TargetToSourceBytes: targetBytes,
+			SourceToTargetDelta: sourceDeltaValue, TargetToSourceDelta: targetDeltaValue,
+			SampleDurationMS: max(duration.Milliseconds(), 1), LastActive: snapshot.CollectedAt,
+		})
+	}
+	return result, nil
+}
+
+func relayReportClient(snapshot RelayClientSnapshot) domain.RelaySessionClient {
+	return domain.RelaySessionClient{
+		SessionClientID: snapshot.SessionClientID,
+		Identity:        snapshot.Identity,
+		DiscoShort:      snapshot.DiscoShort,
+		Endpoint:        snapshot.Endpoint,
+	}
+}
+
+func relayCounter(value uint64) (int64, error) {
+	if value > math.MaxInt64 {
+		return 0, errors.New("relay traffic counter exceeds protocol range")
+	}
+	return int64(value), nil
+}
+
+func (c *Collector) sendRelay(
+	ctx context.Context,
+	collectedAt time.Time,
+	relay domain.NodeIdentity,
+	sessions []domain.RelaySessionObservation,
+) (domain.ReportReceipt, error) {
+	for index := range sessions {
+		sessions[index].Relay = relay
+	}
+	c.sequence++
+	report := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: newUUID(), ReporterInstanceID: c.reporterInstance,
+		Sequence: c.sequence, CollectedAt: collectedAt, Kind: domain.ReportRelaySessionUpdate,
+		RelaySessions: sessions,
+	}
+	receipt, err := c.reporter.Send(ctx, report)
+	if err != nil {
+		return domain.ReportReceipt{}, fmt.Errorf("send %s: %w", domain.ReportRelaySessionUpdate, err)
+	}
+	return receipt, nil
+}
+
+func (c *Collector) setRelayCapability(capability RelayCapability) {
+	if capability == c.relayCapability {
+		return
+	}
+	previous := c.relayCapability
+	c.relayCapability = capability
+	if capability == RelayTransientFailure {
+		c.logger.Warn("relay telemetry degraded", "capability", capability)
+		return
+	}
+	if previous == RelayTransientFailure {
+		c.logger.Info("relay telemetry recovered", "capability", capability)
+		return
+	}
+	c.logger.Info("relay telemetry capability", "capability", capability)
 }
 
 func (c *Collector) retryDelay(failures int) time.Duration {

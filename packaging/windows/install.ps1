@@ -42,6 +42,7 @@ Copy-Item -LiteralPath $RunnerSource -Destination $RunnerPath -Force
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
     $Lines = [System.Collections.Generic.List[string]]::new()
     $Lines.Add("TAILPATH_SERVER_URL=$ServerUrl")
+    $Lines.Add("TAILPATH_RELAY_TELEMETRY=auto")
     if ($Socket) {
         $Lines.Add("TAILPATH_SOCKET=$Socket")
     }

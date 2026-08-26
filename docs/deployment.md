@@ -67,9 +67,15 @@ required by WhoIs.
 
 Native collectors accept `TAILPATH_SERVER_URL` and `TAILPATH_SOCKET`; explicit
 `--server` and `--socket` flags take precedence over those environment values.
-Run `tailpath collector --check` to read LocalAPI once and print self identity,
-runtime platform, and peer count as JSON without contacting the Tailpath server
-or actively probing any peer.
+Peer Relay telemetry defaults to capability-detected `auto`; set
+`TAILPATH_RELAY_TELEMETRY=off` or `--relay-telemetry=off` to disable its two
+passive debug-status reads. The flag takes precedence over the environment.
+Native installer configuration includes the explicit `auto` default and may be
+edited to `off` without reinstalling. Run `tailpath collector --check` to read
+LocalAPI once and print self identity, runtime platform, peer count, relay
+capability, enabled state, and session count as JSON without contacting the
+Tailpath server or actively probing any peer. It never prints relay endpoints,
+session IDs, scoped client IDs, or disco hints.
 
 ## Native collector archives
 
