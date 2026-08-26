@@ -46,7 +46,8 @@ explicit before collector and reconciliation work begins.
 - Passed: `pnpm --dir web check` and 48 Vitest tests.
 - Passed: relay validation, generated shape, sanitized journal, and sanitized
   checkpoint coverage.
-- Pending: `make check`.
+- Passed: `make check`, including production build and 20 Playwright tests
+  with 10 expected project-specific skips.
 
 ## Current state
 
@@ -57,5 +58,5 @@ checkpoint tests prove that underlay endpoints are not durable.
 
 ## Next step
 
-Run the full repository gate, resolve any integration failures, and prepare the
-stacked PR for review.
+Review and merge the stacked PR, then implement #86 against this generated
+contract.
