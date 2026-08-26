@@ -41,6 +41,16 @@ relay node. Session ID, VNI, cumulative counters, and identity-resolution status
 remain as sanitized provenance. Underlay endpoints exist only while processing
 current runtime evidence and are stripped before every durable representation.
 
+The aggregator checkpoints relay scopes by relay canonical ID and VNI. Each
+scope keeps bounded session-client bindings and, when available, one fresh
+unordered canonical endpoint pair. Session IDs and opaque client IDs remain
+nested in that scope; they never become global aliases. Short disco hints and
+underlay endpoints are not checkpointed. A scope can infer an unresolved client
+only when the other client already identifies one member of the fresh pair.
+VNI alone cannot choose either endpoint, and a second incompatible fresh pair
+marks the scope conflicted until that evidence ages out. Canonical merges
+rewrite all scoped bindings and persist redirects for historical resolution.
+
 Relay clients are `resolved` when strong canonical evidence identifies them,
 `partial` when only scoped correlation hints exist, `anonymous` when no identity
 hint exists, and `conflict` when evidence points at incompatible canonical
