@@ -1,4 +1,4 @@
-name: V0.2 release gate
+name: V0.3 Peer Relay scale gate
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: v0.2-release-gate-${{ github.ref }}
+  group: v0.3-relay-scale-gate-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +46,14 @@ jobs:
               -count=1 -v -json -timeout=15m \
               > perf-artifacts/restart-smoke.json \
               2> perf-artifacts/restart-smoke-resource.txt
+      - name: Record 1,000-session relay restart and privacy smoke
+        run: |
+          /usr/bin/time -v \
+            go test ./internal/fixtures \
+              -run TestRelayScaleScenarioPersistsSanitizedHistoryAcrossRestart \
+              -count=1 -v -json -timeout=15m \
+              > perf-artifacts/relay-restart-smoke.json \
+              2> perf-artifacts/relay-restart-smoke-resource.txt
       - name: Enforce seven-day history database size
         env:
           TAILPATH_HISTORY_SCALE: "1"
@@ -61,13 +69,20 @@ jobs:
           TAILPATH_SCALE_E2E: "1"
           TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
         run: ./scripts/e2e.sh
+      - name: Enforce Peer Relay browser scale gates
+        env:
+          TAILPATH_RELAY_SCALE_E2E: "1"
+          TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
+        run: ./scripts/e2e.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: v0.2-release-gate
+          name: v0.3-peer-relay-scale-gate
           path: |
             perf-artifacts/
             web/test-results/**/tailpath-scale.png
             web/test-results/**/scale-browser.json
+            web/test-results/**/tailpath-relay-scale.png
+            web/test-results/**/relay-scale-browser.json
           if-no-files-found: warn
           retention-days: 30
