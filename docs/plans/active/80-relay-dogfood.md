@@ -1,12 +1,13 @@
-# Real Peer Relay dogfood
+# Peer Relay dogfood
 
 Issue: [#80](https://github.com/GhostFlying/tailpath/issues/80)
 
 ## Goal
 
-Qualify one immutable v0.3 edge artifact against a real Linux Peer Relay host,
-observable endpoint collectors, and passive clients without exposing Tailnet
-identity or changing network policy.
+Qualify one immutable v0.3 edge artifact against real Tailscale control-plane,
+WireGuard, Peer Relay, LocalAPI, and application-traffic behavior in an
+isolated container lab. A physical Linux relay remains useful deployment
+evidence, but is not a prerequisite for validating the v0.3 telemetry path.
 
 ## Decisions
 
@@ -14,17 +15,25 @@ identity or changing network policy.
   immutable `edge-<full-sha>` image, and the same run uploads native collector
   archives and checksums. A branch build or mutable `edge` pointer is not the
   candidate.
-- Upgrade the server first and prove existing protocol-v1 collectors continue
-  reporting before replacing the relay collector binary.
+- Enroll disposable Tailscale containers with a reusable ephemeral key, then
+  zero the staged key before generating workload traffic. The key, node names,
+  Tailnet suffix, addresses, and raw reports never enter retained evidence.
+- Configure one disposable `tailscaled` as a real Peer Relay and require the
+  existing control-plane grant to expose it to the disposable clients.
+- Make Direct -> Peer Relay -> Direct deterministic only inside disposable
+  network namespaces: the relay phase permits DNS and the relay UDP port while
+  rejecting other UDP. Tailpath runtime code never probes or mutates Tailscale.
+- Use collector start/stop to cover two-observable, one-observable, and
+  relay-only traffic without changing the underlying session.
 - Use anonymous roles in all retained evidence: `S` server, `R` relay, `O1/O2`
   observable endpoints, and `P1/P2` passive endpoints without collectors.
-- Generate only ordinary HTTP/iperf application traffic. Never call
-  `tailscale ping`, alter ACLs/Grants/Peer Relay policy, block UDP, capture
-  packets, or invoke LocalAPI mutation routes.
-- Direct-to-Relay-to-Direct uses a human-operated client network-attachment
-  change and an already configured Peer Relay. If the Tailnet does not
-  naturally select Peer Relay, record the case as not exercised rather than
-  forcing it with a policy or firewall change.
+- Generate only ordinary HTTP/iperf application traffic. Tailpath runtime and
+  host operations never call `tailscale ping`, alter ACLs/Grants, capture
+  packets, or invoke LocalAPI mutation routes. The disposable harness may apply
+  only the namespace-local UDP rules defined below.
+- The disposable harness may mutate only its own namespace firewall and Relay
+  preferences. It must restore or destroy those namespaces on every exit and
+  must not mutate host firewall rules, ACLs, Grants, or unrelated Tailnet nodes.
 - Store raw evidence outside the repository in a mode-0700 temporary directory.
   Commit only the sanitizer, runbook, and a redacted decision ledger containing
   no names, suffixes, addresses, endpoints, stable IDs, session IDs, or keys.
@@ -33,30 +42,39 @@ identity or changing network policy.
 
 ## Implementation
 
-1. Add English and Chinese runbooks with artifact, rollback, scenario, restart,
+1. Add English and Chinese runbooks with artifact, cleanup, scenario, restart,
    and evidence contracts.
 2. Add a fail-closed jq sanitizer for topology and collector-check evidence.
-3. Validate scripts and synthetic inputs locally.
-4. After stacked PRs merge, resolve the exact main CI run and immutable
-   artifacts, then execute the real dogfood with a human operating passive
-   clients.
-5. Record the sanitized result and any unsupported case without weakening the
-   acceptance criteria.
+3. Extend the disposable Compose smoke topology with a relay node, relay
+   collector, deterministic relay-only UDP mode, and cleanup traps.
+4. Validate Direct -> Peer Relay -> Direct, all three observability scenarios,
+   relay collector/tailscaled/server restarts, Live/History, and endpoint
+   persistence privacy against the immutable main candidate.
+5. Record the sanitized result without weakening the acceptance criteria.
 
 ## Verification
 
-- Pending: runbook and sanitizer fixture tests.
-- Pending: exact main SHA/image/archive record.
-- Blocked until execution: relay-host SSH fingerprint confirmation and
-  human-operated client traffic/network transitions.
+- Runbook and sanitizer fixture tests passed on the pre-rebase tree and retain
+  identical tree content after rebase.
+- Candidate main SHA, image digest, archives, and checksums are resolved.
+- A separate disposable Tailnet passed Direct -> Peer Relay -> Direct, all
+  three provenance scenarios, collector/relay/server restarts, History, and
+  database endpoint scans using real Tailscale v1.102.2 traffic.
+- The run exposed missing top-level relay identity when a newer endpoint
+  observation agreed with more detailed relay provenance. Issue #107 and PR
+  #108 contain the isolated fix and regression coverage; the corrected branch
+  runtime passed the three-party reproduction.
+- Pending: merge #108, select its immutable main artifact, and repeat the final
+  artifact-bound matrix before accepting the ledger.
 
 ## Current state
 
-The real Tailnet contains an online Linux relay role, but this workstation does
-not yet trust its SSH host key. The v0.3 implementation is still a stack of PRs,
-so no qualifying main edge image or matching collector archive exists.
+The repeatable harness and preliminary real-control-plane run are complete.
+The reusable credential files were zeroed immediately after enrollment, and no
+production or long-lived node was modified. The final immutable-main run waits
+only for the independently scoped reconciliation fix in #108.
 
 ## Next step
 
-Implement and locally validate the fail-closed runbook tooling while the v0.3
-strict synthetic gate runs.
+Merge #108, rebase this PR, rerun the exact immutable main image in the existing
+isolated Tailnet, accept the redacted ledger, and destroy all ephemeral state.
