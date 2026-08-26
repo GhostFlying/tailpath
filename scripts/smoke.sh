@@ -33,6 +33,11 @@ fail() {
   exit 1
 }
 
+case "$project" in
+  tailpath-smoke|tailpath-smoke-*) ;;
+  *) fail "TAILPATH_SMOKE_PROJECT must use the tailpath-smoke prefix" ;;
+esac
+
 zero_file() {
   test ! -f "$1" || chmod u+w "$1"
   test ! -f "$1" || : > "$1"
@@ -313,8 +318,8 @@ path() {
     | jq -r --arg ip "$target_ip" '
         .Peer[]
         | select(.TailscaleIPs[0] == $ip)
-        | if (.CurAddr // "") != "" then "direct"
-          elif (.PeerRelay // "") != "" then "peer_relay"
+        | if (.PeerRelay // "") != "" then "peer_relay"
+          elif (.CurAddr // "") != "" then "direct"
           elif (.Relay // "") != "" then "derp"
           else "unknown"
           end')"
@@ -336,6 +341,19 @@ wait_relay_reporting() {
   done
 }
 
+wait_peer_relay_path() {
+  attempt=0
+  while :; do
+    if test "$(path a b)" = "peer_relay" \
+      && test "$(path b a)" = "peer_relay"; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 45 || fail "endpoint paths did not return to peer_relay"
+    sleep 2
+  done
+}
+
 restart_relay() {
   load_runtime
   compose restart tailscale-r
@@ -345,7 +363,8 @@ restart_relay() {
   compose restart collector-r
   relay_check >/dev/null || fail "$relay_hostname did not recover relay telemetry"
   wait_relay_reporting
-  echo "tailpath smoke relay restarted and telemetry recovered"
+  wait_peer_relay_path
+  echo "tailpath smoke relay restarted and endpoint paths recovered"
 }
 
 udp() {

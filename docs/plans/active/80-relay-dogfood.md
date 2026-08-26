@@ -78,14 +78,16 @@ evidence, but is not a prerequisite for validating the v0.3 telemetry path.
 
 ## Current state
 
-The repeatable harness and final immutable-main run are complete. The reusable
-credential files were zeroed immediately after enrollment, and no production
-or long-lived node was modified. Issue #109 tracks the separate product choice
-for classifying relay-observed collector delivery traffic; it is not a v0.3
-telemetry correctness blocker.
+The repeatable harness and immutable-main business-session matrix are complete.
+The reusable credential files were zeroed immediately after enrollment, and no
+production or long-lived node was modified. Independent review found two open
+release gates: the run did not retain a mixed-version server-first window, and
+issue #109 must restore the accepted dedicated-control-identity behavior for
+relay-observed collector delivery traffic.
 
 ## Next step
 
-Run final repository checks, obtain independent review, mark PR #100 ready, and
-rebase-merge it. Revoke the reusable Tailnet key after the ephemeral lab is
-destroyed.
+Implement #109, then rerun a focused candidate-server/older-ordinary-collector
+compatibility window and record its sanitized result. Re-run final repository
+checks and independent review before marking PR #100 ready. Revoke the reusable
+Tailnet key after the final ephemeral lab is destroyed.
