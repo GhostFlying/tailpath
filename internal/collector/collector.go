@@ -69,6 +69,7 @@ type Collector struct {
 	relayTelemetry      bool
 	relayBaseline       *RelaySnapshot
 	relayCapability     RelayCapability
+	relayIdentity       RelayIdentityEvidence
 	sequence            int64
 	connected           bool
 	baseline            Snapshot
@@ -299,6 +300,7 @@ func (c *Collector) stepRelay(ctx context.Context, establishBaseline bool) (bool
 		c.relayBaseline = nil
 		return false, nil
 	}
+	c.setRelayIdentityEvidence(snapshot.IdentityEvidence)
 	if establishBaseline || c.relayBaseline == nil {
 		c.relayBaseline = &snapshot
 		return false, nil
@@ -433,6 +435,21 @@ func (c *Collector) setRelayCapability(capability RelayCapability) {
 		return
 	}
 	c.logger.Info("relay telemetry capability", "capability", capability)
+}
+
+func (c *Collector) setRelayIdentityEvidence(status RelayIdentityEvidence) {
+	if status == "" || status == c.relayIdentity {
+		return
+	}
+	previous := c.relayIdentity
+	c.relayIdentity = status
+	if status == RelayIdentityDegraded {
+		c.logger.Warn("relay identity enrichment degraded")
+		return
+	}
+	if previous == RelayIdentityDegraded {
+		c.logger.Info("relay identity enrichment recovered")
+	}
 }
 
 func (c *Collector) retryDelay(failures int) time.Duration {

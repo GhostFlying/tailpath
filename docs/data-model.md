@@ -40,6 +40,9 @@ only the A-B logical edge, with R retained as provenance and as the explicit
 relay node. Session ID, VNI, cumulative counters, and identity-resolution status
 remain as sanitized provenance. Underlay endpoints exist only while processing
 current runtime evidence and are stripped before every durable representation.
+Directional counters and source/target resolution status are both normalized
+to the canonical unordered edge direction: provenance source describes edge A
+and target describes edge B.
 
 The aggregator checkpoints relay scopes by relay canonical ID and VNI. Each
 scope keeps bounded session-client bindings and, when available, one fresh
@@ -50,6 +53,13 @@ only when the other client already identifies one member of the fresh pair.
 VNI alone cannot choose either endpoint, and a second incompatible fresh pair
 marks the scope conflicted until that evidence ages out. Canonical merges
 rewrite all scoped bindings and persist redirects for historical resolution.
+
+Native scoped client IDs remain stable across optional identity enrichment and
+underlay endpoint movement whenever a short disco hint is present. The short
+hint remains relay-scoped correlation material rather than a global alias. If
+the hint is absent, endpoint-derived continuity is intentionally conservative:
+an endpoint change creates a fresh baseline and placeholder instead of guessing
+that two runtime records are the same client.
 
 Relay clients are `resolved` when strong canonical evidence identifies them,
 `partial` when only scoped correlation hints exist, `anonymous` when no identity

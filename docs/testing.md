@@ -30,6 +30,16 @@ left by Cytoscape initialization before the scheduled fit completes. The graph
 keeps this initial focus pending across intervening topology refreshes and only
 clears it after the fit actually runs.
 
+Peer Relay identity-stability tests move one session from unavailable to
+available disco enrichment, change an underlay endpoint under the same short
+hint, reverse full-identity lexical order, and remove the short hint entirely.
+They prove enrichment and ordinary endpoint movement preserve scoped IDs and
+direction, while endpoint-only identity changes establish a new baseline. A
+same-session short-hint collision proves the endpoint fallback keeps both
+clients distinct and direction deterministic.
+Forbidden, failed, malformed, and transport-failed optional enrichment keeps
+readable session counters and emits only bounded degraded/recovered state.
+
 Sparse relay collector tests prove that first samples, resets, removals,
 reappearance, LocalAPI degradation, report outages, and reconnects do not
 create synthetic catch-up traffic. They also inject endpoint, session, and
@@ -44,6 +54,11 @@ arriving before or after a relay session, one-sided inference, VNI-only
 ambiguity, conflicting fresh endpoint pairs, scoped-identifier isolation, and
 endpoint-over-relay directional traffic precedence. Race tests cover the
 aggregator and atomic application commit path.
+
+Cross-layer enrichment coverage proves an anonymous scoped client merges into
+its canonical node with a durable redirect, one logical edge, and stable
+checkpoint/restart state. A reversed canonical edge test verifies that both
+traffic direction and source/target identity status are swapped together.
 
 Durable relay tests scan the SQLite database and WAL for synthetic endpoint and
 disco canaries, exercise checkpoint restart before and after a scoped merge,

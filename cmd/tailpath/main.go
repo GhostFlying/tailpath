@@ -437,6 +437,7 @@ func checkCollector(
 	} else {
 		relay, relayErr := relaySource.PeerRelaySnapshot(ctx)
 		result.RelayCapability = relay.Capability
+		result.RelayIdentity = relay.IdentityEvidence
 		if relayErr != nil {
 			result.RelayCapability = collector.RelayTransientFailure
 		}

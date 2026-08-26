@@ -74,8 +74,9 @@ Native installer configuration includes the explicit `auto` default and may be
 edited to `off` without reinstalling. Run `tailpath collector --check` to read
 LocalAPI once and print self identity, runtime platform, peer count, relay
 capability, enabled state, and session count as JSON without contacting the
-Tailpath server or actively probing any peer. It never prints relay endpoints,
-session IDs, scoped client IDs, or disco hints.
+Tailpath server or actively probing any peer. Active sessions also report
+whether optional relay identity evidence is `available` or `degraded`. It never
+prints relay endpoints, session IDs, scoped client IDs, or disco hints.
 
 ## Native collector archives
 

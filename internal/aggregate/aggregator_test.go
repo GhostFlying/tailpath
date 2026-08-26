@@ -307,6 +307,29 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	}
 }
 
+func TestRelaySessionNormalizesIdentityStatusWithCanonicalDirection(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "target-reporter", 1, "target", "Target", "inventory-target")
+	report := relayReport(1, "session", 7,
+		domain.RelaySessionClient{SessionClientID: "left", DiscoShort: "short-left"},
+		domain.RelaySessionClient{SessionClientID: "right", Identity: identity(node("target", "Target"))},
+		200, 80,
+	)
+	if _, err := aggregator.ApplyAt(report, now); err != nil {
+		t.Fatal(err)
+	}
+	edge := topologyEdgeWithRelaySession(t, aggregator.Snapshot())
+	provenance := relayProvenance(t, edge)
+	if provenance.SourceIdentityStatus != domain.IdentityResolved ||
+		provenance.TargetIdentityStatus != domain.IdentityPartial {
+		t.Fatalf("canonical identity status = %#v, want resolved/partial", provenance)
+	}
+	if edge.AToBBytesPerSecond != 40 || edge.BToABytesPerSecond != 100 {
+		t.Fatalf("canonical relay rates = %.0f/%.0f, want 40/100", edge.AToBBytesPerSecond, edge.BToABytesPerSecond)
+	}
+}
+
 func TestRelaySequenceGapRequestsResyncWithoutDroppingSession(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

@@ -53,7 +53,15 @@ Relay sessions additionally carry a session ID, unsigned 24-bit VNI,
 directional counters, and directional deltas. Each endpoint has a non-empty
 `sessionClientId` plus optional full identity, short disco hint, and underlay
 endpoint. The two scoped client IDs must differ. Only a full identity is global
-canonical evidence; the client ID, short disco hint, and endpoint never become
+canonical evidence. A scoped client ID remains stable for that client during
+the relay/VNI session lifetime. The native adapter derives it from the trimmed
+short disco hint even when full identity evidence later appears or the underlay
+endpoint moves. Without a short hint, an endpoint change conservatively creates
+a new client baseline because Tailscale v1.102.2 exposes no other stable
+per-client value. If both clients in one session have the same short hint, the
+native adapter uses their endpoints to keep the two scoped IDs distinct; an
+endpoint change in that collision case also establishes a new baseline. The
+client ID, short disco hint, and endpoint never become
 global aliases. The relay is the provenance observer and must include its
 StableNodeID so the path can retain the canonical relay node. Relay traffic is
 fallback evidence and is never added to duplicate endpoint evidence. Reporter
@@ -81,6 +89,18 @@ establish baselines. The collector reports only positive deltas between
 consecutive healthy snapshots and keeps no relay catch-up queue. A relay report
 transport failure uses the normal reconnect path; the accepted observer hello
 also resets every relay baseline.
+
+The optional peer-disco-key lookup is identity enrichment, not session
+telemetry capability. A forbidden, unavailable, malformed, or failed lookup
+keeps readable sessions and counters as partial or anonymous observations. The
+collector logs bounded degraded/recovered enrichment transitions without
+resetting the relay counter baseline or reconstructing catch-up traffic.
+
+Tailscale v1.102.2 exposes no explicit session-removal lifecycle event. A
+counter reset or changed client key creates a new baseline, but extreme VNI
+reuse inside the server freshness window can retain an older scoped pair until
+it expires. This is a known upstream-observability limit rather than evidence
+for guessing a new identity.
 
 ## Inventory generations
 

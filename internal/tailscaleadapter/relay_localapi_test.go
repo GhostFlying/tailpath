@@ -84,6 +84,8 @@ type relayFixtureTransport struct {
 	relayStatusCode int
 	relayFixture    string
 	discoStatusCode int
+	discoError      error
+	discoPayload    []byte
 	requests        []string
 	unexpected      []string
 }
@@ -105,10 +107,17 @@ func (transport *relayFixtureTransport) RoundTrip(request *http.Request) (*http.
 		}
 		payload = readRelayFixture(transport.t, fixture)
 	case "POST /localapi/v0/debug?action=peer-disco-keys":
+		if transport.discoError != nil {
+			return nil, transport.discoError
+		}
 		if transport.discoStatusCode != 0 && transport.discoStatusCode != http.StatusOK {
 			return fixtureResponse(request, transport.discoStatusCode, []byte("disco API unavailable")), nil
 		}
-		payload = readRelayFixture(transport.t, "peer-disco-keys.json")
+		if transport.discoPayload != nil {
+			payload = transport.discoPayload
+		} else {
+			payload = readRelayFixture(transport.t, "peer-disco-keys.json")
+		}
 	default:
 		transport.unexpected = append(transport.unexpected, requestKey)
 		return fixtureResponse(request, http.StatusMethodNotAllowed, []byte("passive fixture rejected request")), nil
