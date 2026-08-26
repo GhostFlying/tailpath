@@ -39,14 +39,25 @@ mutable `edge` channel only when an operator explicitly upgrades it.
       the cached devcontainer-equivalent toolchains.
 - [x] Open PR #76 with the complete workflow and documentation changes; hosted
       PR CI passed while both package-write jobs were explicitly skipped.
-- [ ] After merge, verify the immutable and mutable multi-architecture manifests,
+- [x] After merge, verify the immutable and mutable multi-architecture manifests,
       OCI revision, and embedded version.
-- [ ] Import `edge` on the dogfood host, preserve `tailpath-data`, recreate only
+- [x] Import `edge` on the dogfood host, preserve `tailpath-data`, recreate only
       the server, and verify health, identity, history, and collector recovery.
 
 ## Current state
 
-The gated publish and promotion jobs, selector tests, and deployment docs are
-implemented and pass local and hosted PR verification. PR #76 is ready for
-final status-commit CI and human review. Deployment remains blocked on that PR
-merging and producing its first successful edge artifact.
+PR #76 merged as `e7a0487156df393715644b3dc3bf8862613023d5`, and main CI run
+32921998035 published and promoted the first edge artifact. The immutable and
+mutable tags resolve to the same multi-architecture digest,
+`sha256:4c9f6dfc644dc7569ff85a65d53c369bf825b5c29b2c41f080b0758360107c58`,
+with source revision `e7a0487156df393715644b3dc3bf8862613023d5` and embedded version
+`edge-e7a0487156df`.
+
+The dogfood host retained the previous `v0.2.0` image as
+`rollback-0.2.0-pre-edge`, imported the linux/amd64 edge image, and recreated
+only the server. The server is healthy on the unchanged `tailpath-data` volume
+and MagicDNS URL. Its tsnet identity was reused, the 24-hour History workspace
+retained five prior connections, and all three configured collector runtimes
+recovered as online without collector restarts. Playwright verified Live and
+History at desktop and mobile viewports, including the new
+`3 runtimes reporting` status; both runs had no console errors or warnings.
