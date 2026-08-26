@@ -1,0 +1,20 @@
+{
+  "UDPPort": 41641,
+  "Sessions": [
+    {
+      "VNI": 7,
+      "Client1": {
+        "Endpoint": "192.0.2.10:51001",
+        "ShortDisco": "d:003cd7453e04a653",
+        "PacketsTx": 120,
+        "BytesTx": 8192
+      },
+      "Client2": {
+        "Endpoint": "[2001:db8::20]:51002",
+        "ShortDisco": "d:50d20b455ecf12bc",
+        "PacketsTx": 80,
+        "BytesTx": 4096
+      }
+    }
+  ]
+}
