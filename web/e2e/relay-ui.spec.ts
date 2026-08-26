@@ -135,6 +135,7 @@ test("preserves the relay neighborhood when an anonymous client resolves", async
   await page.goto("/");
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toHaveAttribute("data-ready", "true");
+  await expectSparseGraphFocused(graph);
   const initial = parseGraphPositions(
     (await graph.getAttribute("data-layout-positions")) ?? "",
   );
@@ -234,6 +235,42 @@ function parseGraphPositions(value: string) {
         return [entry.slice(0, separator), entry.slice(separator + 1)];
       }),
   );
+}
+
+async function expectSparseGraphFocused(graph: Locator) {
+  await expect
+    .poll(async () => {
+      const positions = [
+        ...parseGraphPositions(
+          (await graph.getAttribute("data-layout-positions")) ?? "",
+        ).values(),
+      ].map((position) => {
+        const [x, y] = position.split(",").map(Number);
+        return { x, y };
+      });
+      const viewport = (await graph.getAttribute("data-viewport")) ?? "";
+      const match = viewport.match(/^([\d.]+):(-?[\d.]+),(-?[\d.]+)$/);
+      const box = await graph.boundingBox();
+      if (positions.length === 0 || !match || !box) return "pending";
+      const center = positions.reduce(
+        (sum, position) => ({
+          x: sum.x + position.x / positions.length,
+          y: sum.y + position.y / positions.length,
+        }),
+        { x: 0, y: 0 },
+      );
+      const zoom = Number(match[1]);
+      const xOffset = Math.abs(
+        center.x * zoom + Number(match[2]) - box.width / 2,
+      );
+      const yOffset = Math.abs(
+        center.y * zoom + Number(match[3]) - box.height / 2,
+      );
+      return zoom <= 1.25 && xOffset < 40 && yOffset < 70
+        ? "focused"
+        : `zoom=${zoom.toFixed(2)} x=${xOffset.toFixed(2)} y=${yOffset.toFixed(2)}`;
+    })
+    .toBe("focused");
 }
 
 function relayHistory() {
