@@ -75,6 +75,11 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 			ID: "observer--peer", Source: "observer", Target: "peer",
 			Observations: map[string]edgeObservation{"observer": {ObserverID: "observer", TxRate: 1}},
 		}},
+		RelayScopes: map[string]*relayScopeState{"relay:7": {
+			RelayID: "relay", VNI: 7, Sessions: map[string]*relaySessionState{"session": {
+				Clients: map[string]string{"left": "observer"}, SourceNodeID: "observer",
+			}},
+		}},
 	}
 	clone := cloneRuntimeState(source)
 	clone.Reporters["reporter"].LastSequence = 5
@@ -90,6 +95,7 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	observation := clone.Edges["observer--peer"].Observations["observer"]
 	observation.TxRate = 2
 	clone.Edges["observer--peer"].Observations["observer"] = observation
+	clone.RelayScopes["relay:7"].Sessions["session"].Clients["left"] = "other"
 
 	reporter := source.Reporters["reporter"]
 	if reporter.LastSequence != 4 || len(reporter.ReportIDs) != 1 || len(reporter.ObserverIDs) != 1 ||
@@ -102,7 +108,8 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	}
 	if source.Nodes["observer"].Identity.TailscaleIPs[0] != "100.64.0.1" ||
 		source.Aliases["stable:observer"] != "observer" || !source.AliasLastSeen["ip:100.64.0.1"].Equal(now) ||
-		source.Edges["observer--peer"].Observations["observer"].TxRate != 1 {
+		source.Edges["observer--peer"].Observations["observer"].TxRate != 1 ||
+		source.RelayScopes["relay:7"].Sessions["session"].Clients["left"] != "observer" {
 		t.Fatal("node, alias, or edge clone mutated source")
 	}
 }
@@ -297,6 +304,191 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	}
 	if strings.Contains(string(checkpoint), "192.0.2.10") || strings.Contains(string(checkpoint), "2001:db8") {
 		t.Fatalf("relay underlay endpoint entered checkpoint: %s", checkpoint)
+	}
+}
+
+func TestAnonymousRelaySessionKeepsScopedIdentityAcrossReportsAndRestart(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	first := relayReport(1, "session", 7,
+		domain.RelaySessionClient{SessionClientID: "left", DiscoShort: "disco-left", Endpoint: "192.0.2.10:41641"},
+		domain.RelaySessionClient{SessionClientID: "right", Endpoint: "192.0.2.11:41641"},
+		120, 40,
+	)
+	if _, err := aggregator.ApplyAt(first, now); err != nil {
+		t.Fatal(err)
+	}
+	initial := aggregator.Snapshot()
+	if len(initial.Edges) != 1 || len(initial.Nodes) != 3 {
+		t.Fatalf("initial anonymous topology = %#v", initial)
+	}
+	initialEdgeID := initial.Edges[0].ID
+
+	now = now.Add(2 * time.Second)
+	second := relayReport(2, "session", 7,
+		domain.RelaySessionClient{SessionClientID: "left", DiscoShort: "changed-hint", Endpoint: "198.51.100.10:41641"},
+		domain.RelaySessionClient{SessionClientID: "right", Endpoint: "198.51.100.11:41641"},
+		60, 20,
+	)
+	second.ReportID = "relay-2"
+	second.CollectedAt = now
+	if _, err := aggregator.ApplyAt(second, now); err != nil {
+		t.Fatal(err)
+	}
+	if topology := aggregator.Snapshot(); len(topology.Edges) != 1 || topology.Edges[0].ID != initialEdgeID || len(topology.Nodes) != 3 {
+		t.Fatalf("anonymous session changed canonical identity: %#v", topology)
+	}
+	for alias := range aggregator.state.Aliases {
+		if strings.Contains(alias, "session") || strings.Contains(alias, "disco-left") || strings.Contains(alias, "192.0.2") {
+			t.Fatalf("relay-scoped evidence entered global aliases: %q", alias)
+		}
+	}
+
+	checkpoint, err := aggregator.MarshalState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(checkpoint, []byte("192.0.2")) || bytes.Contains(checkpoint, []byte("198.51.100")) ||
+		bytes.Contains(checkpoint, []byte("disco-left")) || bytes.Contains(checkpoint, []byte("changed-hint")) {
+		t.Fatalf("ephemeral relay evidence entered checkpoint: %s", checkpoint)
+	}
+	restored := newTestAggregator(func() time.Time { return now })
+	if err := restored.RestoreState(checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if topology := restored.Snapshot(); len(topology.Edges) != 1 || topology.Edges[0].ID != initialEdgeID || len(topology.Nodes) != 3 {
+		t.Fatalf("restored anonymous topology = %#v", topology)
+	}
+}
+
+func TestRelayScopeInfersOnlyMissingSideFromEndpointPair(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
+	vni := int64(7)
+	applySampleWithPath(t, aggregator, "reporter-a", 2, "a", "A", "b", "B", "inventory-a", domain.PathObservation{
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+	})
+	report := relayReport(1, "session", vni,
+		domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A"))},
+		domain.RelaySessionClient{SessionClientID: "right", DiscoShort: "short-b"},
+		200, 80,
+	)
+	if _, err := aggregator.ApplyAt(report, now); err != nil {
+		t.Fatal(err)
+	}
+	topology := aggregator.Snapshot()
+	if len(topology.Edges) != 1 {
+		t.Fatalf("inferred relay topology has %d edges: %#v", len(topology.Edges), topology.Edges)
+	}
+	aID := topologyNodeID(t, topology, "a")
+	bID := topologyNodeID(t, topology, "b")
+	if topology.Edges[0].ID != edgeIDFor(aID, bID) {
+		t.Fatalf("relay edge = %q, want canonical endpoint pair %q", topology.Edges[0].ID, edgeIDFor(aID, bID))
+	}
+	provenance := relayProvenance(t, topology.Edges[0])
+	if provenance.SourceIdentityStatus != domain.IdentityResolved || provenance.TargetIdentityStatus != domain.IdentityResolved {
+		t.Fatalf("inferred identity status = %#v", provenance)
+	}
+}
+
+func TestEndpointPairReconcilesEarlierAnonymousRelayClient(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	report := relayReport(1, "session", 7,
+		domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A"))},
+		domain.RelaySessionClient{SessionClientID: "right", DiscoShort: "short-b"},
+		200, 80,
+	)
+	if _, err := aggregator.ApplyAt(report, now); err != nil {
+		t.Fatal(err)
+	}
+	before := aggregator.Snapshot()
+	if len(before.Edges) != 1 {
+		t.Fatalf("initial relay topology = %#v", before)
+	}
+	aID := topologyNodeID(t, before, "a")
+	placeholderID := before.Edges[0].Target
+	if placeholderID == aID {
+		placeholderID = before.Edges[0].Source
+	}
+
+	applyHello(t, aggregator, "reporter-b", 1, "b", "B", "inventory-b")
+	vni := int64(7)
+	applySampleWithPath(t, aggregator, "reporter-b", 2, "b", "B", "a", "A", "inventory-b", domain.PathObservation{
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+	})
+	after := aggregator.Snapshot()
+	bID := topologyNodeID(t, after, "b")
+	if after.Edges[0].ID != edgeIDFor(aID, bID) || aggregator.state.Redirects[placeholderID] != bID {
+		t.Fatalf("delayed reconciliation edge/redirect = %#v / %#v", after.Edges, aggregator.state.Redirects)
+	}
+}
+
+func TestRelayScopeDoesNotInferFromVNIAloneOrConflictingPairs(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	vni := int64(7)
+
+	t.Run("vni alone", func(t *testing.T) {
+		aggregator := newTestAggregator(func() time.Time { return now })
+		applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
+		applySampleWithPath(t, aggregator, "reporter-a", 2, "a", "A", "b", "B", "inventory-a", domain.PathObservation{
+			Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+		})
+		if _, err := aggregator.ApplyAt(relayReport(1, "anonymous", vni,
+			domain.RelaySessionClient{SessionClientID: "left"},
+			domain.RelaySessionClient{SessionClientID: "right"}, 20, 10), now); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(aggregator.Snapshot().Edges); got != 2 {
+			t.Fatalf("VNI-only evidence guessed endpoint pair; got %d edges", got)
+		}
+	})
+
+	t.Run("conflicting pair", func(t *testing.T) {
+		aggregator := newTestAggregator(func() time.Time { return now })
+		applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
+		applySampleWithPath(t, aggregator, "reporter-a", 2, "a", "A", "b", "B", "inventory-a", domain.PathObservation{
+			Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+		})
+		applyHello(t, aggregator, "reporter-c", 1, "c", "C", "inventory-c")
+		applySampleWithPath(t, aggregator, "reporter-c", 2, "c", "C", "d", "D", "inventory-c", domain.PathObservation{
+			Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+		})
+		if _, err := aggregator.ApplyAt(relayReport(1, "conflict", vni,
+			domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A"))},
+			domain.RelaySessionClient{SessionClientID: "right", DiscoShort: "short"}, 20, 10), now); err != nil {
+			t.Fatal(err)
+		}
+		topology := aggregator.Snapshot()
+		if got := len(topology.Edges); got != 3 {
+			t.Fatalf("conflicting scope guessed a merge; got %d edges: %#v", got, topology.Edges)
+		}
+		provenance := relayProvenance(t, topologyEdgeWithRelaySession(t, topology))
+		if provenance.TargetIdentityStatus != domain.IdentityConflict {
+			t.Fatalf("conflicting relay provenance = %#v", provenance)
+		}
+	})
+}
+
+func TestEndpointTrafficOutranksRelayFallbackWithoutSumming(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
+	vni := int64(7)
+	applySampleWithPathAndDeltas(t, aggregator, "reporter-a", 2, "a", "A", "b", "B", "inventory-a", domain.PathObservation{
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+	}, 100, 50)
+	if _, err := aggregator.ApplyAt(relayReport(1, "session", vni,
+		domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A"))},
+		domain.RelaySessionClient{SessionClientID: "right", Identity: identity(node("b", "B"))},
+		10000, 5000,
+	), now); err != nil {
+		t.Fatal(err)
+	}
+	edge := aggregator.Snapshot().Edges[0]
+	if edge.AToBBytesPerSecond != 50 || edge.BToABytesPerSecond != 25 {
+		t.Fatalf("endpoint and relay rates were summed or relay won: %.0f/%.0f", edge.AToBBytesPerSecond, edge.BToABytesPerSecond)
 	}
 }
 
@@ -820,6 +1012,68 @@ func sampleReport(reporter string, sequence int64, observerID, observerName, pee
 			Peers: []domain.PeerObservation{{Peer: node(peerID, peerName), TxDelta: tx, RxDelta: rx, SampleDurationMS: 2000, Path: path}},
 		}},
 	}
+}
+
+func relayReport(
+	sequence int64,
+	sessionID string,
+	vni int64,
+	source, target domain.RelaySessionClient,
+	sourceToTarget, targetToSource int64,
+) domain.ReportEnvelope {
+	collectedAt := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	return domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: fmt.Sprintf("relay-%d", sequence),
+		ReporterInstanceID: "relay-reporter", Sequence: sequence, CollectedAt: collectedAt,
+		Kind: domain.ReportRelaySessionUpdate,
+		RelaySessions: []domain.RelaySessionObservation{{
+			Relay: node("relay", "Relay"), Source: source, Target: target,
+			SessionID: sessionID, VNI: vni,
+			SourceToTargetBytes: sourceToTarget, TargetToSourceBytes: targetToSource,
+			SourceToTargetDelta: sourceToTarget, TargetToSourceDelta: targetToSource,
+			SampleDurationMS: 2000, LastActive: collectedAt,
+		}},
+	}
+}
+
+func topologyNodeID(t *testing.T, topology domain.Topology, stableID string) string {
+	t.Helper()
+	for _, candidate := range topology.Nodes {
+		if candidate.StableNodeID == stableID {
+			return candidate.ID
+		}
+	}
+	t.Fatalf("topology has no node with stable ID %q: %#v", stableID, topology.Nodes)
+	return ""
+}
+
+func edgeIDFor(leftID, rightID string) string {
+	edgeID, _, _ := domain.EdgeID(leftID, rightID)
+	return edgeID
+}
+
+func topologyEdgeWithRelaySession(t *testing.T, topology domain.Topology) domain.TopologyEdge {
+	t.Helper()
+	for _, edge := range topology.Edges {
+		for _, observation := range edge.Observations {
+			if observation.RelaySession != nil {
+				return edge
+			}
+		}
+	}
+	t.Fatalf("topology has no relay session edge: %#v", topology.Edges)
+	return domain.TopologyEdge{}
+}
+
+func relayProvenance(t *testing.T, edge domain.TopologyEdge) *domain.RelaySessionProvenance {
+	t.Helper()
+	for _, observation := range edge.Observations {
+		if observation.RelaySession != nil {
+			return observation.RelaySession
+		}
+	}
+	t.Fatalf("edge has no relay provenance: %#v", edge)
+	return nil
 }
 
 func newTestAggregator(now func() time.Time) *Aggregator {

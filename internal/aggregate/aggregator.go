@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ type runtimeState struct {
 	AliasLastSeen map[string]time.Time             `json:"aliasLastSeen,omitempty"`
 	Redirects     map[string]string                `json:"redirects,omitempty"`
 	Edges         map[string]*edgeState            `json:"edges"`
+	RelayScopes   map[string]*relayScopeState      `json:"relayScopes,omitempty"`
 }
 
 type reporterState struct {
@@ -65,13 +67,36 @@ type observerRuntimeState struct {
 }
 
 type nodeState struct {
-	Identity      domain.NodeIdentity `json:"identity"`
-	Observable    bool                `json:"observable"`
-	LastEvidence  time.Time           `json:"lastEvidence"`
-	LastReport    time.Time           `json:"lastReport"`
-	LastCollected time.Time           `json:"lastCollected"`
-	ClockSkewMS   int64               `json:"clockSkewMs"`
-	ClockSkewed   bool                `json:"clockSkewed"`
+	Identity       domain.NodeIdentity   `json:"identity"`
+	IdentityStatus domain.IdentityStatus `json:"identityStatus,omitempty"`
+	Observable     bool                  `json:"observable"`
+	LastEvidence   time.Time             `json:"lastEvidence"`
+	LastReport     time.Time             `json:"lastReport"`
+	LastCollected  time.Time             `json:"lastCollected"`
+	ClockSkewMS    int64                 `json:"clockSkewMs"`
+	ClockSkewed    bool                  `json:"clockSkewed"`
+}
+
+type relayScopeState struct {
+	RelayID            string                        `json:"relayId"`
+	VNI                int64                         `json:"vni"`
+	PairSourceID       string                        `json:"pairSourceId,omitempty"`
+	PairTargetID       string                        `json:"pairTargetId,omitempty"`
+	PairObservedAt     time.Time                     `json:"pairObservedAt,omitempty"`
+	ConflictObservedAt time.Time                     `json:"conflictObservedAt,omitempty"`
+	LastSeen           time.Time                     `json:"lastSeen"`
+	Sessions           map[string]*relaySessionState `json:"sessions,omitempty"`
+}
+
+type relaySessionState struct {
+	Clients        map[string]string     `json:"clients,omitempty"`
+	SourceClientID string                `json:"sourceClientId,omitempty"`
+	TargetClientID string                `json:"targetClientId,omitempty"`
+	SourceNodeID   string                `json:"sourceNodeId,omitempty"`
+	TargetNodeID   string                `json:"targetNodeId,omitempty"`
+	SourceStatus   domain.IdentityStatus `json:"sourceStatus,omitempty"`
+	TargetStatus   domain.IdentityStatus `json:"targetStatus,omitempty"`
+	LastSeen       time.Time             `json:"lastSeen"`
 }
 
 type edgeState struct {
@@ -137,6 +162,7 @@ func newRuntimeState() runtimeState {
 		AliasLastSeen: make(map[string]time.Time),
 		Redirects:     make(map[string]string),
 		Edges:         make(map[string]*edgeState),
+		RelayScopes:   make(map[string]*relayScopeState),
 	}
 }
 
@@ -242,6 +268,16 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 						touchedEdges[edgeID] = domain.PathObservation{}
 					}
 				}
+				if peer.Path.Kind == domain.PathPeerRelay && peer.Path.PeerRelayVNI != nil &&
+					strings.TrimSpace(peer.Path.PeerRelayStableNodeID) != "" {
+					relayID, _, canonicalChanged := a.resolveIdentityLocked(domain.NodeIdentity{
+						StableNodeID: peer.Path.PeerRelayStableNodeID,
+					}, receivedAt)
+					result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
+					if a.recordRelayPairLocked(relayID, *peer.Path.PeerRelayVNI, observerID, peerID, receivedAt) {
+						result.CanonicalStateChanged = true
+					}
+				}
 				a.applyPeerLocked(report.CollectedAt, receivedAt, observerID, peerID, peer)
 				aToBBytes, bToABytes := peer.TxDelta, peer.RxDelta
 				if observerID != source {
@@ -263,8 +299,9 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			relayID, _ := resolveIdentity(session.Relay)
 			a.touchObserverLocked(relayID, report.CollectedAt, receivedAt)
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, relayID)
-			sourceID, _ := resolveIdentity(session.Source.IdentityOrEmpty())
-			targetID, _ := resolveIdentity(session.Target.IdentityOrEmpty())
+			sourceID, targetID, sourceStatus, targetStatus, canonicalChanged :=
+				a.resolveRelaySessionLocked(relayID, session, receivedAt)
+			result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
 			a.touchPeerLocked(sourceID, receivedAt)
 			a.touchPeerLocked(targetID, receivedAt)
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -279,7 +316,10 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			if sourceID != source {
 				aToBBytes, bToABytes = session.TargetToSourceDelta, session.SourceToTargetDelta
 			}
-			a.applyRelaySessionLocked(report.CollectedAt, receivedAt, relayID, source, target, session, aToBBytes, bToABytes)
+			a.applyRelaySessionLocked(
+				report.CollectedAt, receivedAt, relayID, source, target, session,
+				sourceStatus, targetStatus, aToBBytes, bToABytes,
+			)
 			result.Traffic = append(result.Traffic, domain.AcceptedTraffic{
 				EdgeID: edgeID, SourceID: source, TargetID: target, ObserverID: relayID,
 				AToBBytes: aToBBytes, BToABytes: bToABytes, ReceivedAt: receivedAt,
@@ -354,6 +394,7 @@ func (a *Aggregator) applyRelaySessionLocked(
 	collectedAt, receivedAt time.Time,
 	relayID, sourceID, targetID string,
 	session domain.RelaySessionObservation,
+	sourceStatus, targetStatus domain.IdentityStatus,
 	aToBBytes, bToABytes int64,
 ) {
 	edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -376,8 +417,8 @@ func (a *Aggregator) applyRelaySessionLocked(
 		ClockSkewed: a.isClockSkewed(collectedAt, receivedAt),
 		RelaySession: &domain.RelaySessionProvenance{
 			SessionID: session.SessionID, VNI: session.VNI,
-			SourceIdentityStatus: session.Source.IdentityStatus(),
-			TargetIdentityStatus: session.Target.IdentityStatus(),
+			SourceIdentityStatus: sourceStatus,
+			TargetIdentityStatus: targetStatus,
 		},
 		SourceEndpoint: session.Source.Endpoint, TargetEndpoint: session.Target.Endpoint,
 		AToBRate: float64(aToBBytes) / duration,
@@ -391,6 +432,174 @@ func (a *Aggregator) applyRelaySessionLocked(
 	if receivedAt.After(edge.LastActive) {
 		edge.LastActive = receivedAt
 	}
+}
+
+func relayScopeKey(relayID string, vni int64) string {
+	return relayID + ":" + strconv.FormatInt(vni, 10)
+}
+
+func (a *Aggregator) relayScopeLocked(relayID string, vni int64, seenAt time.Time) (*relayScopeState, bool) {
+	key := relayScopeKey(relayID, vni)
+	scope := a.state.RelayScopes[key]
+	created := scope == nil
+	if scope == nil {
+		scope = &relayScopeState{
+			RelayID: relayID, VNI: vni, Sessions: make(map[string]*relaySessionState),
+		}
+		a.state.RelayScopes[key] = scope
+	}
+	scope.LastSeen = seenAt
+	return scope, created
+}
+
+func (a *Aggregator) resolveRelaySessionLocked(
+	relayID string,
+	observation domain.RelaySessionObservation,
+	seenAt time.Time,
+) (string, string, domain.IdentityStatus, domain.IdentityStatus, bool) {
+	scope, changed := a.relayScopeLocked(relayID, observation.VNI, seenAt)
+	session := scope.Sessions[observation.SessionID]
+	if session == nil {
+		session = &relaySessionState{Clients: make(map[string]string)}
+		scope.Sessions[observation.SessionID] = session
+		changed = true
+	}
+	session.LastSeen = seenAt
+	sourceID, sourceStatus, sourceChanged := a.resolveRelayClientLocked(session, observation.Source, seenAt)
+	targetID, targetStatus, targetChanged := a.resolveRelayClientLocked(session, observation.Target, seenAt)
+	changed = changed || sourceChanged || targetChanged
+	session.SourceClientID = observation.Source.SessionClientID
+	session.TargetClientID = observation.Target.SessionClientID
+	session.SourceNodeID = sourceID
+	session.TargetNodeID = targetID
+	session.SourceStatus = sourceStatus
+	session.TargetStatus = targetStatus
+
+	if sourceStatus == domain.IdentityResolved && targetStatus == domain.IdentityResolved {
+		changed = a.recordRelayPairLocked(relayID, observation.VNI, sourceID, targetID, seenAt) || changed
+	} else {
+		changed = a.reconcileRelayScopeLocked(scope, seenAt) || changed
+	}
+
+	sourceID = session.SourceNodeID
+	targetID = session.TargetNodeID
+	sourceStatus = a.relayClientStatusLocked(scope, sourceID, session.SourceStatus, seenAt)
+	targetStatus = a.relayClientStatusLocked(scope, targetID, session.TargetStatus, seenAt)
+	return sourceID, targetID, sourceStatus, targetStatus, changed
+}
+
+func (a *Aggregator) resolveRelayClientLocked(
+	session *relaySessionState,
+	client domain.RelaySessionClient,
+	seenAt time.Time,
+) (string, domain.IdentityStatus, bool) {
+	existingID := session.Clients[client.SessionClientID]
+	if client.Identity != nil && identityStatus(*client.Identity) == domain.IdentityResolved {
+		nodeID, _, canonicalChanged := a.resolveIdentityLocked(*client.Identity, seenAt)
+		if existingID != "" && existingID != nodeID {
+			a.mergeNodesLocked(nodeID, existingID)
+			canonicalChanged = true
+		}
+		session.Clients[client.SessionClientID] = nodeID
+		return nodeID, domain.IdentityResolved, canonicalChanged || existingID == ""
+	}
+	status := client.IdentityStatus()
+	if existingID != "" {
+		if node := a.state.Nodes[existingID]; node != nil && node.IdentityStatus != domain.IdentityResolved {
+			node.IdentityStatus = status
+		}
+		return existingID, status, false
+	}
+	nodeID := a.newNodeID()
+	a.state.Nodes[nodeID] = &nodeState{
+		IdentityStatus: status, LastEvidence: seenAt,
+	}
+	session.Clients[client.SessionClientID] = nodeID
+	return nodeID, status, true
+}
+
+func (a *Aggregator) recordRelayPairLocked(
+	relayID string,
+	vni int64,
+	leftID, rightID string,
+	seenAt time.Time,
+) bool {
+	if leftID == "" || rightID == "" || leftID == rightID {
+		return false
+	}
+	scope, changed := a.relayScopeLocked(relayID, vni, seenAt)
+	_, sourceID, targetID := domain.EdgeID(leftID, rightID)
+	pairExpired := scope.PairObservedAt.IsZero() || seenAt.Sub(scope.PairObservedAt) > a.evidenceWindow
+	if pairExpired {
+		scope.PairSourceID = sourceID
+		scope.PairTargetID = targetID
+		scope.PairObservedAt = seenAt
+		scope.ConflictObservedAt = time.Time{}
+	} else if scope.PairSourceID == sourceID && scope.PairTargetID == targetID {
+		scope.PairObservedAt = seenAt
+	} else {
+		scope.ConflictObservedAt = seenAt
+	}
+	return a.reconcileRelayScopeLocked(scope, seenAt) || changed
+}
+
+func (a *Aggregator) reconcileRelayScopeLocked(scope *relayScopeState, seenAt time.Time) bool {
+	if scope.PairSourceID == "" || scope.PairTargetID == "" ||
+		seenAt.Sub(scope.PairObservedAt) > a.evidenceWindow ||
+		(!scope.ConflictObservedAt.IsZero() && seenAt.Sub(scope.ConflictObservedAt) <= a.evidenceWindow) {
+		return false
+	}
+	changed := false
+	for _, session := range scope.Sessions {
+		if seenAt.Sub(session.LastSeen) > a.evidenceWindow {
+			continue
+		}
+		sourceInPair := session.SourceNodeID == scope.PairSourceID || session.SourceNodeID == scope.PairTargetID
+		targetInPair := session.TargetNodeID == scope.PairSourceID || session.TargetNodeID == scope.PairTargetID
+		switch {
+		case sourceInPair && !targetInPair && a.nodeCanBeInferredLocked(session.TargetNodeID):
+			complement := scope.PairSourceID
+			if session.SourceNodeID == scope.PairSourceID {
+				complement = scope.PairTargetID
+			}
+			a.mergeNodesLocked(complement, session.TargetNodeID)
+			session.TargetNodeID = complement
+			session.TargetStatus = domain.IdentityResolved
+			changed = true
+		case targetInPair && !sourceInPair && a.nodeCanBeInferredLocked(session.SourceNodeID):
+			complement := scope.PairSourceID
+			if session.TargetNodeID == scope.PairSourceID {
+				complement = scope.PairTargetID
+			}
+			a.mergeNodesLocked(complement, session.SourceNodeID)
+			session.SourceNodeID = complement
+			session.SourceStatus = domain.IdentityResolved
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (a *Aggregator) nodeCanBeInferredLocked(nodeID string) bool {
+	node := a.state.Nodes[nodeID]
+	return node != nil && node.IdentityStatus != domain.IdentityResolved
+}
+
+func (a *Aggregator) relayClientStatusLocked(
+	scope *relayScopeState,
+	nodeID string,
+	fallback domain.IdentityStatus,
+	seenAt time.Time,
+) domain.IdentityStatus {
+	if !scope.ConflictObservedAt.IsZero() && seenAt.Sub(scope.ConflictObservedAt) <= a.evidenceWindow {
+		if node := a.state.Nodes[nodeID]; node == nil || node.IdentityStatus != domain.IdentityResolved {
+			return domain.IdentityConflict
+		}
+	}
+	if node := a.state.Nodes[nodeID]; node != nil && node.IdentityStatus == domain.IdentityResolved {
+		return domain.IdentityResolved
+	}
+	return fallback
 }
 
 func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt time.Time) (string, bool, bool) {
@@ -412,7 +621,9 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 	var nodeID string
 	if len(matches) == 0 {
 		nodeID = a.newNodeID()
-		a.state.Nodes[nodeID] = &nodeState{Identity: identity, LastEvidence: seenAt}
+		a.state.Nodes[nodeID] = &nodeState{
+			Identity: identity, IdentityStatus: identityStatus(identity), LastEvidence: seenAt,
+		}
 		created = true
 	} else {
 		ids := make([]string, 0, len(matches))
@@ -433,6 +644,9 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 			}
 		}
 		a.state.Nodes[nodeID].Identity = mergeIdentity(a.state.Nodes[nodeID].Identity, identity)
+		if identityStatus(identity) == domain.IdentityResolved {
+			a.state.Nodes[nodeID].IdentityStatus = domain.IdentityResolved
+		}
 	}
 	for _, alias := range strong {
 		a.state.Aliases[alias] = nodeID
@@ -476,6 +690,31 @@ func (a *Aggregator) pruneIndexesLocked(now time.Time) {
 			a.removeNodeAddressLocked(nodeID, strings.TrimPrefix(alias, "ip:"))
 		}
 	}
+	for key, scope := range a.state.RelayScopes {
+		if scope.LastSeen.IsZero() || now.Sub(scope.LastSeen) > a.nodeWindow {
+			delete(a.state.RelayScopes, key)
+			continue
+		}
+		if !scope.ConflictObservedAt.IsZero() && now.Sub(scope.ConflictObservedAt) > a.evidenceWindow {
+			scope.ConflictObservedAt = time.Time{}
+		}
+		for sessionID, session := range scope.Sessions {
+			if session.LastSeen.IsZero() || now.Sub(session.LastSeen) > a.nodeWindow {
+				delete(scope.Sessions, sessionID)
+			}
+		}
+	}
+}
+
+func identityStatus(identity domain.NodeIdentity) domain.IdentityStatus {
+	strong, _ := identityAliases(identity)
+	if len(strong) > 0 {
+		return domain.IdentityResolved
+	}
+	if identity.HasIdentity() {
+		return domain.IdentityPartial
+	}
+	return domain.IdentityAnonymous
 }
 
 func (a *Aggregator) reporterOwnsObserversLocked(reporterID string, observations []domain.ObserverReport, seenAt time.Time) bool {
@@ -569,6 +808,7 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 	}
 	removeObserverIsNewer := remove.LastReport.After(keep.LastReport)
 	keep.Identity = mergeIdentity(remove.Identity, keep.Identity)
+	keep.IdentityStatus = mergeIdentityStatus(keep.IdentityStatus, remove.IdentityStatus)
 	keep.Observable = keep.Observable || remove.Observable
 	if remove.LastEvidence.After(keep.LastEvidence) {
 		keep.LastEvidence = remove.LastEvidence
@@ -593,6 +833,20 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 	}
 	a.mergeObserverRuntimeStatesLocked(keepID, removeID, removeObserverIsNewer)
 	a.rebuildEdgesLocked(keepID, removeID)
+	a.replaceRelayNodeReferencesLocked(keepID, removeID)
+}
+
+func mergeIdentityStatus(left, right domain.IdentityStatus) domain.IdentityStatus {
+	priority := map[domain.IdentityStatus]int{
+		domain.IdentityAnonymous: 1,
+		domain.IdentityPartial:   2,
+		domain.IdentityConflict:  3,
+		domain.IdentityResolved:  4,
+	}
+	if priority[right] > priority[left] {
+		return right
+	}
+	return left
 }
 
 func (a *Aggregator) mergeObserverRuntimeStatesLocked(keepID, removeID string, removeIsNewer bool) {
@@ -667,6 +921,66 @@ func (a *Aggregator) rebuildEdgesLocked(keepID, removeID string) {
 		}
 	}
 	a.state.Edges = rebuilt
+}
+
+func (a *Aggregator) replaceRelayNodeReferencesLocked(keepID, removeID string) {
+	rebuilt := make(map[string]*relayScopeState, len(a.state.RelayScopes))
+	for _, scope := range a.state.RelayScopes {
+		if scope.RelayID == removeID {
+			scope.RelayID = keepID
+		}
+		if scope.PairSourceID == removeID {
+			scope.PairSourceID = keepID
+		}
+		if scope.PairTargetID == removeID {
+			scope.PairTargetID = keepID
+		}
+		if scope.PairSourceID != "" && scope.PairTargetID != "" {
+			_, scope.PairSourceID, scope.PairTargetID = domain.EdgeID(scope.PairSourceID, scope.PairTargetID)
+		}
+		for _, session := range scope.Sessions {
+			if session.SourceNodeID == removeID {
+				session.SourceNodeID = keepID
+			}
+			if session.TargetNodeID == removeID {
+				session.TargetNodeID = keepID
+			}
+			for clientID, nodeID := range session.Clients {
+				if nodeID == removeID {
+					session.Clients[clientID] = keepID
+				}
+			}
+		}
+		key := relayScopeKey(scope.RelayID, scope.VNI)
+		if current := rebuilt[key]; current != nil {
+			mergeRelayScopes(current, scope)
+		} else {
+			rebuilt[key] = scope
+		}
+	}
+	a.state.RelayScopes = rebuilt
+}
+
+func mergeRelayScopes(keep, update *relayScopeState) {
+	if update.LastSeen.After(keep.LastSeen) {
+		keep.LastSeen = update.LastSeen
+	}
+	if update.ConflictObservedAt.After(keep.ConflictObservedAt) {
+		keep.ConflictObservedAt = update.ConflictObservedAt
+	}
+	if update.PairObservedAt.After(keep.PairObservedAt) {
+		keep.PairSourceID = update.PairSourceID
+		keep.PairTargetID = update.PairTargetID
+		keep.PairObservedAt = update.PairObservedAt
+	}
+	if keep.Sessions == nil {
+		keep.Sessions = make(map[string]*relaySessionState)
+	}
+	for sessionID, session := range update.Sessions {
+		if current := keep.Sessions[sessionID]; current == nil || session.LastSeen.After(current.LastSeen) {
+			keep.Sessions[sessionID] = session
+		}
+	}
 }
 
 func mergeIdentity(current, update domain.NodeIdentity) domain.NodeIdentity {
@@ -778,6 +1092,7 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 		topology.Nodes = append(topology.Nodes, domain.TopologyNode{
 			NodeIdentity: node.Identity, ID: id, Observable: node.Observable, Online: online,
 			LastEvidenceAt: node.LastEvidence, ClockSkewed: node.ClockSkewed,
+			IdentityStatus: a.nodeIdentityStatusLocked(id, node, now),
 		})
 		consider(node.LastEvidence.Add(a.nodeWindow))
 	}
@@ -802,6 +1117,23 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 	sort.Slice(topology.Edges, func(i, j int) bool { return topology.Edges[i].ID < topology.Edges[j].ID })
 	sort.Slice(topology.Observers, func(i, j int) bool { return topology.Observers[i].ID < topology.Observers[j].ID })
 	return topology
+}
+
+func (a *Aggregator) nodeIdentityStatusLocked(id string, node *nodeState, now time.Time) domain.IdentityStatus {
+	if node.IdentityStatus == domain.IdentityResolved {
+		return domain.IdentityResolved
+	}
+	for _, scope := range a.state.RelayScopes {
+		if scope.ConflictObservedAt.IsZero() || now.Sub(scope.ConflictObservedAt) > a.evidenceWindow {
+			continue
+		}
+		for _, session := range scope.Sessions {
+			if session.SourceNodeID == id || session.TargetNodeID == id {
+				return domain.IdentityConflict
+			}
+		}
+	}
+	return node.IdentityStatus
 }
 
 func (a *Aggregator) markPeerRelayNodesVisibleLocked(visibleNodes map[string]struct{}, path domain.PathObservation) {
@@ -953,12 +1285,14 @@ func (a *Aggregator) HistoryMetadata() domain.HistoryMetadata {
 		Nodes:     make([]domain.TopologyNode, 0, len(a.state.Nodes)),
 		Redirects: make(map[string]string, len(a.state.Redirects)),
 	}
+	now := a.now().UTC()
 	for id, node := range a.state.Nodes {
 		metadata.Nodes = append(metadata.Nodes, domain.TopologyNode{
 			NodeIdentity:   node.Identity,
 			ID:             id,
 			Observable:     node.Observable,
 			LastEvidenceAt: node.LastEvidence,
+			IdentityStatus: a.nodeIdentityStatusLocked(id, node, now),
 		})
 	}
 	sort.Slice(metadata.Nodes, func(i, j int) bool { return metadata.Nodes[i].ID < metadata.Nodes[j].ID })
@@ -1017,6 +1351,7 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 		AliasLastSeen: make(map[string]time.Time, len(source.AliasLastSeen)),
 		Redirects:     make(map[string]string, len(source.Redirects)),
 		Edges:         make(map[string]*edgeState, len(source.Edges)),
+		RelayScopes:   make(map[string]*relayScopeState, len(source.RelayScopes)),
 	}
 	for id, reporter := range source.Reporters {
 		copy := *reporter
@@ -1057,6 +1392,16 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 			copy.Observations[observerID] = observation
 		}
 		clone.Edges[id] = &copy
+	}
+	for key, scope := range source.RelayScopes {
+		copy := *scope
+		copy.Sessions = make(map[string]*relaySessionState, len(scope.Sessions))
+		for sessionID, session := range scope.Sessions {
+			sessionCopy := *session
+			sessionCopy.Clients = cloneStringMap(session.Clients)
+			copy.Sessions[sessionID] = &sessionCopy
+		}
+		clone.RelayScopes[key] = &copy
 	}
 	return clone
 }
@@ -1104,6 +1449,9 @@ func normalizeState(state *runtimeState) {
 	}
 	if state.Edges == nil {
 		state.Edges = make(map[string]*edgeState)
+	}
+	if state.RelayScopes == nil {
+		state.RelayScopes = make(map[string]*relayScopeState)
 	}
 	reporterIDs := make([]string, 0, len(state.Reporters))
 	for reporterID := range state.Reporters {
@@ -1172,6 +1520,16 @@ func normalizeState(state *runtimeState) {
 	for _, edge := range state.Edges {
 		if edge.Observations == nil {
 			edge.Observations = make(map[string]edgeObservation)
+		}
+	}
+	for _, scope := range state.RelayScopes {
+		if scope.Sessions == nil {
+			scope.Sessions = make(map[string]*relaySessionState)
+		}
+		for _, session := range scope.Sessions {
+			if session.Clients == nil {
+				session.Clients = make(map[string]string)
+			}
 		}
 	}
 }
