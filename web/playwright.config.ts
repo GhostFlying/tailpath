@@ -9,7 +9,7 @@ export default defineConfig({
   workers: isScaleGate ? 1 : process.env.CI ? 4 : undefined,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: process.env.TAILPATH_E2E_BASE_URL ?? "http://127.0.0.1:18082",
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
       : undefined,

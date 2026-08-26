@@ -14,8 +14,9 @@ API calls through Vite's development proxy.
   and `/api`; Vite is not part of browser acceptance.
 - `scripts/e2e.sh` builds the web bundle before starting the fixture so a
   direct `make test-e2e` cannot exercise stale assets.
-- Ordinary browser tests retain four CI workers. Scale and relay-scale modes
-  retain one worker and their existing deterministic fixtures.
+- Ordinary browser tests retain four CI workers. Mixed scale retains its
+  single-worker gate; relay-scale retains its existing per-project parallelism
+  and deterministic fixture.
 - Browser traces and screenshots remain Playwright artifacts. No production
   runtime or observer protocol behavior changes.
 
@@ -30,9 +31,12 @@ API calls through Vite's development proxy.
 
 ## Verification
 
-- Pending: shell harness regression test.
-- Pending: repeated four-worker browser suite.
-- Pending: `make check` and hosted CI.
+- Passed: shell harness regression test.
+- Passed: three four-worker browser runs without a History readiness stall.
+- Passed: mixed scale and relay-scale browser modes.
+- Passed: local `make check`; one unrelated sparse-layout assertion required
+  its configured retry and is tracked separately.
+- Pending: hosted CI.
 
 ## Current state
 
@@ -42,4 +46,4 @@ and single-worker browser execution remained healthy.
 
 ## Next step
 
-Replace the development proxy path and exercise the full browser matrix.
+Open the stacked review PR and verify the hosted gate.
