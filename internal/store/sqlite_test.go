@@ -1,9 +1,12 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -59,24 +62,53 @@ func TestRecordIsIdempotentAndBuildsLogicalHistory(t *testing.T) {
 }
 
 func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
-	database, err := Open(":memory:", 7*24*time.Hour)
+	path := filepath.Join(t.TempDir(), "relay.db")
+	database, err := Open(path, 7*24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
 	at := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	endpointCanary := "192.0.2.247:41641"
+	discoCanary := "disco-canary-247"
 	report := domain.ReportEnvelope{
 		Version: domain.ProtocolVersion, ReportID: "relay", ReporterInstanceID: "reporter",
 		Sequence: 1, CollectedAt: at, Kind: domain.ReportRelaySessionUpdate,
 		RelaySessions: []domain.RelaySessionObservation{{
 			Relay:     domain.NodeIdentity{StableNodeID: "relay"},
-			Source:    domain.RelaySessionClient{SessionClientID: "left", Endpoint: "192.0.2.10:41641"},
+			Source:    domain.RelaySessionClient{SessionClientID: "left", DiscoShort: discoCanary, Endpoint: endpointCanary},
 			Target:    domain.RelaySessionClient{SessionClientID: "right", Endpoint: "[2001:db8::10]:41641"},
 			SessionID: "session", VNI: 7, SourceToTargetDelta: 1,
 			SampleDurationMS: 2000, LastActive: at,
 		}},
 	}
-	if _, err := database.Record(context.Background(), report, at, nil, nil, nil); err != nil {
+	vni := int64(7)
+	pathObservation := domain.PathObservation{
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+	}
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: "n_left--n_right", SourceID: "n_left", TargetID: "n_right", ObserverID: "n_relay",
+		AToBBytes: 120, BToABytes: 40, ReceivedAt: at,
+	}}
+	transition := domain.PathTransition{
+		EdgeID: "n_left--n_right", ObservedAt: at, Path: pathObservation,
+		Observations: []domain.ObservationProvenance{{
+			ObserverID: "n_relay", Path: pathObservation, CollectedAt: at, ReceivedAt: at,
+			RelaySession: &domain.RelaySessionProvenance{
+				SessionID: "session", VNI: vni,
+				SourceIdentityStatus: domain.IdentityPartial, TargetIdentityStatus: domain.IdentityAnonymous,
+			},
+		}},
+	}
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_left", NodeIdentity: domain.NodeIdentity{StableNodeID: "left", Hostname: "Left"}, IdentityStatus: domain.IdentityPartial},
+		{ID: "n_right", NodeIdentity: domain.NodeIdentity{StableNodeID: "right", Hostname: "Right"}, IdentityStatus: domain.IdentityAnonymous},
+		{ID: "n_relay", NodeIdentity: domain.NodeIdentity{StableNodeID: "relay", Hostname: "Relay"}, IdentityStatus: domain.IdentityResolved},
+	}, Redirects: map[string]string{}}
+	checkpoint := []byte(`{"relayScopes":{"relay:7":{"endpoint":"` + endpointCanary + `","discoShort":"` + discoCanary + `","relayId":"n_relay"}}}`)
+	if _, err := database.RecordWithMetadata(
+		context.Background(), report, at, checkpoint, traffic, []domain.PathTransition{transition}, &metadata,
+	); err != nil {
 		t.Fatal(err)
 	}
 	reports, err := database.RestoreReports(context.Background())
@@ -90,8 +122,58 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 	if stored.Source.Endpoint != "" || stored.Target.Endpoint != "" {
 		t.Fatalf("relay endpoints persisted: %#v", stored)
 	}
+	if stored.Source.DiscoShort != "present" || stored.Source.IdentityStatus() != domain.IdentityPartial {
+		t.Fatalf("sanitized relay hint lost presence semantics: %#v", stored.Source)
+	}
 	if report.RelaySessions[0].Source.Endpoint == "" || report.RelaySessions[0].Target.Endpoint == "" {
 		t.Fatal("journal sanitization mutated the in-memory report")
+	}
+	restoredCheckpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) ||
+		!bytes.Contains(restoredCheckpoint.Payload, []byte("n_relay")) {
+		t.Fatalf("checkpoint sanitization = %s", restoredCheckpoint.Payload)
+	}
+	nodes, err := database.HistoryNodes(context.Background(), domain.History15Minutes, at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes.Nodes) != 2 || nodes.Nodes[0].IdentityStatus != domain.IdentityPartial || nodes.Nodes[1].IdentityStatus != domain.IdentityAnonymous {
+		t.Fatalf("history identity statuses = %#v", nodes.Nodes)
+	}
+	history, found, err := database.EdgeHistoryWindow(context.Background(), "n_left--n_right", domain.History15Minutes, at.Add(time.Second))
+	if err != nil || !found || len(history.PathEvents) != 1 {
+		t.Fatalf("relay history found=%v err=%v history=%#v", found, err, history)
+	}
+	event := history.PathEvents[0]
+	if event.Path.PeerRelayVNI == nil || *event.Path.PeerRelayVNI != vni || event.Path.PeerRelayStableNodeID != "relay" ||
+		len(event.Observations) != 1 || event.Observations[0].RelaySession == nil ||
+		event.Observations[0].RelaySession.SourceIdentityStatus != domain.IdentityPartial {
+		t.Fatalf("relay path provenance = %#v", event)
+	}
+	if err := database.SaveCheckpoint(context.Background(), checkpoint, restoredCheckpoint.LastReportRowID, at.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	restoredCheckpoint, err = database.RestoreCheckpoint(context.Background())
+	if err != nil || bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) {
+		t.Fatalf("direct checkpoint sanitization = %s, err=%v", restoredCheckpoint.Payload, err)
+	}
+	if _, err := database.db.Exec(`PRAGMA wal_checkpoint(PASSIVE)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, durablePath := range []string{path, path + "-wal"} {
+		payload, err := os.ReadFile(durablePath)
+		if err != nil && os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(payload, []byte(endpointCanary)) || bytes.Contains(payload, []byte(discoCanary)) {
+			t.Fatalf("relay canary persisted in %s", durablePath)
+		}
 	}
 }
 

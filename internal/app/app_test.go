@@ -241,6 +241,137 @@ func TestCanonicalAllocationForcesCheckpointBeforeJournalReplay(t *testing.T) {
 	}
 }
 
+func TestRelayHistorySurvivesRestartScopedMergeAndRollup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	current := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	nextNode := 0
+	options := aggregate.Options{
+		Now: func() time.Time { return current },
+		NewNodeID: func() string {
+			nextNode++
+			return fmt.Sprintf("n_%03d", nextNode)
+		},
+	}
+	open := func() (*store.SQLite, *App) {
+		t.Helper()
+		database, err := store.Open(path, 7*24*time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		application, err := New(database, options, nil)
+		if err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+		return database, application
+	}
+
+	database, application := open()
+	if _, err := application.SubmitAt(context.Background(), relayTrafficReport(current), current); err != nil {
+		t.Fatal(err)
+	}
+	before := application.Aggregator.Snapshot()
+	if len(before.Edges) != 1 {
+		t.Fatalf("initial relay topology = %#v", before)
+	}
+	aID := topologyIDsByStableNodeID(before)["a"]
+	placeholderID := before.Edges[0].Source
+	if placeholderID == aID {
+		placeholderID = before.Edges[0].Target
+	}
+	oldEdgeID := before.Edges[0].ID
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, application = open()
+	restarted := application.Aggregator.Snapshot()
+	if len(restarted.Edges) != 1 || restarted.Edges[0].ID != oldEdgeID {
+		t.Fatalf("relay topology changed across checkpoint restart: %#v", restarted)
+	}
+
+	current = current.Add(time.Minute)
+	hello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "endpoint-hello", ReporterInstanceID: "endpoint-reporter", Sequence: 1,
+		CollectedAt: current, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, InventoryGeneration: "endpoint-inventory",
+			Peers: []domain.PeerObservation{{Peer: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}}},
+		}},
+	}
+	if _, err := application.SubmitAt(context.Background(), hello, current); err != nil {
+		t.Fatal(err)
+	}
+	vni := int64(7)
+	sample := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "endpoint-traffic", ReporterInstanceID: "endpoint-reporter", Sequence: 2,
+		CollectedAt: current, Kind: domain.ReportTrafficSample,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, InventoryGeneration: "endpoint-inventory",
+			Peers: []domain.PeerObservation{{
+				Peer: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, TxDelta: 30, RxDelta: 10,
+				SampleDurationMS: 2000, LastActive: current,
+				Path: domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni},
+			}},
+		}},
+	}
+	if _, err := application.SubmitAt(context.Background(), sample, current); err != nil {
+		t.Fatal(err)
+	}
+	afterMerge := application.Aggregator.Snapshot()
+	bID := topologyIDsByStableNodeID(afterMerge)["b"]
+	canonicalEdgeID, _, _ := domain.EdgeID(aID, bID)
+	if len(afterMerge.Edges) != 1 || afterMerge.Edges[0].ID != canonicalEdgeID {
+		t.Fatalf("scoped merge topology = %#v", afterMerge)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, application = open()
+	defer database.Close()
+	if topology := application.Aggregator.Snapshot(); len(topology.Edges) != 1 || topology.Edges[0].ID != canonicalEdgeID {
+		t.Fatalf("merged relay topology changed across restart: %#v", topology)
+	}
+	current = current.Add(15 * time.Minute)
+	if err := application.Maintain(context.Background(), current); err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := application.Store.HistoryNodes(context.Background(), domain.History15Minutes, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes.Nodes) != 2 {
+		t.Fatalf("redirected relay history nodes = %#v", nodes.Nodes)
+	}
+	for _, node := range nodes.Nodes {
+		if node.IdentityStatus != domain.IdentityResolved {
+			t.Fatalf("history node remained unresolved after merge: %#v", node)
+		}
+	}
+	history, found, err := application.Store.EdgeHistoryWindow(context.Background(), oldEdgeID, domain.History15Minutes, current)
+	if err != nil || !found {
+		t.Fatalf("redirected relay history found=%v err=%v", found, err)
+	}
+	if history.EdgeID != canonicalEdgeID || history.PathAnchor == nil ||
+		history.PathAnchor.Path.Kind != domain.PathPeerRelay || history.PathAnchor.Path.PeerRelayVNI == nil ||
+		*history.PathAnchor.Path.PeerRelayVNI != vni || len(history.PathAnchor.Observations) != 1 ||
+		history.PathAnchor.Observations[0].RelaySession == nil {
+		t.Fatalf("retained relay anchor = %#v", history.PathAnchor)
+	}
+	var aToB, bToA int64
+	for _, bucket := range history.Traffic {
+		aToB += bucket.AToBBytes
+		bToA += bucket.BToABytes
+	}
+	if aToB != 10 || bToA != 30 {
+		t.Fatalf("window traffic after relay redirect = %d/%d, want 10/30", aToB, bToA)
+	}
+	if redirected := application.Aggregator.HistoryMetadata().Redirects[placeholderID]; redirected != bID {
+		t.Fatalf("placeholder redirect = %q, want %q", redirected, bID)
+	}
+}
+
 func TestCheckpointCadenceAndReceiveTimeRollback(t *testing.T) {
 	database, err := store.Open(":memory:", 7*24*time.Hour)
 	if err != nil {
@@ -379,6 +510,22 @@ func trafficReport(at time.Time) domain.ReportEnvelope {
 				Peer: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, TxDelta: 100,
 				SampleDurationMS: 2000, Path: domain.PathObservation{Kind: domain.PathDirect}, LastActive: at,
 			}},
+		}},
+	}
+}
+
+func relayTrafficReport(at time.Time) domain.ReportEnvelope {
+	return domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "relay-traffic", ReporterInstanceID: "relay-reporter", Sequence: 1,
+		CollectedAt: at, Kind: domain.ReportRelaySessionUpdate,
+		RelaySessions: []domain.RelaySessionObservation{{
+			Relay: domain.NodeIdentity{StableNodeID: "relay", Hostname: "Relay"},
+			Source: domain.RelaySessionClient{
+				SessionClientID: "left", Identity: &domain.NodeIdentity{StableNodeID: "a", Hostname: "A"},
+			},
+			Target:    domain.RelaySessionClient{SessionClientID: "right", DiscoShort: "short-right"},
+			SessionID: "session", VNI: 7, SourceToTargetBytes: 200, TargetToSourceBytes: 80,
+			SourceToTargetDelta: 200, TargetToSourceDelta: 80, SampleDurationMS: 2000, LastActive: at,
 		}},
 	}
 }
