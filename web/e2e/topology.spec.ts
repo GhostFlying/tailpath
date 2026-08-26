@@ -440,14 +440,6 @@ async function expectSparseContentCentered(
   graph: Locator,
   positions: ReadonlyMap<string, { x: number; y: number }>,
 ) {
-  const viewport = (await graph.getAttribute("data-viewport")) ?? "";
-  const match = viewport.match(/^([\d.]+):(-?[\d.]+),(-?[\d.]+)$/);
-  expect(match, `viewport ${viewport}`).not.toBeNull();
-  const [, rawZoom, rawPanX, rawPanY] = match!;
-  const zoom = Number(rawZoom);
-  const panX = Number(rawPanX);
-  const panY = Number(rawPanY);
-  expect(zoom).toBeLessThanOrEqual(1.25);
   const values = [...positions.values()];
   const center = values.reduce(
     (sum, position) => ({
@@ -456,10 +448,22 @@ async function expectSparseContentCentered(
     }),
     { x: 0, y: 0 },
   );
-  const box = await graph.boundingBox();
-  if (!box) throw new Error("graph has no bounding box");
-  expect(Math.abs(center.x * zoom + panX - box.width / 2)).toBeLessThan(40);
-  expect(Math.abs(center.y * zoom + panY - box.height / 2)).toBeLessThan(70);
+  await expect
+    .poll(async () => {
+      const viewport = (await graph.getAttribute("data-viewport")) ?? "";
+      const match = viewport.match(/^([\d.]+):(-?[\d.]+),(-?[\d.]+)$/);
+      const box = await graph.boundingBox();
+      if (!match || !box) return `pending:${viewport}`;
+      const [, rawZoom, rawPanX, rawPanY] = match;
+      const zoom = Number(rawZoom);
+      const panX = Number(rawPanX);
+      const panY = Number(rawPanY);
+      const xOffset = Math.abs(center.x * zoom + panX - box.width / 2);
+      const yOffset = Math.abs(center.y * zoom + panY - box.height / 2);
+      if (zoom <= 1.25 && xOffset < 40 && yOffset < 70) return "centered";
+      return `zoom=${zoom.toFixed(2)} x=${xOffset.toFixed(2)} y=${yOffset.toFixed(2)}`;
+    })
+    .toBe("centered");
 }
 
 async function expectCommonPositions(

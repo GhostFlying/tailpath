@@ -24,6 +24,12 @@ tool and is intentionally outside ordinary, scale, and relay-scale browser
 gates; this avoids development-only StrictMode request replacement interacting
 with a proxy while exercising the assets shipped in the image.
 
+Sparse graph entry assertions poll until the viewport converges around the
+current positions, so they cannot consume readiness or viewport diagnostics
+left by Cytoscape initialization before the scheduled fit completes. The graph
+keeps this initial focus pending across intervening topology refreshes and only
+clears it after the fit actually runs.
+
 Sparse relay collector tests prove that first samples, resets, removals,
 reappearance, LocalAPI degradation, report outages, and reconnects do not
 create synthetic catch-up traffic. They also inject endpoint, session, and
