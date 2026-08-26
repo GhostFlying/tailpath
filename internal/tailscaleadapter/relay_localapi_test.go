@@ -82,6 +82,8 @@ func TestRelayFixtureTransportRejectsNonPassiveRoutes(t *testing.T) {
 type relayFixtureTransport struct {
 	t               *testing.T
 	relayStatusCode int
+	relayFixture    string
+	discoStatusCode int
 	requests        []string
 	unexpected      []string
 }
@@ -97,8 +99,15 @@ func (transport *relayFixtureTransport) RoundTrip(request *http.Request) (*http.
 		if transport.relayStatusCode != 0 && transport.relayStatusCode != http.StatusOK {
 			return fixtureResponse(request, transport.relayStatusCode, []byte("relay API unsupported")), nil
 		}
-		payload = readRelayFixture(transport.t, "active.json")
+		fixture := transport.relayFixture
+		if fixture == "" {
+			fixture = "active.json"
+		}
+		payload = readRelayFixture(transport.t, fixture)
 	case "POST /localapi/v0/debug?action=peer-disco-keys":
+		if transport.discoStatusCode != 0 && transport.discoStatusCode != http.StatusOK {
+			return fixtureResponse(request, transport.discoStatusCode, []byte("disco API unavailable")), nil
+		}
 		payload = readRelayFixture(transport.t, "peer-disco-keys.json")
 	default:
 		transport.unexpected = append(transport.unexpected, requestKey)
