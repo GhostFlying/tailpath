@@ -30,6 +30,13 @@ report journal, preserving `partial` replay semantics without retaining the
 value; they are omitted from checkpoints and History. There is no outbound
 product telemetry.
 
+Reporters are responsible for generating opaque relay session and scoped
+client IDs that contain no endpoint, hostname, Tailnet suffix, or credential.
+Protocol v1 preserves those IDs for checkpoint and History correlation and
+does not enforce one generator format. The native collector hashes scoped
+runtime material. A future protocol revision may server-rekey third-party
+exporter IDs before persistence.
+
 Container deployments should pass reusable auth keys through
 `TS_AUTHKEY=file:/run/secrets/...`, then zero the secret after enrollment. The
 environment and Compose model contain only the file path, not the credential.

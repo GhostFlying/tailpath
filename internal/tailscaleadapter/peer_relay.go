@@ -44,30 +44,28 @@ func (s *LocalSource) PeerRelaySnapshot(ctx context.Context) (collector.RelaySna
 		}, nil
 	}
 
-	discoKeys, err := readPeerDiscoKeys(ctx, s.client)
-	if err != nil {
-		return collector.RelaySnapshot{CollectedAt: collectedAt, Capability: collector.RelayTransientFailure}, err
-	}
+	discoKeys, identityEvidence := readPeerDiscoKeys(ctx, s.client)
 	sessions, err := adaptRelaySessions(relayStatus.Sessions, discoKeys)
 	if err != nil {
 		return collector.RelaySnapshot{CollectedAt: collectedAt, Capability: collector.RelayTransientFailure}, err
 	}
 	return collector.RelaySnapshot{
-		CollectedAt: collectedAt, Capability: collector.RelayEnabled, Sessions: sessions,
+		CollectedAt: collectedAt, Capability: collector.RelayEnabled,
+		IdentityEvidence: identityEvidence, Sessions: sessions,
 	}, nil
 }
 
-func readPeerDiscoKeys(ctx context.Context, client *local.Client) (map[key.NodePublic]key.DiscoPublic, error) {
+func readPeerDiscoKeys(
+	ctx context.Context,
+	client *local.Client,
+) (map[key.NodePublic]key.DiscoPublic, collector.RelayIdentityEvidence) {
 	var result map[key.NodePublic]key.DiscoPublic
-	statusCode, err := readLocalAPIJSON(ctx, client, http.MethodPost,
+	_, err := readLocalAPIJSON(ctx, client, http.MethodPost,
 		"/localapi/v0/debug?action=peer-disco-keys", &result)
-	if statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed {
-		return nil, nil
-	}
 	if err != nil {
-		return nil, fmt.Errorf("read peer disco identity evidence: %w", err)
+		return nil, collector.RelayIdentityDegraded
 	}
-	return result, nil
+	return result, collector.RelayIdentityAvailable
 }
 
 func readLocalAPIJSON(ctx context.Context, client *local.Client, method, path string, target any) (int, error) {
@@ -110,7 +108,16 @@ func adaptRelaySessions(
 			return relayClientSortKey(clients[left]) < relayClientSortKey(clients[right])
 		})
 		if relayClientSortKey(clients[0]) == relayClientSortKey(clients[1]) {
-			return nil, fmt.Errorf("relay VNI %d has indistinguishable clients", session.VNI)
+			if clients[0].Endpoint == clients[1].Endpoint {
+				return nil, fmt.Errorf("relay VNI %d has indistinguishable clients", session.VNI)
+			}
+			for index := range clients {
+				material := relayClientStableKey(clients[index]) + "\x00" + clients[index].Endpoint
+				clients[index].SessionClientID = scopedRelayID("client", session.VNI, material)
+			}
+			sort.Slice(clients, func(left, right int) bool {
+				return clients[left].Endpoint < clients[right].Endpoint
+			})
 		}
 		result = append(result, collector.RelaySessionSnapshot{
 			SessionID: scopedRelayID("session", session.VNI, ""),
@@ -145,7 +152,7 @@ func adaptRelayClient(
 	if identity, ok := identities[short]; ok {
 		result.Identity = &domain.NodeIdentity{NodeKey: identity.nodeKey, DiscoKey: identity.discoKey}
 	}
-	result.SessionClientID = scopedRelayID("client", vni, relayClientSortKey(result))
+	result.SessionClientID = scopedRelayID("client", vni, relayClientStableKey(result))
 	return result
 }
 
@@ -170,10 +177,14 @@ func uniqueDiscoIdentities(keys map[key.NodePublic]key.DiscoPublic) map[string]d
 }
 
 func relayClientSortKey(client collector.RelayClientSnapshot) string {
-	if client.Identity != nil {
-		return "0\x00" + client.Identity.NodeKey + "\x00" + client.Identity.DiscoKey
+	return relayClientStableKey(client)
+}
+
+func relayClientStableKey(client collector.RelayClientSnapshot) string {
+	if short := strings.TrimSpace(client.DiscoShort); short != "" {
+		return "0\x00" + short
 	}
-	return "1\x00" + client.DiscoShort + "\x00" + client.Endpoint
+	return "1\x00" + client.Endpoint
 }
 
 func scopedRelayID(kind string, vni uint32, material string) string {

@@ -374,6 +374,83 @@ func TestRelayHistorySurvivesRestartScopedMergeAndRollup(t *testing.T) {
 	}
 }
 
+func TestRelayIdentityEnrichmentMergesPlaceholderAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	current := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	nextNode := 0
+	options := aggregate.Options{
+		Now: func() time.Time { return current },
+		NewNodeID: func() string {
+			nextNode++
+			return fmt.Sprintf("n_%03d", nextNode)
+		},
+	}
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(database, options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := relayTrafficReport(current)
+	if _, err := application.SubmitAt(context.Background(), first, current); err != nil {
+		t.Fatal(err)
+	}
+	before := application.Aggregator.Snapshot()
+	aID := topologyIDsByStableNodeID(before)["a"]
+	oldEdgeID := before.Edges[0].ID
+	placeholderID := before.Edges[0].Source
+	if placeholderID == aID {
+		placeholderID = before.Edges[0].Target
+	}
+
+	current = current.Add(2 * time.Second)
+	resolved := relayTrafficReport(current)
+	resolved.ReportID = "relay-resolved"
+	resolved.Sequence = 2
+	resolved.RelaySessions[0].Target.Identity = &domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}
+	resolved.RelaySessions[0].Target.DiscoShort = "short-right"
+	resolved.RelaySessions[0].SourceToTargetBytes = 220
+	resolved.RelaySessions[0].TargetToSourceBytes = 90
+	resolved.RelaySessions[0].SourceToTargetDelta = 20
+	resolved.RelaySessions[0].TargetToSourceDelta = 10
+	if _, err := application.SubmitAt(context.Background(), resolved, current); err != nil {
+		t.Fatal(err)
+	}
+	after := application.Aggregator.Snapshot()
+	bID := topologyIDsByStableNodeID(after)["b"]
+	canonicalEdgeID, _, _ := domain.EdgeID(aID, bID)
+	if len(after.Edges) != 1 || after.Edges[0].ID != canonicalEdgeID ||
+		application.Aggregator.HistoryMetadata().Redirects[placeholderID] != bID {
+		t.Fatalf("enriched relay topology/redirect = %#v / %#v", after, application.Aggregator.HistoryMetadata().Redirects)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	restarted, err := New(database, options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topology := restarted.Aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].ID != canonicalEdgeID ||
+		restarted.Aggregator.HistoryMetadata().Redirects[placeholderID] != bID {
+		t.Fatalf("enriched relay restart topology = %#v", topology)
+	}
+	history, found, err := restarted.Store.EdgeHistoryWindow(
+		context.Background(), oldEdgeID, domain.History15Minutes, current,
+	)
+	if err != nil || !found || history.EdgeID != canonicalEdgeID || len(history.Traffic) == 0 {
+		t.Fatalf("enriched relay history found=%v err=%v history=%#v", found, err, history)
+	}
+}
+
 func TestDirectToRelayTransitionPersistsSanitizedProvenance(t *testing.T) {
 	database, err := store.Open(":memory:", 7*24*time.Hour)
 	if err != nil {

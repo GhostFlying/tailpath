@@ -55,9 +55,12 @@ profile，并只读挂载 tailscaled LocalAPI socket。Collector 通过 Tailnet 
 使用原生二进制。
 
 原生 collector 支持 `TAILPATH_SERVER_URL` 和 `TAILPATH_SOCKET`，显式传入的
-`--server`、`--socket` flags 优先级更高。`tailpath collector --check` 只读取一次
-LocalAPI，以 JSON 输出 self identity、运行平台和 peer 数量；它不会连接 Tailpath
-server，也不会主动 probe 任何 peer。
+`--server`、`--socket` flags 优先级更高。Peer Relay telemetry 默认使用能力探测的
+`auto`；可通过 `TAILPATH_RELAY_TELEMETRY=off` 或 `--relay-telemetry=off` 关闭。
+`tailpath collector --check` 只读取一次 LocalAPI，以 JSON 输出 self identity、运行
+平台、peer 数量、relay capability、session 数量，以及 active session 的可选 identity
+evidence 是 `available` 还是 `degraded`；它不会连接 Tailpath server，也不会主动
+probe 任何 peer，更不会输出 relay endpoint、session/client ID 或 disco hint。
 
 ## 原生 collector archives
 

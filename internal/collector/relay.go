@@ -9,12 +9,17 @@ import (
 
 type RelayCapability string
 
+type RelayIdentityEvidence string
+
 const (
 	RelayOff              RelayCapability = "off"
 	RelayUnsupported      RelayCapability = "unsupported"
 	RelayDisabled         RelayCapability = "disabled"
 	RelayEnabled          RelayCapability = "enabled"
 	RelayTransientFailure RelayCapability = "transient_failure"
+
+	RelayIdentityAvailable RelayIdentityEvidence = "available"
+	RelayIdentityDegraded  RelayIdentityEvidence = "degraded"
 )
 
 type RelaySource interface {
@@ -22,9 +27,10 @@ type RelaySource interface {
 }
 
 type RelaySnapshot struct {
-	CollectedAt time.Time
-	Capability  RelayCapability
-	Sessions    []RelaySessionSnapshot
+	CollectedAt      time.Time
+	Capability       RelayCapability
+	IdentityEvidence RelayIdentityEvidence
+	Sessions         []RelaySessionSnapshot
 }
 
 type RelaySessionSnapshot struct {

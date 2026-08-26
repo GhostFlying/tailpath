@@ -72,7 +72,8 @@ func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
 		t.Fatalf("check output is not JSON: %v", err)
 	}
 	if result.Self.StableNodeID != "self-id" || result.OS == "" || result.PeerCount != 2 ||
-		result.RelayCapability != collector.RelayEnabled || !result.RelayEnabled || result.RelaySessionCount != 1 {
+		result.RelayCapability != collector.RelayEnabled || result.RelayIdentity != collector.RelayIdentityAvailable ||
+		!result.RelayEnabled || result.RelaySessionCount != 1 {
 		t.Fatalf("check result = %#v", result)
 	}
 }
@@ -118,8 +119,9 @@ func (s *checkSource) Diagnostic(context.Context) (collector.Diagnostic, error) 
 func (s *checkSource) PeerRelaySnapshot(context.Context) (collector.RelaySnapshot, error) {
 	s.relayCalls++
 	return collector.RelaySnapshot{
-		Capability: collector.RelayEnabled,
-		Sessions:   []collector.RelaySessionSnapshot{{SessionID: "private-session"}},
+		Capability:       collector.RelayEnabled,
+		IdentityEvidence: collector.RelayIdentityAvailable,
+		Sessions:         []collector.RelaySessionSnapshot{{SessionID: "private-session"}},
 	}, s.relayError
 }
 

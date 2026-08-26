@@ -123,6 +123,80 @@ func TestRelayFailureDoesNotDegradeOrdinaryCollectionOrLeakDetails(t *testing.T)
 	}
 }
 
+func TestRelayIdentityEnrichmentFailurePreservesSparseDeltas(t *testing.T) {
+	start := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	source := &relaySnapshotSource{
+		normal: repeatedSnapshots(start, 3),
+		relay: []RelaySnapshot{
+			{CollectedAt: start, Capability: RelayEnabled, IdentityEvidence: RelayIdentityAvailable,
+				Sessions: []RelaySessionSnapshot{relaySession(100, 50)}},
+			{CollectedAt: start.Add(2 * time.Second), Capability: RelayEnabled,
+				IdentityEvidence: RelayIdentityDegraded, Sessions: []RelaySessionSnapshot{relaySession(120, 60)}},
+			{CollectedAt: start.Add(4 * time.Second), Capability: RelayEnabled,
+				IdentityEvidence: RelayIdentityAvailable, Sessions: []RelaySessionSnapshot{relaySession(130, 65)}},
+		},
+	}
+	var logs bytes.Buffer
+	reporter := &recordingReporter{}
+	c := New(source, reporter, Options{
+		ReporterInstance: "collector", RelayTelemetry: true,
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	for range 3 {
+		if err := c.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var relayReports []domain.ReportEnvelope
+	for _, report := range reporter.reports {
+		if report.Kind == domain.ReportRelaySessionUpdate {
+			relayReports = append(relayReports, report)
+		}
+	}
+	if len(relayReports) != 2 || relayReports[0].RelaySessions[0].SourceToTargetDelta != 20 ||
+		relayReports[1].RelaySessions[0].SourceToTargetDelta != 10 {
+		t.Fatalf("relay reports across enrichment failure = %#v", relayReports)
+	}
+	if !strings.Contains(logs.String(), "relay identity enrichment degraded") ||
+		!strings.Contains(logs.String(), "relay identity enrichment recovered") {
+		t.Fatalf("identity enrichment transitions were not logged: %s", logs.String())
+	}
+}
+
+func TestRelayClientKeyChangeEstablishesNewBaseline(t *testing.T) {
+	start := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	initial := relaySession(100, 50)
+	changed := relaySession(120, 60)
+	changed.Source.SessionClientID = "moved-left"
+	after := relaySession(130, 65)
+	after.Source.SessionClientID = "moved-left"
+	source := &relaySnapshotSource{
+		normal: repeatedSnapshots(start, 3),
+		relay: []RelaySnapshot{
+			relaySnapshot(start, initial),
+			relaySnapshot(start.Add(2*time.Second), changed),
+			relaySnapshot(start.Add(4*time.Second), after),
+		},
+	}
+	reporter := &recordingReporter{}
+	c := New(source, reporter, Options{ReporterInstance: "collector", RelayTelemetry: true})
+	for range 3 {
+		if err := c.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var relayReports []domain.ReportEnvelope
+	for _, report := range reporter.reports {
+		if report.Kind == domain.ReportRelaySessionUpdate {
+			relayReports = append(relayReports, report)
+		}
+	}
+	if len(relayReports) != 1 || relayReports[0].RelaySessions[0].SourceToTargetDelta != 10 ||
+		relayReports[0].RelaySessions[0].TargetToSourceDelta != 5 {
+		t.Fatalf("client-key baseline reports = %#v", relayReports)
+	}
+}
+
 func TestRelayReportFailureForcesHelloAndDropsOfflineDelta(t *testing.T) {
 	start := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	source := &relaySnapshotSource{

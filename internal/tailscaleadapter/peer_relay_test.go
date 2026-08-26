@@ -3,12 +3,15 @@ package tailscaleadapter
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"reflect"
 	"testing"
 
 	"tailscale.com/client/local"
+	"tailscale.com/net/udprelay/status"
 
 	"github.com/GhostFlying/tailpath/internal/collector"
+	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
 func TestPeerRelaySnapshotClassifiesCapability(t *testing.T) {
@@ -75,18 +78,96 @@ func TestPeerRelaySnapshotStabilizesOrderingAndEnrichesUniqueDisco(t *testing.T)
 		left.Target.SessionClientID != right.Target.SessionClientID {
 		t.Fatalf("reordered session IDs changed: active=%#v reordered=%#v", left, right)
 	}
-	if left.Source.Identity == nil || left.Source.Identity.NodeKey == "" || left.Source.Identity.DiscoKey == "" {
-		t.Fatalf("unique disco hint was not enriched: %#v", left.Source)
+	if left.Target.Identity == nil || left.Target.Identity.NodeKey == "" || left.Target.Identity.DiscoKey == "" {
+		t.Fatalf("unique disco hint was not enriched: %#v", left.Target)
 	}
-	if left.Target.Identity != nil {
-		t.Fatalf("ambiguous disco hint resolved: %#v", left.Target.Identity)
+	if left.Source.Identity != nil {
+		t.Fatalf("ambiguous disco hint resolved: %#v", left.Source.Identity)
 	}
-	if left.Source.BytesSent != 4096 || left.Target.BytesSent != 8192 ||
-		right.Source.BytesSent != 4608 || right.Target.BytesSent != 9216 {
+	if left.Source.BytesSent != 8192 || left.Target.BytesSent != 4096 ||
+		right.Source.BytesSent != 9216 || right.Target.BytesSent != 4608 {
 		t.Fatalf("directional counters changed with upstream ordering: active=%#v reordered=%#v", left, right)
 	}
 	if left.VNI != 7 || left.Source.Endpoint == "" || left.Target.Endpoint == "" {
 		t.Fatalf("relay runtime attributes missing: %#v", left)
+	}
+}
+
+func TestPeerRelaySnapshotKeepsClientIDsAcrossIdentityEnrichment(t *testing.T) {
+	anonymous := peerRelaySnapshotFromFixture(t, "active.json", http.StatusNotFound)
+	resolved := peerRelaySnapshotFromFixture(t, "active.json", http.StatusOK)
+	if anonymous.IdentityEvidence != collector.RelayIdentityDegraded ||
+		resolved.IdentityEvidence != collector.RelayIdentityAvailable {
+		t.Fatalf("identity evidence = %q/%q", anonymous.IdentityEvidence, resolved.IdentityEvidence)
+	}
+	left, right := anonymous.Sessions[0], resolved.Sessions[0]
+	if left.Source.SessionClientID != right.Source.SessionClientID ||
+		left.Target.SessionClientID != right.Target.SessionClientID {
+		t.Fatalf("identity enrichment changed client IDs: anonymous=%#v resolved=%#v", left, right)
+	}
+	if left.Source.DiscoShort != right.Source.DiscoShort || left.Target.DiscoShort != right.Target.DiscoShort {
+		t.Fatalf("identity enrichment changed canonical direction: anonymous=%#v resolved=%#v", left, right)
+	}
+}
+
+func TestRelayClientIDIgnoresEndpointDriftWhenShortDiscoIsStable(t *testing.T) {
+	initial := status.ClientInfo{
+		Endpoint: netip.MustParseAddrPort("192.0.2.10:51001"), ShortDisco: "d:0011223344556677",
+	}
+	moved := initial
+	moved.Endpoint = netip.MustParseAddrPort("192.0.2.20:52002")
+	left := adaptRelayClient(7, initial, nil)
+	right := adaptRelayClient(7, moved, nil)
+	if left.SessionClientID != right.SessionClientID {
+		t.Fatalf("endpoint drift changed client ID: %q != %q", left.SessionClientID, right.SessionClientID)
+	}
+}
+
+func TestRelayClientIDUsesEndpointOnlyWithoutShortDisco(t *testing.T) {
+	initial := status.ClientInfo{Endpoint: netip.MustParseAddrPort("192.0.2.10:51001")}
+	moved := initial
+	moved.Endpoint = netip.MustParseAddrPort("192.0.2.20:52002")
+	left := adaptRelayClient(7, initial, nil)
+	right := adaptRelayClient(7, moved, nil)
+	if left.SessionClientID == right.SessionClientID {
+		t.Fatalf("endpoint-only clients retained one ID across endpoint drift: %q", left.SessionClientID)
+	}
+}
+
+func TestRelaySessionDisambiguatesCollidingShortDiscoByEndpoint(t *testing.T) {
+	sessions, err := adaptRelaySessions([]status.ServerSession{{
+		VNI: 7,
+		Client1: status.ClientInfo{
+			Endpoint: netip.MustParseAddrPort("192.0.2.20:52002"), ShortDisco: "d:collision",
+		},
+		Client2: status.ClientInfo{
+			Endpoint: netip.MustParseAddrPort("192.0.2.10:51001"), ShortDisco: "d:collision",
+		},
+	}}, nil)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions=%#v error=%v", sessions, err)
+	}
+	session := sessions[0]
+	if session.Source.SessionClientID == session.Target.SessionClientID {
+		t.Fatalf("colliding short disco produced one client ID: %#v", session)
+	}
+	if session.Source.Endpoint != "192.0.2.10:51001" || session.Target.Endpoint != "192.0.2.20:52002" {
+		t.Fatalf("endpoint fallback did not stabilize direction: %#v", session)
+	}
+}
+
+func TestRelayClientOrderingIgnoresCanonicalIdentityOrder(t *testing.T) {
+	left := collector.RelayClientSnapshot{
+		DiscoShort: "d:bbbbbbbbbbbbbbbb",
+		Identity:   &domain.NodeIdentity{NodeKey: "node-a", DiscoKey: "disco-a"},
+	}
+	right := collector.RelayClientSnapshot{
+		DiscoShort: "d:aaaaaaaaaaaaaaaa",
+		Identity:   &domain.NodeIdentity{NodeKey: "node-z", DiscoKey: "disco-z"},
+	}
+	if relayClientSortKey(left) < relayClientSortKey(right) {
+		t.Fatalf("canonical identity order replaced short-disco order: %q < %q",
+			relayClientSortKey(left), relayClientSortKey(right))
 	}
 }
 
@@ -100,12 +181,31 @@ func TestPeerRelaySnapshotKeepsSessionsWhenDiscoEvidenceIsUnsupported(t *testing
 	}
 }
 
-func TestPeerRelaySnapshotTreatsDiscoFailureAsTransient(t *testing.T) {
-	transport := &relayFixtureTransport{t: t, discoStatusCode: http.StatusInternalServerError}
-	source := NewLocalSourceWithClient(&local.Client{Transport: transport, OmitAuth: true})
-	snapshot, err := source.PeerRelaySnapshot(context.Background())
-	if err == nil || snapshot.Capability != collector.RelayTransientFailure {
-		t.Fatalf("snapshot=%#v error=%v", snapshot, err)
+func TestPeerRelaySnapshotDegradesDiscoFailureWithoutDroppingSessions(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		err        error
+	}{
+		{name: "forbidden", statusCode: http.StatusForbidden},
+		{name: "server error", statusCode: http.StatusInternalServerError},
+		{name: "transport error", err: context.DeadlineExceeded},
+		{name: "malformed response"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &relayFixtureTransport{
+				t: t, discoStatusCode: test.statusCode, discoError: test.err,
+			}
+			if test.name == "malformed response" {
+				transport.discoPayload = []byte("{")
+			}
+			source := NewLocalSourceWithClient(&local.Client{Transport: transport, OmitAuth: true})
+			snapshot, err := source.PeerRelaySnapshot(context.Background())
+			if err != nil || snapshot.Capability != collector.RelayEnabled ||
+				snapshot.IdentityEvidence != collector.RelayIdentityDegraded || len(snapshot.Sessions) != 1 {
+				t.Fatalf("snapshot=%#v error=%v", snapshot, err)
+			}
+		})
 	}
 }
 

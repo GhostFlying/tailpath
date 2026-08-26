@@ -315,6 +315,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			aToBBytes, bToABytes := session.SourceToTargetDelta, session.TargetToSourceDelta
 			if sourceID != source {
 				aToBBytes, bToABytes = session.TargetToSourceDelta, session.SourceToTargetDelta
+				sourceStatus, targetStatus = targetStatus, sourceStatus
 			}
 			a.applyRelaySessionLocked(
 				report.CollectedAt, receivedAt, relayID, source, target, session,

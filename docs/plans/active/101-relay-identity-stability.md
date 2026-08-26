@@ -47,17 +47,24 @@ endpoint.
 
 ## Verification
 
-- Pending: focused adapter, collector, aggregator, application, and store tests.
-- Pending: focused race tests.
-- Pending: `make check` in the canonical dev environment.
+- Passed: focused adapter, collector, aggregator, application, store, and
+  collector-check tests.
+- Passed: race tests for adapter, collector, aggregator, application, and
+  store packages.
+- Partial: `make check` passed generated-file, formatting, vet, Go/web unit,
+  and production-build gates. Its four-worker browser run exposed the existing
+  Vite-proxy/SSE starvation in the mobile navigation test; the same test passed
+  with one worker. Hosted CI remains the authoritative full gate.
 - Pending: hosted PR checks and independent finding closure.
 
 ## Current state
 
-The independent review found one P1 and two P2 state-machine gaps. No production
-fix has been applied yet.
+The stable-key, enrichment-degradation, and canonical-direction fixes are
+implemented with focused and cross-layer restart coverage. Protocol and
+security documentation record the trusted opaque-ID and extreme VNI reuse
+residual risks.
 
 ## Next step
 
-Implement the adapter stable-key and enrichment-degradation behavior with
-cross-layer regression tests.
+Run the full repository gate, open the stacked review PR, and close the
+independent findings after hosted checks pass.

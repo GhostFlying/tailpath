@@ -12,9 +12,10 @@ healthy when relay telemetry is unavailable.
 
 - `relay-telemetry=auto|off` defaults to `auto`; flags override
   `TAILPATH_RELAY_TELEMETRY`, which overrides the built-in default.
-- Relay LocalAPI failures are isolated from ordinary collection. They clear the
-  relay baseline and emit bounded, sanitized state-transition logs, but do not
-  trigger the normal collector retry loop.
+- Relay session LocalAPI failures are isolated from ordinary collection. They
+  clear the relay baseline and emit bounded, sanitized state-transition logs,
+  but do not trigger the normal collector retry loop. Optional identity
+  enrichment failure keeps readable session counters and the existing baseline.
 - Reporter transport failures retain existing reconnect behavior. The next
   accepted ordinary hello also establishes a fresh relay baseline.
 - New sessions, counter resets, removed-and-returned sessions, source ordering
@@ -22,8 +23,9 @@ healthy when relay telemetry is unavailable.
   between consecutive healthy snapshots are reported.
 - The collector keeps no offline relay queue and never reconstructs catch-up
   traffic.
-- `--check` adds only relay capability, enabled state, and session count. Logs
-  never include endpoints, scoped client IDs, disco hints, or session IDs.
+- `--check` adds only relay capability, identity-evidence state, enabled state,
+  and session count. Logs never include endpoints, scoped client IDs, disco
+  hints, or session IDs.
 
 ## Implementation
 
