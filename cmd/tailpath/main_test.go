@@ -195,6 +195,22 @@ func TestServerRejectsScaleFixtureOutsideFixtureCommand(t *testing.T) {
 	}
 }
 
+func TestServerRejectsRelayScaleFixtureOutsideFixtureCommand(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runServer([]string{"--relay-scale"}, logger, false)
+	if err == nil || err.Error() != "relay scale fixture is only available with fixture-server" {
+		t.Fatalf("runServer error = %v, want relay scale fixture validation", err)
+	}
+}
+
+func TestFixtureServerRejectsMultipleFixtureModes(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runServer([]string{"--scale", "--relay-scale"}, logger, true)
+	if err == nil || err.Error() != "scale, relay-scale, and empty fixtures are mutually exclusive" {
+		t.Fatalf("runServer error = %v, want fixture mode validation", err)
+	}
+}
+
 func TestServeCancelsStreamingRequestsBeforeShutdown(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

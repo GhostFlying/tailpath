@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -369,6 +371,69 @@ func TestRelayHistorySurvivesRestartScopedMergeAndRollup(t *testing.T) {
 	}
 	if redirected := application.Aggregator.HistoryMetadata().Redirects[placeholderID]; redirected != bID {
 		t.Fatalf("placeholder redirect = %q, want %q", redirected, bID)
+	}
+}
+
+func TestDirectToRelayTransitionPersistsSanitizedProvenance(t *testing.T) {
+	database, err := store.Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	at := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	application, err := New(database, testOptions(func() time.Time { return at }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt, err := application.SubmitAt(context.Background(), helloReport(at), at); err != nil ||
+		!receipt.Accepted || receipt.ResyncRequired {
+		t.Fatalf("hello receipt = %#v, err=%v", receipt, err)
+	}
+	direct := trafficReport(at)
+	direct.ReportID = "direct-traffic"
+	direct.Sequence = 2
+	if receipt, err := application.SubmitAt(context.Background(), direct, at); err != nil ||
+		!receipt.Accepted || receipt.ResyncRequired {
+		t.Fatalf("direct receipt = %#v, err=%v", receipt, err)
+	}
+
+	relayAt := at.Add(2 * time.Second)
+	relay := relayTrafficReport(relayAt)
+	relay.RelaySessions[0].Target = domain.RelaySessionClient{
+		SessionClientID: "right",
+		Identity:        &domain.NodeIdentity{StableNodeID: "b", Hostname: "B"},
+	}
+	if receipt, err := application.SubmitAt(context.Background(), relay, relayAt); err != nil ||
+		!receipt.Accepted || receipt.ResyncRequired {
+		t.Fatalf("relay receipt = %#v, err=%v", receipt, err)
+	}
+	topology := application.Aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].Path.Kind != domain.PathPeerRelay {
+		t.Fatalf("transition topology = %#v", topology.Edges)
+	}
+	history, err := database.EdgeHistory(context.Background(), topology.Edges[0].ID, at.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasRelaySession := false
+	if len(history.PathEvents) == 2 {
+		for _, observation := range history.PathEvents[1].Observations {
+			if observation.RelaySession != nil {
+				hasRelaySession = true
+			}
+		}
+	}
+	if len(history.PathEvents) != 2 || history.PathEvents[0].Path.Kind != domain.PathDirect ||
+		history.PathEvents[1].Path.Kind != domain.PathPeerRelay ||
+		len(history.PathEvents[1].Observations) != 2 || !hasRelaySession {
+		t.Fatalf("Direct-to-Relay history = %#v", history.PathEvents)
+	}
+	payload, err := json.Marshal(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(payload, []byte("Endpoint")) || bytes.Contains(payload, []byte("Disco")) {
+		t.Fatalf("relay History retained underlay provenance: %s", payload)
 	}
 }
 

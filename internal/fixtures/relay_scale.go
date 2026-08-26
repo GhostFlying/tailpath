@@ -1,11 +1,13 @@
 package fixtures
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"time"
 
+	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
@@ -157,6 +159,19 @@ func (s *RelayScaleScenario) Reports(at time.Time, sequence int64) []TimedReport
 		reports = append(reports, TimedReport{Report: report, ReceivedAt: at})
 	}
 	return reports
+}
+
+func (s *RelayScaleScenario) Load(ctx context.Context, application *app.App, at time.Time) error {
+	for _, timed := range s.Reports(at, 1) {
+		receipt, err := application.SubmitAt(ctx, timed.Report, timed.ReceivedAt)
+		if err != nil {
+			return fmt.Errorf("submit relay scale report %s: %w", timed.Report.ReportID, err)
+		}
+		if !receipt.Accepted || receipt.ResyncRequired {
+			return fmt.Errorf("relay scale report %s was not accepted cleanly", timed.Report.ReportID)
+		}
+	}
+	return nil
 }
 
 func relayScaleEndpoint(index int, ipv6 bool) string {

@@ -307,6 +307,31 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	}
 }
 
+func TestRelaySequenceGapRequestsResyncWithoutDroppingSession(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	clientA := domain.RelaySessionClient{SessionClientID: "left", Identity: identity(node("a", "A"))}
+	clientB := domain.RelaySessionClient{SessionClientID: "right", Identity: identity(node("b", "B"))}
+	if result, err := aggregator.ApplyAt(relayReport(1, "session", 7, clientA, clientB, 20, 10), now); err != nil ||
+		!result.Receipt.Accepted || result.Receipt.ResyncRequired {
+		t.Fatalf("initial relay receipt = %#v, err=%v", result.Receipt, err)
+	}
+
+	now = now.Add(2 * time.Second)
+	result, err := aggregator.ApplyAt(relayReport(3, "session", 7, clientA, clientB, 30, 15), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Receipt.Accepted || !result.Receipt.ResyncRequired || !result.Changed {
+		t.Fatalf("gap relay result = %#v", result)
+	}
+	topology := aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].Path.Kind != domain.PathPeerRelay ||
+		topology.Edges[0].AToBBytesPerSecond+topology.Edges[0].BToABytesPerSecond <= 0 {
+		t.Fatalf("gap relay topology = %#v", topology)
+	}
+}
+
 func TestAnonymousRelaySessionKeepsScopedIdentityAcrossReportsAndRestart(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })
