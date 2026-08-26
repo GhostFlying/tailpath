@@ -47,6 +47,60 @@ func TestDirectEndpointsFromOppositeObserversAreEquivalent(t *testing.T) {
 	}
 }
 
+func TestReconcilePathsEnrichesLatestPeerRelayFromRelayProvenance(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	vni := int64(7)
+	observations := []domain.ObservationProvenance{
+		{
+			ObserverID: "relay",
+			ReceivedAt: now,
+			Path: domain.PathObservation{
+				Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-stable", PeerRelayVNI: &vni,
+			},
+		},
+		{
+			ObserverID: "endpoint",
+			ReceivedAt: now.Add(time.Second),
+			Path:       domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayVNI: &vni},
+		},
+	}
+
+	path, conflicts := reconcilePaths(observations)
+	if path.Kind != domain.PathPeerRelay || path.PeerRelayStableNodeID != "relay-stable" ||
+		path.PeerRelayVNI == nil || *path.PeerRelayVNI != vni {
+		t.Fatalf("path = %#v, want enriched peer relay", path)
+	}
+	if len(conflicts) != 0 {
+		t.Fatalf("equivalent relay provenance produced conflicts: %#v", conflicts)
+	}
+}
+
+func TestReconcilePathsKeepsConflictingRelayIdentity(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	observations := []domain.ObservationProvenance{
+		{
+			ObserverID: "old-relay", ReceivedAt: now,
+			Path: domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-old"},
+		},
+		{
+			ObserverID: "new-relay", ReceivedAt: now.Add(time.Second),
+			Path: domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-new"},
+		},
+		{
+			ObserverID: "endpoint", ReceivedAt: now.Add(2 * time.Second),
+			Path: domain.PathObservation{Kind: domain.PathPeerRelay},
+		},
+	}
+
+	path, conflicts := reconcilePaths(observations)
+	if path.PeerRelayStableNodeID != "relay-new" {
+		t.Fatalf("path = %#v, want newest detailed relay", path)
+	}
+	if len(conflicts) != 1 || conflicts[0].PeerRelayStableNodeID != "relay-old" {
+		t.Fatalf("conflicts = %#v, want older conflicting relay", conflicts)
+	}
+}
+
 func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	source := runtimeState{

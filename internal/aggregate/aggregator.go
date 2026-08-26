@@ -1225,13 +1225,45 @@ func reconcilePaths(observations []domain.ObservationProvenance) (domain.PathObs
 			chosen = observation
 		}
 	}
+	path := chosen.Path
+	var detail *domain.ObservationProvenance
+	for index := range observations {
+		observation := &observations[index]
+		if !equivalentPath(observation.Path, path) || pathSpecificity(observation.Path) <= pathSpecificity(path) {
+			continue
+		}
+		if detail == nil || observation.ReceivedAt.After(detail.ReceivedAt) {
+			detail = observation
+		}
+	}
+	if detail != nil {
+		path = enrichEquivalentPath(path, detail.Path)
+	}
 	var conflicts []domain.PathObservation
 	for _, observation := range observations {
-		if !equivalentPath(observation.Path, chosen.Path) && !containsPath(conflicts, observation.Path) {
+		if !equivalentPath(observation.Path, path) && !containsPath(conflicts, observation.Path) {
 			conflicts = append(conflicts, observation.Path)
 		}
 	}
-	return chosen.Path, conflicts
+	return path, conflicts
+}
+
+func enrichEquivalentPath(path, detail domain.PathObservation) domain.PathObservation {
+	result := path
+	switch result.Kind {
+	case domain.PathDERP:
+		if result.DERPRegion == "" {
+			result.DERPRegion = detail.DERPRegion
+		}
+	case domain.PathPeerRelay:
+		if result.PeerRelayStableNodeID == "" {
+			result.PeerRelayStableNodeID = detail.PeerRelayStableNodeID
+		}
+		if result.PeerRelayVNI == nil {
+			result.PeerRelayVNI = detail.PeerRelayVNI
+		}
+	}
+	return result
 }
 
 func equivalentPath(left, right domain.PathObservation) bool {
