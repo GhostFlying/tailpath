@@ -43,7 +43,10 @@ healthy when relay telemetry is unavailable.
 - Passed: baseline, delta, reset, removal, transient relay failure, report
   outage, reconnect, config precedence, check privacy, and log privacy tests.
 - Pending: hosted Windows PowerShell matrix; no local PowerShell is installed.
-- Pending: `make check`.
+- Passed: `CI=1 make check`, including production build and 20 Playwright tests
+  with 10 expected project-specific skips. A preceding non-retry run hit the
+  known mobile History readiness timeout once; the immediate full E2E rerun
+  and CI-mode full gate passed.
 
 ## Current state
 
@@ -53,5 +56,5 @@ native runner configuration. Relay failures do not degrade ordinary reports.
 
 ## Next step
 
-Run the full repository gate, resolve any integration failures, and prepare the
-stacked PR for hosted Windows verification.
+Review hosted platform results, then merge the stacked PR before #87 begins
+server-side scoped reconciliation.
