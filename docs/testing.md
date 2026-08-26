@@ -39,14 +39,22 @@ and query the removed physical edge through its redirect. A seven-day test
 runs third-party relay traffic through real minute/hour rollup and retention,
 then verifies directional totals and the sanitized pre-window path anchor.
 
+The separate fixed-seed relay scale scenario sends 1,000 concurrent
+third-party sessions through eight relay runtimes while retaining 250 canonical
+nodes and 1,000 client-to-client logical edges. It exercises real
+`relay_session_update` reconciliation, atomic SQLite ingest, checkpoints,
+restart, History provenance, and directional de-duplication. Database, WAL,
+topology, History, and logs are scanned for documentation-range endpoint and
+disco canaries.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
 1,000 logical edges, bilateral provenance, all four paths, active/recent state,
 and clock skew. Its Go ingest/restart smoke runs in PR checks; the full desktop
-and mobile graph gate runs through the manual `V0.2 release gate` workflow and
-uploads JSON and screenshots. Multi-release LocalAPI fixture normalization and
-explicit SSE reconnect/conflict/long-label browser cases remain v0.2 work.
+and mobile graph gate runs through the manual `V0.3 Peer Relay scale gate`
+workflow and uploads JSON and screenshots. The same workflow runs the separate
+1,000-session relay browser gate without replacing the mixed-path baseline.
 
 The first unoptimized local Docker baseline on 2026-08-23 ingested 750 scale
 reports in about 23 seconds and produced a 5.37 MB SQLite database. This records
@@ -81,6 +89,14 @@ The same revision's scale browser run recorded desktop cold ready at 3,386 ms,
 visible edge-only SSE update at 464 ms, cached ready at 2,060 ms, and mobile
 cold ready at 4,138 ms. Both projects rendered 250 topology nodes, 1,000
 logical edges, and 505 graph elements with no console errors or layout movement.
+
+The first local 1,000-session relay browser run on 2026-08-26 recorded desktop
+cold ready at 2,610 ms and cached ready at 2,186 ms; mobile cold ready was 2,376
+ms and cached ready was 1,797 ms. Both projects rendered 250 canonical graph
+nodes and 1,000 Peer Relay logical edges from eight relay observers with no
+console errors. The SQLite/checkpoint restart and privacy smoke completed in
+about 0.65 seconds on the development host. These are regression baselines,
+not production hardware performance claims.
 
 Manual milestone verification uses at least two real nodes and ordinary
 application traffic. Tailpath itself never invokes an active connectivity probe.
