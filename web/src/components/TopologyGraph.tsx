@@ -225,6 +225,7 @@ export function TopologyGraph(props: Props) {
   const initialized = useRef(false);
   const layoutRuns = useRef(0);
   const renderEpoch = useRef(0);
+  const focusPending = useRef(true);
   const renderedTopologyAt = useRef<string | null>(null);
   const topologyNodeIDs = useRef<string[]>([]);
   const renderedFingerprints = useRef(new Map<string, string>());
@@ -248,6 +249,7 @@ export function TopologyGraph(props: Props) {
     initialized.current = false;
     layoutRuns.current = 0;
     renderEpoch.current = 0;
+    focusPending.current = true;
     renderedTopologyAt.current = null;
     renderedFingerprints.current.clear();
     const cy = cytoscape({
@@ -318,9 +320,13 @@ export function TopologyGraph(props: Props) {
     const hasSharedCanonicalNode = [...nextCanonicalIDs].some((id) =>
       previousCanonicalIDs.has(id),
     );
+    if (nextCanonicalIDs.size === 0) {
+      focusPending.current = true;
+    } else if (firstRender || (topologyChanged && !hasSharedCanonicalNode)) {
+      focusPending.current = true;
+    }
     const shouldFocusTopology =
-      nextCanonicalIDs.size > 0 &&
-      (firstRender || (topologyChanged && !hasSharedCanonicalNode));
+      nextCanonicalIDs.size > 0 && focusPending.current;
     const nextIDs = new Set(
       preparedElements.map((element) => String(element.data?.id)),
     );
@@ -403,6 +409,7 @@ export function TopologyGraph(props: Props) {
         cy.resize();
         if (shouldFocusTopology) {
           focusGraph(cy, graphPadding());
+          focusPending.current = false;
         }
         updateGraphDiagnostics(cy, container.current, layoutRuns.current);
         persistPositionsNow(cy);
