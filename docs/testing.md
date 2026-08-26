@@ -98,6 +98,22 @@ console errors. The SQLite/checkpoint restart and privacy smoke completed in
 about 0.65 seconds on the development host. These are regression baselines,
 not production hardware performance claims.
 
+The v0.3 hosted strict workflow on 2026-08-26 retained the unchanged v0.2
+limits. Its successful attempt accepted 75,000 of 75,000 reports over 599.996
+seconds at 125 reports/s with no rejected receipt, request error, HTTP 500,
+OOM, or restart. Ingest p95/p99 were 49.4/74.2 ms, scheduler lag was 45.7 ms,
+topology/list/detail p95 were 10.1/212.2/8.3 ms, and peak process RSS was 58.9
+MiB. The relay restart/privacy smoke completed in 0.51 seconds. The seven-day
+database contained 720,000 raw, 2,880,000 minute, and 168,000 hour rows in
+707,948,544 bytes, below the 2 GiB gate. Both mixed-path and relay-specific
+desktop/mobile browser gates passed.
+
+The preceding hosted attempt accepted all 75,000 reports without an HTTP or
+storage failure but exceeded ingest and scheduler latency limits. The same
+commit then passed unchanged, while local 30-second A/B diagnostics also
+passed. It is retained as an unreproduced hosted-runner outlier; no threshold
+was relaxed and the successful rerun does not erase the failed evidence.
+
 Manual milestone verification uses at least two real nodes and ordinary
 application traffic. Tailpath itself never invokes an active connectivity probe.
 Stage one uses the isolated

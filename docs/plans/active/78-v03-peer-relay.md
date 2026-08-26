@@ -83,9 +83,14 @@ checkpointed relay scopes, stable anonymous clients, conservative one-sided
 inference, conflict handling, and endpoint-over-relay traffic preference.
 Issue #79 adds defense-in-depth journal/checkpoint sanitization,
 backward-compatible History identity status, redirect/restart integration, and
-seven-day relay fallback retention coverage.
+seven-day relay fallback retention coverage. Issue #85 presents resolved,
+anonymous, and conflicting relay identity in Live, Inspector, and History
+without layout jumps during canonical merge. Issue #89 adds deterministic
+1,000-session relay persistence and browser gates; the unchanged ten-minute
+v0.2 performance baseline and all new hosted relay gates pass.
 
 ## Next step
 
-Land #83, #87, and #79 after review, then implement #85 resolved, anonymous,
-and conflicting relay presentation in Live and History.
+Land the stacked implementation and gate PRs in order, publish the immutable
+edge artifact from `main`, then complete issue #80 real-host dogfood and issue
+#82 independent review and milestone closeout.
