@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,9 +116,11 @@ func peerIdentity(peer *ipnstate.PeerStatus) domain.NodeIdentity {
 
 func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]string) domain.PathObservation {
 	if peer.PeerRelay != "" {
+		relayIP, vni := peerRelayEndpoint(peer.PeerRelay)
 		return domain.PathObservation{
 			Kind:                  domain.PathPeerRelay,
-			PeerRelayStableNodeID: relayByIP[peerRelayIP(peer.PeerRelay)],
+			PeerRelayStableNodeID: relayByIP[relayIP],
+			PeerRelayVNI:          vni,
 		}
 	}
 	if peer.CurAddr != "" {
@@ -143,15 +146,26 @@ func relayIdentities(status *ipnstate.Status) map[string]string {
 }
 
 func peerRelayIP(value string) string {
+	address, _ := peerRelayEndpoint(value)
+	return address
+}
+
+func peerRelayEndpoint(value string) (string, *int64) {
 	endpoint := value
+	var vni *int64
 	if marker := strings.LastIndex(value, ":vni:"); marker >= 0 {
 		endpoint = value[:marker]
+		parsed, err := strconv.ParseUint(value[marker+len(":vni:"):], 10, 24)
+		if err == nil {
+			converted := int64(parsed)
+			vni = &converted
+		}
 	}
 	address, err := netip.ParseAddrPort(endpoint)
 	if err != nil {
-		return ""
+		return "", nil
 	}
-	return address.Addr().Unmap().String()
+	return address.Addr().Unmap().String(), vni
 }
 
 type Authorizer struct {
