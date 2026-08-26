@@ -128,6 +128,21 @@ services:
       - tailscale-c-state:/var/lib/tailscale
       - tailscale-c-run:/var/run/tailscale
 
+  tailscale-r:
+    <<: *tailscale-node
+    hostname: tailpath-smoke-r
+    environment:
+      TS_ACCEPT_DNS: "true"
+      TS_AUTH_ONCE: "true"
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+      TS_HOSTNAME: tailpath-smoke-r
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-r-state:/var/lib/tailscale
+      - tailscale-r-run:/var/run/tailscale
+
   collector-a:
     image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-smoke}
     command:
@@ -159,6 +174,24 @@ services:
       server:
         condition: service_healthy
       tailscale-b:
+        condition: service_healthy
+    restart: "no"
+
+  collector-r:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:-smoke}
+    command:
+      - collector
+      - --server=${TAILPATH_SMOKE_SERVER_URL:-http://127.0.0.1:1}
+      - --socket=/var/run/tailscale/tailscaled.sock
+      - --relay-telemetry=auto
+    network_mode: service:tailscale-r
+    user: "0:0"
+    volumes:
+      - tailscale-r-run:/var/run/tailscale:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      tailscale-r:
         condition: service_healthy
     restart: "no"
 
@@ -198,3 +231,5 @@ volumes:
   tailscale-b-run:
   tailscale-c-state:
   tailscale-c-run:
+  tailscale-r-state:
+  tailscale-r-run:

@@ -10,9 +10,13 @@ runtime_file="${TAILPATH_SMOKE_RUNTIME_FILE:-/tmp/tailpath-smoke-runtime.env}"
 compose_binary="${TAILPATH_COMPOSE:-}"
 socket=/var/run/tailscale/tailscaled.sock
 server_hostname=tailpath-smoke-server
+relay_hostname=tailpath-smoke-r
+relay_port="${TAILPATH_SMOKE_RELAY_PORT:-40000}"
 udp_chain=TAILPATH-SMOKE-UDP
 key_pending=0
 compose_auth_file="$auth_file"
+TAILPATH_SMOKE_RELAY_IP=""
+TAILPATH_SMOKE_SERVER_UNDERLAY_IP=""
 
 export TAILPATH_SMOKE_AUTHKEY_FILE="$compose_auth_file"
 
@@ -70,9 +74,12 @@ load_runtime() {
   test -f "$runtime_file" || fail "run scripts/smoke.sh up first"
   # This file contains only values generated and validated by this script.
   . "$runtime_file"
+  relay_port="$TAILPATH_SMOKE_RELAY_PORT"
   compose_auth_file="$TAILPATH_SMOKE_COMPOSE_AUTH_FILE"
   TAILPATH_SMOKE_AUTHKEY_FILE="$compose_auth_file"
   export TAILPATH_VERSION TAILPATH_SMOKE_SERVER_URL TAILPATH_SMOKE_AUTHKEY_FILE
+  export TAILPATH_SMOKE_RELAY_IP TAILPATH_SMOKE_RELAY_PORT
+  export TAILPATH_SMOKE_SERVER_UNDERLAY_IP
 }
 
 write_runtime() {
@@ -82,6 +89,9 @@ write_runtime() {
     echo "TAILPATH_VERSION=$TAILPATH_VERSION"
     echo "TAILPATH_SMOKE_SERVER_URL=$TAILPATH_SMOKE_SERVER_URL"
     echo "TAILPATH_SMOKE_COMPOSE_AUTH_FILE=$compose_auth_file"
+    echo "TAILPATH_SMOKE_RELAY_IP=$TAILPATH_SMOKE_RELAY_IP"
+    echo "TAILPATH_SMOKE_RELAY_PORT=$relay_port"
+    echo "TAILPATH_SMOKE_SERVER_UNDERLAY_IP=$TAILPATH_SMOKE_SERVER_UNDERLAY_IP"
   } > "$temporary"
   mv "$temporary" "$runtime_file"
 }
@@ -114,6 +124,32 @@ tailscale_ip() {
   node="$1"
   compose exec -T "tailscale-$node" \
     tailscale --socket="$socket" ip -4 | sed -n '1p'
+}
+
+underlay_ip() {
+  service="$1"
+  container="$(compose ps -q "$service")"
+  test -n "$container" || fail "$service is not running"
+  docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container"
+}
+
+relay_check() {
+  load_runtime
+  check="$(compose run --rm --no-deps -T collector-r \
+    collector --check --socket="$socket" --relay-telemetry=auto)"
+  printf '%s\n' "$check" | jq -e \
+    '{relayCapability, relayEnabled, relaySessionCount}
+     | select(.relayCapability == "enabled" and .relayEnabled == true)'
+}
+
+configure_relay() {
+  TAILPATH_SMOKE_RELAY_IP="$(underlay_ip tailscale-r)"
+  test -n "$TAILPATH_SMOKE_RELAY_IP" || fail "$relay_hostname has no underlay IPv4"
+  compose exec -T tailscale-r tailscale --socket="$socket" set \
+    --relay-server-port="$relay_port" \
+    --relay-server-static-endpoints="$TAILPATH_SMOKE_RELAY_IP:$relay_port"
+  write_runtime
+  relay_check >/dev/null || fail "$relay_hostname did not expose relay telemetry"
 }
 
 server_ip_from() {
@@ -154,17 +190,34 @@ up() {
   docker info >/dev/null
 
   cd "$repository"
-  TAILPATH_VERSION="smoke-$(git rev-parse --short=12 HEAD)"
-  export TAILPATH_VERSION
-  compose build server
+  if test -n "${TAILPATH_VERSION:-}"; then
+    case "$TAILPATH_VERSION" in
+      edge-*) candidate_sha=${TAILPATH_VERSION#edge-} ;;
+      *) fail "TAILPATH_VERSION must be an immutable edge-<sha> tag" ;;
+    esac
+    test "${#candidate_sha}" -eq 40 \
+      || fail "TAILPATH_VERSION must contain a full 40-character commit SHA"
+    case "$candidate_sha" in
+      *[!0-9a-f]*) fail "TAILPATH_VERSION commit SHA must be lowercase hexadecimal" ;;
+    esac
+    compose pull server
+  else
+    TAILPATH_VERSION="smoke-$(git rev-parse --short=12 HEAD)"
+    export TAILPATH_VERSION
+    compose build server
+  fi
   stage_compose_key
   TAILPATH_SMOKE_SERVER_URL=""
   write_runtime
-  compose up -d server tailscale-a tailscale-b tailscale-c
+  compose up -d server tailscale-a tailscale-b tailscale-c tailscale-r
   wait_healthy server
   wait_healthy tailscale-a
   wait_healthy tailscale-b
   wait_healthy tailscale-c
+  wait_healthy tailscale-r
+  TAILPATH_SMOKE_SERVER_UNDERLAY_IP="$(underlay_ip server)"
+  test -n "$TAILPATH_SMOKE_SERVER_UNDERLAY_IP" \
+    || fail "$server_hostname has no underlay IPv4"
 
   attempt=0
   server_ip=""
@@ -178,7 +231,8 @@ up() {
   export TAILPATH_SMOKE_SERVER_URL
   write_runtime
 
-  compose up -d workload-a workload-b workload-c collector-a collector-b
+  configure_relay
+  compose up -d workload-a workload-b workload-c collector-a collector-b collector-r
   wait_healthy workload-a
   wait_healthy workload-b
   wait_healthy workload-c
@@ -196,10 +250,11 @@ up() {
 status() {
   load_runtime
   compose ps
-  for node in a b c; do
+  for node in a b c r; do
     echo "tailpath-smoke-$node $(tailscale_ip "$node")"
   done
   echo "$server_hostname ${TAILPATH_SMOKE_SERVER_URL#http://}"
+  echo "$relay_hostname $TAILPATH_SMOKE_RELAY_IP:$relay_port"
 }
 
 topology() {
@@ -241,8 +296,56 @@ collector() {
     start|stop|restart) ;;
     *) fail "collector action must be start, stop, or restart" ;;
   esac
-  case "$node" in a|b) ;; *) fail "collector node must be a or b" ;; esac
+  case "$node" in a|b|r) ;; *) fail "collector node must be a, b, or r" ;; esac
   compose "$action" "collector-$node"
+}
+
+path() {
+  load_runtime
+  source_node="${1:-}"
+  target_node="${2:-}"
+  case "$source_node" in a|b|c) ;; *) fail "source must be a, b, or c" ;; esac
+  case "$target_node" in a|b|c) ;; *) fail "target must be a, b, or c" ;; esac
+  test "$source_node" != "$target_node" || fail "source and target must differ"
+  target_ip="$(tailscale_ip "$target_node")"
+  result="$(compose exec -T "tailscale-$source_node" \
+    tailscale --socket="$socket" status --json \
+    | jq -r --arg ip "$target_ip" '
+        .Peer[]
+        | select(.TailscaleIPs[0] == $ip)
+        | if (.CurAddr // "") != "" then "direct"
+          elif (.PeerRelay // "") != "" then "peer_relay"
+          elif (.Relay // "") != "" then "derp"
+          else "unknown"
+          end')"
+  test -n "$result" || fail "target is not visible from source"
+  printf '%s\n' "$result"
+}
+
+wait_relay_reporting() {
+  attempt=0
+  while :; do
+    if api_from_a /api/v1/topology \
+      | jq -e --arg hostname "$relay_hostname" \
+        'any(.observers[]?; .hostname == $hostname and .online == true)' >/dev/null; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 45 || fail "$relay_hostname collector did not resume reporting"
+    sleep 2
+  done
+}
+
+restart_relay() {
+  load_runtime
+  compose restart tailscale-r
+  wait_healthy tailscale-r
+  # network_mode: service:tailscale-r binds the sidecar to the relay's current
+  # network namespace. Reattach it after Docker replaces that namespace.
+  compose restart collector-r
+  relay_check >/dev/null || fail "$relay_hostname did not recover relay telemetry"
+  wait_relay_reporting
+  echo "tailpath smoke relay restarted and telemetry recovered"
 }
 
 udp() {
@@ -250,17 +353,22 @@ udp() {
   action="${1:-}"
   shift || true
   case "$action" in
-    block|restore|status) ;;
-    *) fail "udp action must be block, restore, or status" ;;
+    block|relay|restore|status) ;;
+    *) fail "udp action must be block, relay, restore, or status" ;;
   esac
   test "$#" -gt 0 || fail "udp action requires at least one node"
 
   for node in "$@"; do
     case "$node" in a|b|c) ;; *) fail "udp node must be a, b, or c" ;; esac
-    compose exec -T "tailscale-$node" sh -s -- "$action" "$udp_chain" <<'EOF'
+    compose exec -T "tailscale-$node" sh -s -- \
+      "$action" "$udp_chain" "$TAILPATH_SMOKE_RELAY_IP" "$relay_port" \
+      "$TAILPATH_SMOKE_SERVER_UNDERLAY_IP" <<'EOF'
 set -eu
 action="$1"
 chain="$2"
+relay_ip="$3"
+relay_port="$4"
+server_ip="$5"
 
 for firewall in iptables ip6tables; do
   command -v "$firewall" >/dev/null 2>&1 || continue
@@ -270,6 +378,19 @@ for firewall in iptables ip6tables; do
       "$firewall" -n -L "$chain" >/dev/null 2>&1 || "$firewall" -N "$chain"
       "$firewall" -F "$chain"
       "$firewall" -A "$chain" -p udp --dport 53 -j RETURN
+      "$firewall" -A "$chain" -p udp -j REJECT
+      "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1 \
+        || "$firewall" -I OUTPUT 1 -j "$chain"
+      ;;
+    relay)
+      "$firewall" -n -L "$chain" >/dev/null 2>&1 || "$firewall" -N "$chain"
+      "$firewall" -F "$chain"
+      "$firewall" -A "$chain" -p udp --dport 53 -j RETURN
+      if test "$firewall" = iptables; then
+        "$firewall" -A "$chain" -p udp -d "$server_ip" -j RETURN
+        "$firewall" -A "$chain" -p udp -d "$relay_ip" \
+          --dport "$relay_port" -j RETURN
+      fi
       "$firewall" -A "$chain" -p udp -j REJECT
       "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1 \
         || "$firewall" -I OUTPUT 1 -j "$chain"
@@ -285,7 +406,7 @@ for firewall in iptables ip6tables; do
       ;;
     status)
       if "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1; then
-        echo "$firewall blocked-except-dns"
+        "$firewall" -S "$chain"
       else
         echo "$firewall open"
       fi
@@ -301,7 +422,7 @@ down() {
   if test -f "$runtime_file"; then
     load_runtime
   fi
-  for node in a b c; do
+  for node in a b c r; do
     compose exec -T "tailscale-$node" \
       tailscale --socket="$socket" logout >/dev/null 2>&1 || true
   done
@@ -325,10 +446,14 @@ commands:
   topology             print the current topology JSON
   traffic <a|b|c> <a|b|c>
                        transfer a rate-limited 64 MiB file over Tailscale
-  collector <start|stop|restart> <a|b>
-                       control one observer collector
-  udp <block|restore|status> <a|b|c> [node ...]
-                       control non-DNS UDP egress in selected test namespaces
+  collector <start|stop|restart> <a|b|r>
+                       control one endpoint or relay collector
+  path <a|b|c> <a|b|c>
+                       print the passive current path between two endpoints
+  relay-check          require enabled relay LocalAPI telemetry
+  restart-relay        restart relay tailscaled and verify telemetry recovery
+  udp <block|relay|restore|status> <a|b|c> [node ...]
+                       control UDP egress in selected test namespaces
   restart-server       restart the tsnet server and verify API recovery
   down                 logout nodes and remove the isolated smoke project
 EOF
@@ -340,6 +465,9 @@ case "${1:-}" in
   topology) topology ;;
   traffic) shift; traffic "$@" ;;
   collector) shift; collector "$@" ;;
+  path) shift; path "$@" ;;
+  relay-check) relay_check ;;
+  restart-relay) restart_relay ;;
   udp) shift; udp "$@" ;;
   restart-server) restart_server ;;
   down) down ;;
