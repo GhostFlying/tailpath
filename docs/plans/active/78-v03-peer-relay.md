@@ -87,10 +87,12 @@ seven-day relay fallback retention coverage. Issue #85 presents resolved,
 anonymous, and conflicting relay identity in Live, Inspector, and History
 without layout jumps during canonical merge. Issue #89 adds deterministic
 1,000-session relay persistence and browser gates; the unchanged ten-minute
-v0.2 performance baseline and all new hosted relay gates pass.
+v0.2 performance baseline and all new hosted relay gates pass. Issue #103 moves
+browser acceptance to production assets served by the fixture API after Vite's
+development proxy caused concurrent History readiness stalls.
 
 ## Next step
 
-Land the stacked implementation and gate PRs in order, publish the immutable
-edge artifact from `main`, then complete issue #80 real-host dogfood and issue
-#82 independent review and milestone closeout.
+Close issues #103, #105, and #101, land the stacked implementation and gate
+PRs in order, publish the immutable edge artifact from `main`, then complete
+issue #80 real-host dogfood and issue #82 milestone closeout.
