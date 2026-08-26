@@ -39,6 +39,14 @@ coalesced into 250-millisecond windows, and the browser merges a refresh burst
 into one in-flight request plus one follow-up. Storage failure therefore cannot
 advance in-memory sequence, inventory, or canonical identity state.
 
+Peer Relay session clients are reconciled inside a checkpointed
+`relay canonical ID + VNI` scope. A stable endpoint observation can provide a
+fresh unordered canonical pair for that scope. The server may resolve the
+missing client only when the other client already matches one member of the
+pair; VNI-only and conflicting evidence remain anonymous instead of guessing.
+Scoped client IDs never enter the global alias index, and canonical merges
+atomically rewrite scoped references, current edges, and redirects.
+
 Path transitions compare logical path identity. Observer-local direct endpoints
 remain provenance attributes and do not create a new transition when opposite
 observers report different ends of the same Direct connection. DERP region and

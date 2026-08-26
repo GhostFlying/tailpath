@@ -78,10 +78,11 @@ defines session-scoped clients and sanitized relay provenance. Issue #86 reads
 the two passive LocalAPI routes into stable Tailpath runtime snapshots with
 typed capability states and unique disco enrichment. Issue #83 adds isolated
 auto/off sampling, baseline/reset handling, sparse relay delta reports, bounded
-diagnostics, and native runner configuration. Server-side scoped reconciliation
-is not yet implemented.
+diagnostics, and native runner configuration. Issue #87 now implements
+checkpointed relay scopes, stable anonymous clients, conservative one-sided
+inference, conflict handling, and endpoint-over-relay traffic preference.
 
 ## Next step
 
-Complete #83, then implement #87 canonical scoped-client reconciliation, VNI
-correlation, and third-party traffic fallback.
+Land #83 and #87 after review, then implement #79 durable relay provenance,
+retention, restart integration, and bounded query behavior.

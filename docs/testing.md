@@ -26,6 +26,13 @@ those details. Native Linux and macOS installer fixtures preserve the explicit
 auto/off configuration path; the hosted Windows matrix covers its PowerShell
 runner.
 
+Relay reconciliation tests cover stable anonymous clients across repeated
+updates and checkpoint restore, strong two-sided resolution, endpoint evidence
+arriving before or after a relay session, one-sided inference, VNI-only
+ambiguity, conflicting fresh endpoint pairs, scoped-identifier isolation, and
+endpoint-over-relay directional traffic precedence. Race tests cover the
+aggregator and atomic application commit path.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
