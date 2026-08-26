@@ -53,17 +53,28 @@ baseline.
 - `CI=1 TAILPATH_SCALE_E2E=1 ./scripts/e2e.sh`: the unchanged mixed-path
   desktop/mobile baseline passed (two project-specific cases skipped).
 - Sequence-gap resync and durable Direct-to-Peer-Relay transition tests pass.
-- Pending: v0.3 hosted strict workflow dry run.
+- Passed: hosted strict workflow attempt 2 accepted 75,000 of 75,000 reports
+  over ten minutes at 125 reports/s. Ingest p95/p99 were 49.4/74.2 ms,
+  scheduler lag was 45.7 ms, and peak process RSS was 58.9 MiB. Topology,
+  History list, and History detail p95 were 10.1/212.2/8.3 ms.
+- The first hosted attempt accepted every report but missed the latency and
+  scheduler thresholds. An unchanged rerun passed every gate, so the failed
+  attempt remains linked as an unreproduced hosted-runner outlier rather than
+  being hidden or used to relax thresholds.
 - `PATH=/tmp/tailpath-go/bin:$PATH CI=1 make check`: passed, including generated
   files, Go vet/tests, web checks/tests/build, and ordinary desktop/mobile E2E.
-- Pending: hosted PR checks.
+- Hosted PR checks passed on every supported platform and packaging target.
+- Hosted strict workflow restart, 1,000-session relay persistence/privacy,
+  seven-day database, mixed-path browser, and relay browser steps all passed.
 
 ## Current state
 
 The separate relay generator, fixture-server mode, persistence smoke, and
-browser gate are implemented. The original mixed-path fixture remains
-unchanged for comparable performance results.
+browser gate are implemented and pass locally and in the hosted strict
+workflow. The original mixed-path fixture and thresholds remain unchanged for
+comparable performance results.
 
 ## Next step
 
-Open the stacked PR and execute the hosted manual workflow.
+Land the stacked PR, publish its immutable edge artifact from `main`, and run
+the separately reviewed real-host dogfood plan from issue #80.
