@@ -41,7 +41,11 @@ endpoints and short disco values never cross a durable storage boundary.
 - Passed: focused store and application integration tests.
 - Passed: database and WAL canary scan with synthetic values.
 - Passed: `go test ./...` and store/application race tests.
-- Pending: `make check` and hosted PR checks.
+- Passed: focused mobile History navigation with the real fixture server.
+- Partial: `CI=1 make check` passed generated code, shell, Go, TypeScript,
+  Vitest, build, and 19 browser tests; the known 30-worker mobile History
+  readiness case exhausted its retries and passed immediately with one worker.
+- Pending: hosted PR checks.
 
 ## Current state
 
