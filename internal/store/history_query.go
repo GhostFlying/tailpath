@@ -24,10 +24,15 @@ type historyEdgeRecord struct {
 
 type historyIndex struct {
 	redirects    map[string]string
-	nodes        map[string]domain.NodeIdentity
+	nodes        map[string]storedNodeIdentity
 	edgeAlias    map[string]string
 	edgeReversed map[string]bool
 	edges        map[string]*historyEdgeRecord
+}
+
+type storedNodeIdentity struct {
+	domain.NodeIdentity
+	IdentityStatus domain.IdentityStatus `json:"identityStatus,omitempty"`
 }
 
 type storedTrafficPoint struct {
@@ -197,7 +202,7 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 
 func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	index := historyIndex{
-		redirects: make(map[string]string), nodes: make(map[string]domain.NodeIdentity),
+		redirects: make(map[string]string), nodes: make(map[string]storedNodeIdentity),
 		edgeAlias: make(map[string]string), edgeReversed: make(map[string]bool),
 		edges: make(map[string]*historyEdgeRecord),
 	}
@@ -227,7 +232,7 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 			rows.Close()
 			return index, err
 		}
-		var identity domain.NodeIdentity
+		var identity storedNodeIdentity
 		if err := json.Unmarshal(payload, &identity); err != nil {
 			rows.Close()
 			return index, err
@@ -676,12 +681,15 @@ func summarizeHistoryEdges(index historyIndex, points map[string][]storedTraffic
 	return result
 }
 
-func historyNodeReference(id string, identity domain.NodeIdentity) domain.HistoryNodeReference {
+func historyNodeReference(id string, identity storedNodeIdentity) domain.HistoryNodeReference {
 	label := identity.DisplayName()
 	if label == "unknown" || label == "" {
 		label = id
 	}
-	return domain.HistoryNodeReference{ID: id, Label: label, Hostname: identity.Hostname, DNSName: identity.DNSName, OS: identity.OS}
+	return domain.HistoryNodeReference{
+		ID: id, Label: label, Hostname: identity.Hostname, DNSName: identity.DNSName,
+		OS: identity.OS, IdentityStatus: identity.IdentityStatus,
+	}
 }
 
 func resolveNodeID(redirects map[string]string, id string) string {

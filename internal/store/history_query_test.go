@@ -216,6 +216,69 @@ func TestHistorySummaryUsesCompletedRollupsWithoutDoubleCountingRaw(t *testing.T
 	}
 }
 
+func TestRelayFallbackAndProvenanceSurviveSevenDayRetention(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	now := time.Date(2026, 8, 26, 12, 5, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, IdentityStatus: domain.IdentityResolved, LastEvidenceAt: now},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "B"}, IdentityStatus: domain.IdentityResolved, LastEvidenceAt: now},
+		{ID: "n_relay", NodeIdentity: domain.NodeIdentity{StableNodeID: "relay", Hostname: "Relay"}, IdentityStatus: domain.IdentityResolved, LastEvidenceAt: now},
+	}}
+	if err := database.SaveHistoryMetadata(ctx, metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	vni := int64(9)
+	path := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni}
+	anchorAt := now.Add(-8 * 24 * time.Hour)
+	transition := domain.PathTransition{
+		EdgeID: "n_a--n_b", ObservedAt: anchorAt, Path: path,
+		Observations: []domain.ObservationProvenance{{
+			ObserverID: "n_relay", Path: path, CollectedAt: anchorAt, ReceivedAt: anchorAt,
+			RelaySession: &domain.RelaySessionProvenance{
+				SessionID: "retained-session", VNI: vni,
+				SourceIdentityStatus: domain.IdentityResolved, TargetIdentityStatus: domain.IdentityResolved,
+			},
+		}},
+	}
+	if _, err := database.Record(ctx, sampleReport(anchorAt, anchorAt, "relay-anchor"), anchorAt, nil, nil, []domain.PathTransition{transition}); err != nil {
+		t.Fatal(err)
+	}
+	trafficAt := now.Add(-6*24*time.Hour - 30*time.Minute)
+	traffic := []domain.AcceptedTraffic{{
+		EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_relay",
+		AToBBytes: 321, BToABytes: 123, ReceivedAt: trafficAt,
+	}}
+	if _, err := database.Record(ctx, sampleReport(trafficAt, trafficAt, "relay-traffic"), trafficAt, nil, traffic, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Maintain(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	history, found, err := database.EdgeHistoryWindow(ctx, "n_a--n_b", domain.History7Days, now)
+	if err != nil || !found {
+		t.Fatalf("seven-day relay history found=%v err=%v", found, err)
+	}
+	var aToB, bToA int64
+	for _, bucket := range history.Traffic {
+		aToB += bucket.AToBBytes
+		bToA += bucket.BToABytes
+	}
+	if aToB != 321 || bToA != 123 {
+		t.Fatalf("third-party relay rollup = %d/%d, want 321/123", aToB, bToA)
+	}
+	if history.PathAnchor == nil || history.PathAnchor.Path.PeerRelayVNI == nil ||
+		*history.PathAnchor.Path.PeerRelayVNI != vni || len(history.PathAnchor.Observations) != 1 ||
+		history.PathAnchor.Observations[0].RelaySession == nil ||
+		history.PathAnchor.Observations[0].RelaySession.SessionID != "retained-session" {
+		t.Fatalf("seven-day relay anchor = %#v", history.PathAnchor)
+	}
+}
+
 func TestEdgeHistoryWindowUsesRetainedRawWhenRollupsAreMissing(t *testing.T) {
 	database, now := coverageHistoryDatabase(t)
 	recordCoverageTraffic(t, database, now.Add(-2*time.Hour), 42)

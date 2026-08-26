@@ -121,6 +121,12 @@ func (s *SQLite) RecordWithMetadata(
 	if err != nil {
 		return false, err
 	}
+	if runtimeState != nil {
+		runtimeState, err = checkpointWithoutRelayHints(runtimeState)
+		if err != nil {
+			return false, fmt.Errorf("sanitize runtime checkpoint: %w", err)
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -186,8 +192,44 @@ func reportWithoutRelayEndpoints(report domain.ReportEnvelope) domain.ReportEnve
 	for index := range report.RelaySessions {
 		report.RelaySessions[index].Source.Endpoint = ""
 		report.RelaySessions[index].Target.Endpoint = ""
+		report.RelaySessions[index].Source.DiscoShort = relayHintPresence(report.RelaySessions[index].Source.DiscoShort)
+		report.RelaySessions[index].Target.DiscoShort = relayHintPresence(report.RelaySessions[index].Target.DiscoShort)
 	}
 	return report
+}
+
+func relayHintPresence(value string) string {
+	if value == "" {
+		return ""
+	}
+	return "present"
+}
+
+func checkpointWithoutRelayHints(payload []byte) ([]byte, error) {
+	var value any
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return nil, err
+	}
+	removeRelayHints(value)
+	return json.Marshal(value)
+}
+
+func removeRelayHints(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			switch key {
+			case "endpoint", "sourceEndpoint", "targetEndpoint", "discoShort":
+				delete(value, key)
+			default:
+				removeRelayHints(child)
+			}
+		}
+	case []any:
+		for _, child := range value {
+			removeRelayHints(child)
+		}
+	}
 }
 
 func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffic) error {
@@ -218,7 +260,9 @@ func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffi
 
 func recordHistoryMetadata(ctx context.Context, tx *sql.Tx, metadata domain.HistoryMetadata, updatedAt time.Time) error {
 	for _, node := range metadata.Nodes {
-		identity, err := json.Marshal(node.NodeIdentity)
+		identity, err := json.Marshal(storedNodeIdentity{
+			NodeIdentity: node.NodeIdentity, IdentityStatus: node.IdentityStatus,
+		})
 		if err != nil {
 			return err
 		}
@@ -376,13 +420,17 @@ func (s *SQLite) SaveState(ctx context.Context, payload []byte, updatedAt time.T
 }
 
 func (s *SQLite) SaveCheckpoint(ctx context.Context, payload []byte, lastReportRowID int64, updatedAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
+	sanitized, err := checkpointWithoutRelayHints(payload)
+	if err != nil {
+		return fmt.Errorf("sanitize runtime checkpoint: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
         INSERT INTO runtime_state(singleton, payload, updated_at, last_report_rowid) VALUES (1, ?, ?, ?)
         ON CONFLICT(singleton) DO UPDATE SET
           payload = excluded.payload,
           updated_at = excluded.updated_at,
           last_report_rowid = excluded.last_report_rowid`,
-		payload, formatTime(updatedAt), lastReportRowID)
+		sanitized, formatTime(updatedAt), lastReportRowID)
 	return err
 }
 
