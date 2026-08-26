@@ -63,12 +63,15 @@ if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
 
 $ServerUrl = ""
 $Socket = ""
+$RelayTelemetry = ""
 if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
     foreach ($Line in [IO.File]::ReadAllLines($ConfigPath)) {
         if ($Line -match '^TAILPATH_SERVER_URL=(.*)$') {
             $ServerUrl = $Matches[1]
         } elseif ($Line -match '^TAILPATH_SOCKET=(.*)$') {
             $Socket = $Matches[1]
+        } elseif ($Line -match '^TAILPATH_RELAY_TELEMETRY=(.*)$') {
+            $RelayTelemetry = $Matches[1]
         }
     }
 }
@@ -82,6 +85,10 @@ if ($ServerUrl) {
 if ($Socket) {
     $CollectorArguments.Add("--socket")
     $CollectorArguments.Add($Socket)
+}
+if ($RelayTelemetry) {
+    $CollectorArguments.Add("--relay-telemetry")
+    $CollectorArguments.Add($RelayTelemetry)
 }
 
 try {

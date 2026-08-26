@@ -18,6 +18,14 @@ integration uses a fake source/reporter, HTTP tests use an in-process server,
 and the collector hello is decoded through the OpenAPI-generated Go model.
 Frontend unit tests use Vitest.
 
+Sparse relay collector tests prove that first samples, resets, removals,
+reappearance, LocalAPI degradation, report outages, and reconnects do not
+create synthetic catch-up traffic. They also inject endpoint, session, and
+disco text into adapter errors and assert that collector logs do not contain
+those details. Native Linux and macOS installer fixtures preserve the explicit
+auto/off configuration path; the hosted Windows matrix covers its PowerShell
+runner.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,

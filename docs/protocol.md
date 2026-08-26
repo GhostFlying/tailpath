@@ -71,6 +71,15 @@ traffic. LocalAPI and report failures use jittered exponential retry from two
 seconds through a sixty-second base delay. An accepted complete hello resets
 the retry state.
 
+Peer Relay sampling is capability-detected independently from normal status.
+Unsupported, disabled, or transiently failing relay telemetry cannot stop
+ordinary peer collection. A new session, the first healthy sample after any
+gap or reconnect, a counter reset, and a removed session that later returns all
+establish baselines. The collector reports only positive deltas between
+consecutive healthy snapshots and keeps no relay catch-up queue. A relay report
+transport failure uses the normal reconnect path; the accepted observer hello
+also resets every relay baseline.
+
 ## Inventory generations
 
 An inventory generation is a normalized content hash over the observer and its

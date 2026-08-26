@@ -19,8 +19,9 @@ import (
 
 func TestCollectorConfigPrecedence(t *testing.T) {
 	environment := map[string]string{
-		"TAILPATH_SERVER_URL": "http://environment:8080",
-		"TAILPATH_SOCKET":     "/environment/tailscaled.sock",
+		"TAILPATH_SERVER_URL":      "http://environment:8080",
+		"TAILPATH_SOCKET":          "/environment/tailscaled.sock",
+		"TAILPATH_RELAY_TELEMETRY": "off",
 	}
 	getenv := func(key string) string { return environment[key] }
 
@@ -31,10 +32,11 @@ func TestCollectorConfigPrecedence(t *testing.T) {
 		wantServer string
 		wantSocket string
 		wantCheck  bool
+		wantRelay  string
 	}{
-		{name: "built-in defaults", getenv: func(string) string { return "" }, wantServer: "http://tailpath:8080"},
-		{name: "environment", getenv: getenv, wantServer: "http://environment:8080", wantSocket: "/environment/tailscaled.sock"},
-		{name: "flags", arguments: []string{"--server=http://flag:8080", "--socket=/flag/tailscaled.sock", "--check"}, getenv: getenv, wantServer: "http://flag:8080", wantSocket: "/flag/tailscaled.sock", wantCheck: true},
+		{name: "built-in defaults", getenv: func(string) string { return "" }, wantServer: "http://tailpath:8080", wantRelay: "auto"},
+		{name: "environment", getenv: getenv, wantServer: "http://environment:8080", wantSocket: "/environment/tailscaled.sock", wantRelay: "off"},
+		{name: "flags", arguments: []string{"--server=http://flag:8080", "--socket=/flag/tailscaled.sock", "--relay-telemetry=auto", "--check"}, getenv: getenv, wantServer: "http://flag:8080", wantSocket: "/flag/tailscaled.sock", wantCheck: true, wantRelay: "auto"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -42,8 +44,8 @@ func TestCollectorConfigPrecedence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.serverURL != test.wantServer || got.socket != test.wantSocket || got.check != test.wantCheck {
-				t.Fatalf("config = %#v, want server=%q socket=%q check=%v", got, test.wantServer, test.wantSocket, test.wantCheck)
+			if got.serverURL != test.wantServer || got.socket != test.wantSocket || got.check != test.wantCheck || got.relayTelemetry != test.wantRelay {
+				t.Fatalf("config = %#v, want server=%q socket=%q check=%v relay=%q", got, test.wantServer, test.wantSocket, test.wantCheck, test.wantRelay)
 			}
 		})
 	}
@@ -56,29 +58,69 @@ func TestCollectorCheckReadsOnePassiveSnapshot(t *testing.T) {
 		PeerCount: 2,
 	}}
 	var output bytes.Buffer
-	if err := checkCollector(context.Background(), source, &output); err != nil {
+	if err := checkCollector(context.Background(), source, source, "auto", &output); err != nil {
 		t.Fatal(err)
 	}
 	if source.calls != 1 {
 		t.Fatalf("Snapshot calls = %d, want one", source.calls)
 	}
+	if source.relayCalls != 1 || bytes.Contains(output.Bytes(), []byte("private-session")) {
+		t.Fatalf("relay check leaked session details or skipped capability read: calls=%d output=%s", source.relayCalls, output.Bytes())
+	}
 	var result collector.Diagnostic
 	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 		t.Fatalf("check output is not JSON: %v", err)
 	}
-	if result.Self.StableNodeID != "self-id" || result.OS == "" || result.PeerCount != 2 {
+	if result.Self.StableNodeID != "self-id" || result.OS == "" || result.PeerCount != 2 ||
+		result.RelayCapability != collector.RelayEnabled || !result.RelayEnabled || result.RelaySessionCount != 1 {
 		t.Fatalf("check result = %#v", result)
+	}
+}
+
+func TestCollectorCheckOffSkipsRelayLocalAPI(t *testing.T) {
+	source := &checkSource{diagnostic: collector.Diagnostic{
+		Self: domain.NodeIdentity{StableNodeID: "self-id"}, OS: "linux",
+	}}
+	var output bytes.Buffer
+	if err := checkCollector(context.Background(), source, source, "off", &output); err != nil {
+		t.Fatal(err)
+	}
+	if source.relayCalls != 0 {
+		t.Fatalf("relay LocalAPI calls = %d, want zero", source.relayCalls)
+	}
+	var result collector.Diagnostic
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.RelayCapability != collector.RelayOff || result.RelayEnabled || result.RelaySessionCount != 0 {
+		t.Fatalf("off diagnostic = %#v", result)
+	}
+}
+
+func TestCollectorConfigRejectsUnknownRelayMode(t *testing.T) {
+	if _, err := parseCollectorConfig([]string{"--relay-telemetry=on"}, func(string) string { return "" }); err == nil {
+		t.Fatal("unknown relay telemetry mode was accepted")
 	}
 }
 
 type checkSource struct {
 	diagnostic collector.Diagnostic
 	calls      int
+	relayCalls int
+	relayError error
 }
 
 func (s *checkSource) Diagnostic(context.Context) (collector.Diagnostic, error) {
 	s.calls++
 	return s.diagnostic, nil
+}
+
+func (s *checkSource) PeerRelaySnapshot(context.Context) (collector.RelaySnapshot, error) {
+	s.relayCalls++
+	return collector.RelaySnapshot{
+		Capability: collector.RelayEnabled,
+		Sessions:   []collector.RelaySessionSnapshot{{SessionID: "private-session"}},
+	}, s.relayError
 }
 
 func TestResolveAuthKey(t *testing.T) {

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"time"
 
 	"github.com/GhostFlying/tailpath/internal/domain"
@@ -9,11 +10,16 @@ import (
 type RelayCapability string
 
 const (
+	RelayOff              RelayCapability = "off"
 	RelayUnsupported      RelayCapability = "unsupported"
 	RelayDisabled         RelayCapability = "disabled"
 	RelayEnabled          RelayCapability = "enabled"
 	RelayTransientFailure RelayCapability = "transient_failure"
 )
+
+type RelaySource interface {
+	PeerRelaySnapshot(context.Context) (RelaySnapshot, error)
+}
 
 type RelaySnapshot struct {
 	CollectedAt time.Time

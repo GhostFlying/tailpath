@@ -19,7 +19,7 @@ try {
         -Destination (Join-Path $TestDirectory "run-collector.ps1")
     [IO.File]::WriteAllText(
         (Join-Path $TestDirectory "collector.env"),
-        "TAILPATH_SERVER_URL=http://tailpath:8080`n",
+        "TAILPATH_SERVER_URL=http://tailpath:8080`nTAILPATH_RELAY_TELEMETRY=off`n",
         [Text.UTF8Encoding]::new($false)
     )
 

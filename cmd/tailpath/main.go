@@ -352,25 +352,27 @@ func runCollector(arguments []string, logger *slog.Logger) error {
 	}
 	source := tailscaleadapter.NewLocalSource(config.socket)
 	if config.check {
-		return checkCollector(context.Background(), source, os.Stdout)
+		return checkCollector(context.Background(), source, source, config.relayTelemetry, os.Stdout)
 	}
 	reporter, err := collector.NewHTTPReporter(config.serverURL, nil)
 	if err != nil {
 		return err
 	}
 	runner := collector.New(source, reporter, collector.Options{
-		Logger: logger,
+		Logger: logger, RelayTelemetry: config.relayTelemetry == "auto",
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	logger.Info("collector started", "server", config.serverURL, "sample_interval", 2*time.Second)
+	logger.Info("collector started", "server", config.serverURL, "sample_interval", 2*time.Second,
+		"relay_telemetry", config.relayTelemetry)
 	return runner.Run(ctx)
 }
 
 type collectorConfig struct {
-	serverURL string
-	socket    string
-	check     bool
+	serverURL      string
+	socket         string
+	check          bool
+	relayTelemetry string
 }
 
 func parseCollectorConfig(arguments []string, getenv func(string) string) (collectorConfig, error) {
@@ -381,6 +383,11 @@ func parseCollectorConfig(arguments []string, getenv func(string) string) (colle
 	}
 	serverURL := flags.String("server", serverDefault, "Tailpath server URL on the Tailnet")
 	socket := flags.String("socket", getenv("TAILPATH_SOCKET"), "tailscaled LocalAPI socket")
+	relayDefault := getenv("TAILPATH_RELAY_TELEMETRY")
+	if relayDefault == "" {
+		relayDefault = "auto"
+	}
+	relayTelemetry := flags.String("relay-telemetry", relayDefault, "Peer Relay telemetry mode (auto or off)")
 	check := flags.Bool("check", false, "read LocalAPI status once without reporting")
 	if err := flags.Parse(arguments); err != nil {
 		return collectorConfig{}, err
@@ -388,13 +395,37 @@ func parseCollectorConfig(arguments []string, getenv func(string) string) (colle
 	if flags.NArg() != 0 {
 		return collectorConfig{}, fmt.Errorf("collector does not accept positional arguments")
 	}
-	return collectorConfig{serverURL: *serverURL, socket: *socket, check: *check}, nil
+	if *relayTelemetry != "auto" && *relayTelemetry != "off" {
+		return collectorConfig{}, errors.New("relay-telemetry must be auto or off")
+	}
+	return collectorConfig{
+		serverURL: *serverURL, socket: *socket, check: *check, relayTelemetry: *relayTelemetry,
+	}, nil
 }
 
-func checkCollector(ctx context.Context, source collector.DiagnosticSource, output io.Writer) error {
+func checkCollector(
+	ctx context.Context,
+	source collector.DiagnosticSource,
+	relaySource collector.RelaySource,
+	relayTelemetry string,
+	output io.Writer,
+) error {
 	result, err := source.Diagnostic(ctx)
 	if err != nil {
 		return fmt.Errorf("read local status: %w", err)
+	}
+	if relayTelemetry == "off" {
+		result.RelayCapability = collector.RelayOff
+	} else {
+		relay, relayErr := relaySource.PeerRelaySnapshot(ctx)
+		result.RelayCapability = relay.Capability
+		if relayErr != nil {
+			result.RelayCapability = collector.RelayTransientFailure
+		}
+		result.RelayEnabled = result.RelayCapability == collector.RelayEnabled
+		if result.RelayEnabled {
+			result.RelaySessionCount = len(relay.Sessions)
+		}
 	}
 	if err := json.NewEncoder(output).Encode(result); err != nil {
 		return fmt.Errorf("write collector check: %w", err)

@@ -40,6 +40,7 @@ services:
       - collector
       - --server=${TAILPATH_SERVER_URL:-http://tailpath:8080}
       - --socket=/var/run/tailscale/tailscaled.sock
+      - --relay-telemetry=${TAILPATH_RELAY_TELEMETRY:-auto}
     network_mode: host
     # The host socket group varies across Linux installations. The collector
     # runs as root only to open this read-only API and has no other host mount.

@@ -76,10 +76,12 @@ reordered, reset, malformed, unsupported, and ambiguous-disco fixtures behind
 a fake LocalAPI transport that allows only passive status reads. Issue #90
 defines session-scoped clients and sanitized relay provenance. Issue #86 reads
 the two passive LocalAPI routes into stable Tailpath runtime snapshots with
-typed capability states and unique disco enrichment. The collector does not
-yet calculate sparse relay deltas or send relay reports.
+typed capability states and unique disco enrichment. Issue #83 adds isolated
+auto/off sampling, baseline/reset handling, sparse relay delta reports, bounded
+diagnostics, and native runner configuration. Server-side scoped reconciliation
+is not yet implemented.
 
 ## Next step
 
-Complete #86, then implement #83 sparse relay baselines, reset handling, and
-report delivery in the existing collector process.
+Complete #83, then implement #87 canonical scoped-client reconciliation, VNI
+correlation, and third-party traffic fallback.

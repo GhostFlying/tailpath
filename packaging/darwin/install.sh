@@ -64,6 +64,7 @@ if test ! -e "$config_path"; then
   umask 077
   {
     printf 'TAILPATH_SERVER_URL=%s\n' "$server_url"
+    printf 'TAILPATH_RELAY_TELEMETRY=auto\n'
     if test -n "$socket"; then
       printf 'TAILPATH_SOCKET=%s\n' "$socket"
     fi
