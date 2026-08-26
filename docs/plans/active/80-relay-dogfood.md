@@ -64,17 +64,28 @@ evidence, but is not a prerequisite for validating the v0.3 telemetry path.
   observation agreed with more detailed relay provenance. Issue #107 and PR
   #108 contain the isolated fix and regression coverage; the corrected branch
   runtime passed the three-party reproduction.
-- Pending: merge #108, select its immutable main artifact, and repeat the final
-  artifact-bound matrix before accepting the ledger.
+- PR #108 merged, and immutable `main` artifact `73556122c84c` passed the final
+  Direct, Peer Relay provenance, restart, recovery, History, and relay-only
+  privacy matrix. The retained ledger records the exact artifact bindings and
+  sanitized outcomes.
+- Relay restart caused a real temporary DERP fallback before Peer Relay
+  returned after 25 seconds. The recovery gate now requires bounded passive
+  convergence followed by a new Peer Relay workload rather than accepting the
+  fallback transfer.
+- The original all-underlay database scan conflicted with the documented
+  durability of ordinary Direct endpoints. A passive endpoint used only in a
+  relay session now provides an unambiguous storage-sanitization canary.
 
 ## Current state
 
-The repeatable harness and preliminary real-control-plane run are complete.
-The reusable credential files were zeroed immediately after enrollment, and no
-production or long-lived node was modified. The final immutable-main run waits
-only for the independently scoped reconciliation fix in #108.
+The repeatable harness and final immutable-main run are complete. The reusable
+credential files were zeroed immediately after enrollment, and no production
+or long-lived node was modified. Issue #109 tracks the separate product choice
+for classifying relay-observed collector delivery traffic; it is not a v0.3
+telemetry correctness blocker.
 
 ## Next step
 
-Merge #108, rebase this PR, rerun the exact immutable main image in the existing
-isolated Tailnet, accept the redacted ledger, and destroy all ephemeral state.
+Run final repository checks, obtain independent review, mark PR #100 ready, and
+rebase-merge it. Revoke the reusable Tailnet key after the ephemeral lab is
+destroyed.
