@@ -55,16 +55,20 @@ endpoint.
   and production-build gates. Its four-worker browser run exposed the existing
   Vite-proxy/SSE starvation in the mobile navigation test; the same test passed
   with one worker. Hosted CI remains the authoritative full gate.
-- Pending: hosted PR checks and independent finding closure.
+- Passed: hosted `make check`, native collector, and image jobs for the first
+  implementation commit.
+- In progress: strict relay gate and independent collision-finding closure on
+  the final implementation head.
 
 ## Current state
 
 The stable-key, enrichment-degradation, and canonical-direction fixes are
 implemented with focused and cross-layer restart coverage. Protocol and
 security documentation record the trusted opaque-ID and extreme VNI reuse
-residual risks.
+residual risks. Independent follow-up found one collision ambiguity; the
+adapter and aggregator now reject that evidence without producing a self-edge.
 
 ## Next step
 
-Run the full repository gate, open the stacked review PR, and close the
-independent findings after hosted checks pass.
+Run focused and hosted gates on the collision fix, then close the independent
+finding before making the PR ready.

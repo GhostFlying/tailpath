@@ -330,6 +330,25 @@ func TestRelaySessionNormalizesIdentityStatusWithCanonicalDirection(t *testing.T
 	}
 }
 
+func TestRelaySessionRejectsCanonicalSelfEdge(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	shared := identity(node("same", "Same"))
+	report := relayReport(1, "session", 7,
+		domain.RelaySessionClient{SessionClientID: "left", Identity: shared},
+		domain.RelaySessionClient{SessionClientID: "right", Identity: shared},
+		200, 80,
+	)
+	result, err := aggregator.ApplyAt(report, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Traffic) != 0 || len(aggregator.Snapshot().Edges) != 0 {
+		t.Fatalf("ambiguous relay identity created self-edge: result=%#v topology=%#v",
+			result, aggregator.Snapshot())
+	}
+}
+
 func TestRelaySequenceGapRequestsResyncWithoutDroppingSession(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })
