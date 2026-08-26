@@ -114,8 +114,8 @@ func TestRelaySessionIngestPreservesThirdPartyProvenance(t *testing.T) {
 		Sequence: 1, CollectedAt: at, Kind: domain.ReportRelaySessionUpdate,
 		RelaySessions: []domain.RelaySessionObservation{{
 			Relay:     domain.NodeIdentity{StableNodeID: "relay", Hostname: "Relay-HZ"},
-			Source:    domain.NodeIdentity{StableNodeID: "a", Hostname: "A"},
-			Target:    domain.NodeIdentity{StableNodeID: "b", Hostname: "B"},
+			Source:    domain.RelaySessionClient{SessionClientID: "left", Identity: identityPtr(domain.NodeIdentity{StableNodeID: "a", Hostname: "A"})},
+			Target:    domain.RelaySessionClient{SessionClientID: "right", Identity: identityPtr(domain.NodeIdentity{StableNodeID: "b", Hostname: "B"})},
 			SessionID: "session", VNI: 7,
 			SourceToTargetBytes: 1200, TargetToSourceBytes: 400,
 			SourceToTargetDelta: 1200, TargetToSourceDelta: 400,
@@ -156,6 +156,10 @@ func TestRelaySessionIngestPreservesThirdPartyProvenance(t *testing.T) {
 	if relayID == "" || topology.Edges[0].Observations[0].ObserverID != relayID {
 		t.Fatalf("relay provenance = %#v, relay ID = %q", topology.Edges[0].Observations, relayID)
 	}
+}
+
+func identityPtr(value domain.NodeIdentity) *domain.NodeIdentity {
+	return &value
 }
 
 func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {

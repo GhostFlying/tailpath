@@ -169,13 +169,11 @@ export interface components {
         RelaySessionObservation: {
             /** @description The relay observer; stableNodeId is required by the ingest contract. */
             relay: components["schemas"]["NodeIdentity"];
-            source: components["schemas"]["NodeIdentity"];
-            target: components["schemas"]["NodeIdentity"];
+            source: components["schemas"]["RelaySessionClient"];
+            target: components["schemas"]["RelaySessionClient"];
             sessionId: string;
             /** Format: int64 */
             vni: number;
-            sourceEndpoint?: string;
-            targetEndpoint?: string;
             /** Format: int64 */
             sourceToTargetBytes: number;
             /** Format: int64 */
@@ -189,11 +187,23 @@ export interface components {
             /** Format: date-time */
             lastActive: string;
         };
+        /** @description One endpoint of a relay session. sessionClientId, discoShort, and endpoint are scoped hints and never global canonical identity aliases. */
+        RelaySessionClient: {
+            sessionClientId: string;
+            identity?: components["schemas"]["NodeIdentity"];
+            discoShort?: string;
+            /** @description Current underlay endpoint; accepted only as volatile provenance. */
+            endpoint?: string;
+        };
+        /** @enum {string} */
+        IdentityStatus: "resolved" | "partial" | "anonymous" | "conflict";
         PathObservation: {
             kind: components["schemas"]["PathKind"];
             directEndpoint?: string;
             derpRegion?: string;
             peerRelayStableNodeId?: string;
+            /** Format: int64 */
+            peerRelayVni?: number;
         };
         /** @enum {string} */
         PathKind: "direct" | "derp" | "peer_relay" | "unknown";
@@ -223,6 +233,7 @@ export interface components {
             /** Format: date-time */
             lastEvidenceAt: string;
             clockSkewed: boolean;
+            identityStatus?: components["schemas"]["IdentityStatus"];
         };
         TopologyEdge: {
             id: string;
@@ -248,6 +259,15 @@ export interface components {
             /** Format: date-time */
             receivedAt: string;
             clockSkewed: boolean;
+            relaySession?: components["schemas"]["RelaySessionProvenance"];
+        };
+        /** @description Sanitized third-party provenance; underlay endpoints are never exposed. */
+        RelaySessionProvenance: {
+            sessionId: string;
+            /** Format: int64 */
+            vni: number;
+            sourceIdentityStatus: components["schemas"]["IdentityStatus"];
+            targetIdentityStatus: components["schemas"]["IdentityStatus"];
         };
         ObserverState: {
             id: string;
@@ -290,6 +310,7 @@ export interface components {
             hostname?: string;
             dnsName?: string;
             os?: string;
+            identityStatus?: components["schemas"]["IdentityStatus"];
         };
         HistoryNodes: {
             nodes: components["schemas"]["HistoryNodeReference"][];

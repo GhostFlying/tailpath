@@ -6,8 +6,10 @@ time-valid Tailscale IP. MagicDNS, hostname, and reported operating system are
 display/search metadata and never identity aliases.
 
 Resolution prefers StableNodeID, then NodeID/node key, disco key, time-valid
-Tailscale IP, and relay session correlation. New aliases merge placeholders into
-the existing opaque node and migrate current edge references. A current strong
+Tailscale IP, and scoped relay session correlation. A relay session client ID,
+short disco hint, or underlay endpoint is never inserted into the global alias
+map. New strong aliases merge placeholders into the existing opaque node and
+migrate current edge references. A current strong
 identity can rebind an IP previously associated with a different stable node.
 Unresolved identities remain placeholders; hostname-only observations are
 invalid.
@@ -33,10 +35,16 @@ separately. A-to-B prefers A's TX delta and falls back to B's RX delta, then to
 third-party Peer Relay evidence; the values from independent provenance are
 never added. The reverse direction applies the symmetric priority.
 
-A relay session names relay observer R and endpoints A and B. It creates only
-the A-B logical edge, with R retained as provenance and as the explicit relay
-node. Session ID, VNI, endpoint attributes, and cumulative counters remain in
-the accepted raw report for later relay-specific correlation.
+A relay session names relay observer R and scoped clients A and B. It creates
+only the A-B logical edge, with R retained as provenance and as the explicit
+relay node. Session ID, VNI, cumulative counters, and identity-resolution status
+remain as sanitized provenance. Underlay endpoints exist only while processing
+current runtime evidence and are stripped before every durable representation.
+
+Relay clients are `resolved` when strong canonical evidence identifies them,
+`partial` when only scoped correlation hints exist, `anonymous` when no identity
+hint exists, and `conflict` when evidence points at incompatible canonical
+nodes. Missing status in older payloads remains valid.
 
 The latest server-received fresh observation selects `peer_relay`, `direct`,
 `derp`, or `unknown`. Path specificity only breaks receive-time ties.

@@ -73,12 +73,12 @@ underlay endpoints.
 The v0.3 milestone, umbrella issue, subsystem issues, and governance PR #91
 exist. Issue #88 records Tailscale v1.102.2-shaped disabled, empty, active,
 reordered, reset, malformed, unsupported, and ambiguous-disco fixtures behind
-a fake LocalAPI transport that allows only passive status reads. No production
-collector reads Peer Relay server telemetry yet, endpoint-side VNI is still
-discarded, and relay-scoped identity does not exist.
+a fake LocalAPI transport that allows only passive status reads. Issue #90 is
+defining session-scoped clients and sanitized relay provenance. No production
+collector reads Peer Relay server telemetry yet and endpoint-side VNI is still
+discarded.
 
 ## Next step
 
-Merge PR #91 and the stacked #88 fixture PR, then implement #90 before adapter
-or runtime behavior so all subsequent work is grounded in recorded upstream
-shapes and a generated Tailpath-owned contract.
+Complete #90 before adapter or runtime behavior so all subsequent work is
+grounded in recorded upstream shapes and a generated Tailpath-owned contract.

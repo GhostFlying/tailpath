@@ -58,6 +58,43 @@ func TestRecordIsIdempotentAndBuildsLogicalHistory(t *testing.T) {
 	}
 }
 
+func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	at := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	report := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "relay", ReporterInstanceID: "reporter",
+		Sequence: 1, CollectedAt: at, Kind: domain.ReportRelaySessionUpdate,
+		RelaySessions: []domain.RelaySessionObservation{{
+			Relay:     domain.NodeIdentity{StableNodeID: "relay"},
+			Source:    domain.RelaySessionClient{SessionClientID: "left", Endpoint: "192.0.2.10:41641"},
+			Target:    domain.RelaySessionClient{SessionClientID: "right", Endpoint: "[2001:db8::10]:41641"},
+			SessionID: "session", VNI: 7, SourceToTargetDelta: 1,
+			SampleDurationMS: 2000, LastActive: at,
+		}},
+	}
+	if _, err := database.Record(context.Background(), report, at, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	reports, err := database.RestoreReports(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("restored reports = %d, want one", len(reports))
+	}
+	stored := reports[0].Report.RelaySessions[0]
+	if stored.Source.Endpoint != "" || stored.Target.Endpoint != "" {
+		t.Fatalf("relay endpoints persisted: %#v", stored)
+	}
+	if report.RelaySessions[0].Source.Endpoint == "" || report.RelaySessions[0].Target.Endpoint == "" {
+		t.Fatal("journal sanitization mutated the in-memory report")
+	}
+}
+
 func TestInMemoryDatabaseSurvivesPooledConnectionReplacement(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {

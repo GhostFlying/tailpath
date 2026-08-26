@@ -285,9 +285,9 @@ components:
           $ref: '#/components/schemas/NodeIdentity'
           description: The relay observer; stableNodeId is required by the ingest contract.
         source:
-          $ref: '#/components/schemas/NodeIdentity'
+          $ref: '#/components/schemas/RelaySessionClient'
         target:
-          $ref: '#/components/schemas/NodeIdentity'
+          $ref: '#/components/schemas/RelaySessionClient'
         sessionId:
           type: string
           minLength: 1
@@ -295,10 +295,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-        sourceEndpoint:
-          type: string
-        targetEndpoint:
-          type: string
+          maximum: 16777215
         sourceToTargetBytes:
           type: integer
           format: int64
@@ -322,6 +319,28 @@ components:
         lastActive:
           type: string
           format: date-time
+    RelaySessionClient:
+      type: object
+      required: [sessionClientId]
+      description: >-
+        One endpoint of a relay session. sessionClientId, discoShort, and endpoint
+        are scoped hints and never global canonical identity aliases.
+      properties:
+        sessionClientId:
+          type: string
+          minLength: 1
+        identity:
+          $ref: '#/components/schemas/NodeIdentity'
+        discoShort:
+          type: string
+          minLength: 1
+        endpoint:
+          type: string
+          minLength: 1
+          description: Current underlay endpoint; accepted only as volatile provenance.
+    IdentityStatus:
+      type: string
+      enum: [resolved, partial, anonymous, conflict]
     PathObservation:
       type: object
       required: [kind]
@@ -334,6 +353,11 @@ components:
           type: string
         peerRelayStableNodeId:
           type: string
+        peerRelayVni:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 16777215
     PathKind:
       type: string
       enum: [direct, derp, peer_relay, unknown]
@@ -393,6 +417,8 @@ components:
               format: date-time
             clockSkewed:
               type: boolean
+            identityStatus:
+              $ref: '#/components/schemas/IdentityStatus'
     TopologyEdge:
       type: object
       required: [id, source, target, path, state, aToBBytesPerSecond, bToABytesPerSecond, lastActive, observations]
@@ -443,6 +469,24 @@ components:
           format: date-time
         clockSkewed:
           type: boolean
+        relaySession:
+          $ref: '#/components/schemas/RelaySessionProvenance'
+    RelaySessionProvenance:
+      type: object
+      required: [sessionId, vni, sourceIdentityStatus, targetIdentityStatus]
+      description: Sanitized third-party provenance; underlay endpoints are never exposed.
+      properties:
+        sessionId:
+          type: string
+        vni:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 16777215
+        sourceIdentityStatus:
+          $ref: '#/components/schemas/IdentityStatus'
+        targetIdentityStatus:
+          $ref: '#/components/schemas/IdentityStatus'
     ObserverState:
       type: object
       required: [id, hostname, online, lastSeen, lastCollectedAt, clockSkewMs, clockSkewed]
@@ -531,6 +575,8 @@ components:
           type: string
         os:
           type: string
+        identityStatus:
+          $ref: '#/components/schemas/IdentityStatus'
     HistoryNodes:
       type: object
       required: [nodes]

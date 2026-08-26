@@ -20,9 +20,12 @@ The server uses a dedicated Tailnet identity by default. Sharing a tailscaled
 identity with another service is an explicit degraded mode because aggregate
 peer counters cannot separate Tailpath traffic from business traffic.
 
-Tailpath never logs auth keys or complete report bodies. Public endpoints,
-node identifiers, and traffic history remain in the local SQLite database.
-There is no outbound product telemetry.
+Tailpath never logs auth keys or complete report bodies. Public endpoints from
+ordinary direct-path observations, node identifiers, and traffic history remain
+in the local SQLite database. Peer Relay underlay endpoints are more narrowly
+scoped: they may be used during current report processing but are stripped
+before the report journal, checkpoint, path events, History, API output, and
+logs. There is no outbound product telemetry.
 
 Container deployments should pass reusable auth keys through
 `TS_AUTHKEY=file:/run/secrets/...`, then zero the secret after enrollment. The

@@ -84,15 +84,18 @@ type edgeState struct {
 }
 
 type edgeObservation struct {
-	ObserverID  string                 `json:"observerId"`
-	Path        domain.PathObservation `json:"path"`
-	CollectedAt time.Time              `json:"collectedAt"`
-	ReceivedAt  time.Time              `json:"receivedAt"`
-	ClockSkewed bool                   `json:"clockSkewed"`
-	TxRate      float64                `json:"txRate"`
-	RxRate      float64                `json:"rxRate"`
-	AToBRate    float64                `json:"aToBRate,omitempty"`
-	BToARate    float64                `json:"bToARate,omitempty"`
+	ObserverID     string                         `json:"observerId"`
+	Path           domain.PathObservation         `json:"path"`
+	CollectedAt    time.Time                      `json:"collectedAt"`
+	ReceivedAt     time.Time                      `json:"receivedAt"`
+	ClockSkewed    bool                           `json:"clockSkewed"`
+	RelaySession   *domain.RelaySessionProvenance `json:"relaySession,omitempty"`
+	SourceEndpoint string                         `json:"-"`
+	TargetEndpoint string                         `json:"-"`
+	TxRate         float64                        `json:"txRate"`
+	RxRate         float64                        `json:"rxRate"`
+	AToBRate       float64                        `json:"aToBRate,omitempty"`
+	BToARate       float64                        `json:"bToARate,omitempty"`
 }
 
 type ApplyResult struct {
@@ -260,8 +263,8 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			relayID, _ := resolveIdentity(session.Relay)
 			a.touchObserverLocked(relayID, report.CollectedAt, receivedAt)
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, relayID)
-			sourceID, _ := resolveIdentity(session.Source)
-			targetID, _ := resolveIdentity(session.Target)
+			sourceID, _ := resolveIdentity(session.Source.IdentityOrEmpty())
+			targetID, _ := resolveIdentity(session.Target.IdentityOrEmpty())
 			a.touchPeerLocked(sourceID, receivedAt)
 			a.touchPeerLocked(targetID, receivedAt)
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -363,12 +366,22 @@ func (a *Aggregator) applyRelaySessionLocked(
 		a.state.Edges[edgeID] = edge
 	}
 	duration := float64(session.SampleDurationMS) / 1000
-	path := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: session.Relay.StableNodeID}
+	vni := session.VNI
+	path := domain.PathObservation{
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: session.Relay.StableNodeID,
+		PeerRelayVNI: &vni,
+	}
 	observation := edgeObservation{
 		ObserverID: relayID, Path: path, CollectedAt: collectedAt, ReceivedAt: receivedAt,
 		ClockSkewed: a.isClockSkewed(collectedAt, receivedAt),
-		AToBRate:    float64(aToBBytes) / duration,
-		BToARate:    float64(bToABytes) / duration,
+		RelaySession: &domain.RelaySessionProvenance{
+			SessionID: session.SessionID, VNI: session.VNI,
+			SourceIdentityStatus: session.Source.IdentityStatus(),
+			TargetIdentityStatus: session.Target.IdentityStatus(),
+		},
+		SourceEndpoint: session.Source.Endpoint, TargetEndpoint: session.Target.Endpoint,
+		AToBRate: float64(aToBBytes) / duration,
+		BToARate: float64(bToABytes) / duration,
 	}
 	if current, ok := edge.Observations[relayID]; ok && current.ReceivedAt.Equal(receivedAt) && equivalentPath(current.Path, path) {
 		observation.AToBRate += current.AToBRate
@@ -829,6 +842,7 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 		result.Observations = append(result.Observations, domain.ObservationProvenance{
 			ObserverID: observation.ObserverID, Path: observation.Path, CollectedAt: observation.CollectedAt,
 			ReceivedAt: observation.ReceivedAt, ClockSkewed: observation.ClockSkewed,
+			RelaySession: observation.RelaySession,
 		})
 	}
 	aToBCurrent := sourceObservation != nil && now.Sub(sourceObservation.ReceivedAt) <= activeWindow
