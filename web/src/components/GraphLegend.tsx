@@ -1,4 +1,10 @@
-import { Activity, Server, TriangleAlert } from "lucide-react";
+import {
+  Activity,
+  CircleHelp,
+  Link2,
+  Server,
+  TriangleAlert,
+} from "lucide-react";
 
 export function GraphLegend() {
   return (
@@ -54,6 +60,29 @@ export function GraphLegend() {
               <TriangleAlert size={13} />
             </i>{" "}
             Clock skew
+          </span>
+        </div>
+      </div>
+      <div className="legend-section">
+        <strong>Relay identity</strong>
+        <div className="legend-group identity-legend">
+          <span>
+            <i className="legend-identity partial">
+              <Link2 size={12} />
+            </i>{" "}
+            Partial
+          </span>
+          <span>
+            <i className="legend-identity anonymous">
+              <CircleHelp size={12} />
+            </i>{" "}
+            Anonymous
+          </span>
+          <span>
+            <i className="legend-identity conflict">
+              <TriangleAlert size={12} />
+            </i>{" "}
+            Conflict
           </span>
         </div>
       </div>

@@ -70,6 +70,23 @@ const styles: StylesheetCSS[] = [
   { selector: "node.offline", css: { opacity: 0.42 } },
   { selector: "node.dimmed", css: { opacity: 0.18 } },
   {
+    selector: "node.identity-partial, node.identity-anonymous",
+    css: {
+      "border-style": "dashed",
+      "border-color": "#8a6500",
+      "background-color": "#fffdf5",
+    },
+  },
+  {
+    selector: "node.identity-conflict",
+    css: {
+      "border-style": "double",
+      "border-width": 4,
+      "border-color": "#b64141",
+      "background-color": "#fff5f5",
+    },
+  },
+  {
     selector: "node.relay-node",
     css: {
       shape: "round-rectangle",

@@ -10,6 +10,7 @@ import {
 import { memo, useMemo, useState } from "react";
 import type { EdgeHistory, PathKind } from "../api/types";
 import { pathLabel } from "../lib/format";
+import { IdentityBadge } from "../lib/identity";
 import { buildPathTimeline, pathColor } from "./historyMath";
 
 interface Props {
@@ -103,7 +104,7 @@ export const PathTimeline = memo(function PathTimeline({ history }: Props) {
                 const node = nodeByID.get(observation.observerId);
                 return (
                   <div
-                    className="provenance-row"
+                    className={`provenance-row ${observation.relaySession ? "relay-session" : ""}`}
                     role="row"
                     key={`${observation.observerId}:${index}`}
                   >
@@ -125,6 +126,27 @@ export const PathTimeline = memo(function PathTimeline({ history }: Props) {
                     <time dateTime={observation.receivedAt}>
                       {formatTimelineTime(observation.receivedAt, true)}
                     </time>
+                    {observation.relaySession ? (
+                      <div className="history-relay-provenance">
+                        <span>
+                          Relay{" "}
+                          {observation.path.peerRelayStableNodeId ?? "unknown"}
+                        </span>
+                        <span>VNI {observation.relaySession.vni}</span>
+                        <span>
+                          Session{" "}
+                          <code>{observation.relaySession.sessionId}</code>
+                        </span>
+                        <IdentityBadge
+                          status={observation.relaySession.sourceIdentityStatus}
+                          compact
+                        />
+                        <IdentityBadge
+                          status={observation.relaySession.targetIdentityStatus}
+                          compact
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

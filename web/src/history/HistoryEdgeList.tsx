@@ -9,6 +9,7 @@ import {
 import { memo } from "react";
 import type { HistoryEdgePage, HistoryEdgeSummary } from "../api/types";
 import { formatAgo, formatBytes } from "../lib/format";
+import { IdentityBadge } from "../lib/identity";
 import { platformPresentation } from "../lib/platform";
 
 interface Props {
@@ -112,7 +113,11 @@ const HistoryEdgeRow = memo(function HistoryEdgeRow({
             <Activity size={14} aria-label="Selected connection" />
           ) : null}
         </strong>
-        <small className={`path-text ${path.kind}`}>{path.label}</small>
+        <span className="history-row-subline">
+          <small className={`path-text ${path.kind}`}>{path.label}</small>
+          <IdentityBadge status={edge.source.identityStatus} compact />
+          <IdentityBadge status={edge.target.identityStatus} compact />
+        </span>
       </span>
       <span className="history-row-metadata">
         <time dateTime={edge.lastTrafficAt}>
