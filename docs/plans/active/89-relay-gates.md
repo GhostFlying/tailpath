@@ -54,7 +54,9 @@ baseline.
   desktop/mobile baseline passed (two project-specific cases skipped).
 - Sequence-gap resync and durable Direct-to-Peer-Relay transition tests pass.
 - Pending: v0.3 hosted strict workflow dry run.
-- Pending: `make check` and hosted PR checks.
+- `PATH=/tmp/tailpath-go/bin:$PATH CI=1 make check`: passed, including generated
+  files, Go vet/tests, web checks/tests/build, and ordinary desktop/mobile E2E.
+- Pending: hosted PR checks.
 
 ## Current state
 
@@ -64,5 +66,4 @@ unchanged for comparable performance results.
 
 ## Next step
 
-Run repository-wide checks, then open the stacked PR and execute the hosted
-manual workflow.
+Open the stacked PR and execute the hosted manual workflow.
