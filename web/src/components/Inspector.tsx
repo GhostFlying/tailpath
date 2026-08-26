@@ -18,6 +18,7 @@ import type {
 } from "../api/types";
 import { formatAgo, formatRate, nodeLabel, pathLabel } from "../lib/format";
 import { platformPresentation } from "../lib/platform";
+import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
 
 interface Props {
   topology: Topology;
@@ -59,6 +60,11 @@ function EdgeDetails({
 }) {
   const source = topology.nodes.find((node) => node.id === edge.source);
   const target = topology.nodes.find((node) => node.id === edge.target);
+  const relay = edge.path.peerRelayStableNodeId
+    ? topology.nodes.find(
+        (node) => node.stableNodeId === edge.path.peerRelayStableNodeId,
+      )
+    : undefined;
   return (
     <>
       <p className="panel-kicker">Traffic relationship</p>
@@ -79,7 +85,13 @@ function EdgeDetails({
           <Detail label="DERP region" value={edge.path.derpRegion} />
         ) : null}
         {edge.path.peerRelayStableNodeId ? (
-          <Detail label="Relay node" value={edge.path.peerRelayStableNodeId} />
+          <Detail
+            label="Relay node"
+            value={relay ? nodeLabel(relay) : edge.path.peerRelayStableNodeId}
+          />
+        ) : null}
+        {edge.path.peerRelayVni !== undefined ? (
+          <Detail label="Relay VNI" value={String(edge.path.peerRelayVni)} />
         ) : null}
         <Detail
           label="Last active"
@@ -113,7 +125,10 @@ function EdgeDetails({
             (candidate) => candidate.id === observation.observerId,
           );
           return (
-            <div className="evidence-row" key={observation.observerId}>
+            <div
+              className="evidence-row"
+              key={`${observation.observerId}:${observation.relaySession?.sessionId ?? "peer"}`}
+            >
               {observation.clockSkewed ? (
                 <TriangleAlert size={15} aria-label="Runtime clock skew" />
               ) : (
@@ -123,6 +138,22 @@ function EdgeDetails({
                 {observer ? nodeLabel(observer) : observation.observerId}
               </span>
               <small>{pathLabel(observation.path)}</small>
+              {observation.relaySession ? (
+                <div className="relay-evidence-details">
+                  <span>
+                    Session <code>{observation.relaySession.sessionId}</code>
+                  </span>
+                  <span>VNI {observation.relaySession.vni}</span>
+                  <IdentityBadge
+                    status={observation.relaySession.sourceIdentityStatus}
+                    compact
+                  />
+                  <IdentityBadge
+                    status={observation.relaySession.targetIdentityStatus}
+                    compact
+                  />
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -176,7 +207,8 @@ function NodeDetails({
   return (
     <>
       <p className="panel-kicker">Tailnet node</p>
-      <h2>{nodeLabel(node)}</h2>
+      <h2>{unresolvedNodeLabel(node.identityStatus) ?? nodeLabel(node)}</h2>
+      <IdentityBadge status={node.identityStatus} />
       <div className="node-status">
         <PlatformIcon size={17} />
         <span>{platform.label}</span>

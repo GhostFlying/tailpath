@@ -511,6 +511,54 @@ button {
   color: #ffffff;
   background: #16877a;
 }
+.legend-identity {
+  width: 17px;
+  height: 17px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px dashed #8a6500;
+  border-radius: 50%;
+  color: #8a6500;
+  background: #fffdf5;
+}
+.legend-identity.conflict {
+  border: 2px double #b64141;
+  color: #b64141;
+  background: #fff5f5;
+}
+.identity-badge {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cbd2d6;
+  padding: 2px 6px;
+  color: #526067;
+  background: #f7f9f9;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.identity-badge.resolved {
+  border-color: #91c9c1;
+  color: #0e766c;
+  background: #eaf6f4;
+}
+.identity-badge.partial,
+.identity-badge.anonymous {
+  border-style: dashed;
+  border-color: #c7a64e;
+  color: #765900;
+  background: #fff9e8;
+}
+.identity-badge.conflict {
+  border-color: #d19a9a;
+  color: #a13232;
+  background: #fff0f0;
+}
 .legend-clock {
   width: 14px;
   height: 14px;
@@ -703,6 +751,23 @@ button {
   gap: 6px;
   font-size: 11px;
   border-bottom: 1px solid #edf0f1;
+}
+.evidence-row:has(.relay-evidence-details) {
+  padding: 8px 0;
+}
+.relay-evidence-details {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: #69757b;
+  font-size: 9px;
+}
+.relay-evidence-details code {
+  color: #3e4b52;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
 }
 .evidence-row svg {
   color: #6d7a81;

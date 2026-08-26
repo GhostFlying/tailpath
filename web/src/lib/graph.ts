@@ -6,6 +6,7 @@ import type {
   TopologyNode,
 } from "../api/types";
 import { formatCompactRate, nodeLabel } from "./format";
+import { identityPresentation, unresolvedNodeLabel } from "./identity";
 import { platformPresentation } from "./platform";
 
 export const minimumEdgeCenterDistance = 220;
@@ -98,7 +99,7 @@ function nodeElement(
   query: string,
   isPeerRelay: boolean,
 ): ElementDefinition {
-  const label = nodeLabel(node);
+  const label = unresolvedNodeLabel(node.identityStatus) ?? nodeLabel(node);
   const platform = platformPresentation(node.os);
   const iconLayers = nodeIconLayers(node, platform.asset, isPeerRelay);
   const matches =
@@ -117,6 +118,7 @@ function nodeElement(
       dimmed: !matches,
       os: node.os ?? "",
       persistable: true,
+      identityStatus: node.identityStatus ?? "",
       ...iconLayers,
     },
     classes: [
@@ -124,6 +126,7 @@ function nodeElement(
       node.observable ? "runtime-telemetry" : "peer-only",
       node.observable && !node.online ? "offline" : "",
       node.clockSkewed ? "clock-skewed" : "",
+      node.identityStatus ? `identity-${node.identityStatus}` : "",
       matches ? "" : "dimmed",
     ].join(" "),
   };
@@ -146,7 +149,17 @@ function nodeIconLayers(
     positionsX.push(x);
     positionsY.push(y);
   };
-  if (!isPeerRelay) add(platformIcon, "24px", "50%", "46%");
+  const identity = identityPresentation(node.identityStatus);
+  if (!isPeerRelay) {
+    add(
+      node.identityStatus && node.identityStatus !== "resolved" && identity
+        ? identity.asset
+        : platformIcon,
+      "24px",
+      "50%",
+      "46%",
+    );
+  }
   if (node.observable) {
     add(
       "/runtime-telemetry.svg",
@@ -196,6 +209,7 @@ function intermediateFor(
       kind: "peer-relay",
       classes: "relay-node peer-relay",
       nodeID: node?.id,
+      vni: edge.path.peerRelayVni,
     };
   }
   if (edge.path.kind === "unknown") {

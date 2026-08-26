@@ -8,6 +8,7 @@ import {
 import { memo, useMemo } from "react";
 import type { EdgeHistory, HistoryWindow } from "../api/types";
 import { formatAgo, formatBytes, pathLabel } from "../lib/format";
+import { IdentityBadge } from "../lib/identity";
 import { DirectionalTrafficChart } from "./DirectionalTrafficChart";
 import { PathTimeline } from "./PathTimeline";
 
@@ -89,6 +90,17 @@ export const HistoryDetail = memo(function HistoryDetail({
               aria-label="Server reachable"
             />
           </header>
+          {history.source.identityStatus || history.target.identityStatus ? (
+            <div
+              className="history-identity-pair"
+              aria-label="Endpoint identities"
+            >
+              <span>{history.source.label}</span>
+              <IdentityBadge status={history.source.identityStatus} compact />
+              <span>{history.target.label}</span>
+              <IdentityBadge status={history.target.identityStatus} compact />
+            </div>
+          ) : null}
           <div className="detail-window-control" aria-label="History window">
             {windows.map((item) => (
               <button

@@ -189,6 +189,31 @@ describe("buildElements", () => {
     expect(String(rendered?.classes)).not.toContain("device-node");
   });
 
+  it.each([
+    ["partial", "Unresolved client", "/identity-partial.svg"],
+    ["anonymous", "Anonymous client", "/identity-anonymous.svg"],
+    ["conflict", "Identity conflict", "/identity-conflict.svg"],
+  ] as const)(
+    "uses explicit %s relay-client anatomy instead of a platform",
+    (identityStatus, label, asset) => {
+      const fixture = topology();
+      fixture.nodes[0].identityStatus = identityStatus;
+      fixture.nodes[0].stableNodeId = "";
+      fixture.nodes[0].hostname = "";
+      const rendered = buildElements(fixture, {
+        pathFilter: "direct",
+        showRecent: true,
+        query: "",
+      }).find((item) => item.data?.id === "a");
+      expect(rendered?.data?.label).toBe(label);
+      expect(rendered?.data?.backgroundImages).toEqual([
+        asset,
+        "/runtime-telemetry.svg",
+      ]);
+      expect(String(rendered?.classes)).toContain(`identity-${identityStatus}`);
+    },
+  );
+
   it("does not render inventory-only nodes without a visible relationship", () => {
     const fixture = topology();
     fixture.edges = [];
