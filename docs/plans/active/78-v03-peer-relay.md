@@ -50,6 +50,9 @@ underlay endpoints.
    dogfood on a real Linux Peer Relay host.
 10. [#82](https://github.com/GhostFlying/tailpath/issues/82): independent
     read-only review, blocker fixes, and milestone closeout.
+11. [#101](https://github.com/GhostFlying/tailpath/issues/101): stabilize relay
+    client identity, optional enrichment, and directional provenance found by
+    the independent review.
 
 ## Acceptance
 
@@ -93,6 +96,6 @@ development proxy caused concurrent History readiness stalls.
 
 ## Next step
 
-Close issues #103, #105, and #101, land the stacked implementation and gate
-PRs in order, publish the immutable edge artifact from `main`, then complete
-issue #80 real-host dogfood and issue #82 milestone closeout.
+Close issue #101 review findings, land the stacked implementation and gate PRs
+in order, publish the immutable edge artifact from `main`, then complete issue
+#80 real-host dogfood and issue #82 milestone closeout.
