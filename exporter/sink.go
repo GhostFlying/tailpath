@@ -843,10 +843,11 @@ func (s *SnapshotSink) rejectOversized(operation observerOperation) {
 }
 
 func (s *SnapshotSink) rejectOperation(operation observerOperation, err error) {
-	s.config.Logger.Warn("exporter source report rejected", "source", operation.state.registration.key, "error", err)
+	s.config.Logger.Warn("exporter source report rejected", "source", operation.state.registration.key,
+		"error_kind", reportErrorKind(err))
 	if operation.kind == ReportObserverWithdrawal {
 		if operation.state.withdrawing {
-			operation.state.withdrawErr = fmt.Errorf("observer withdrawal rejected: %w", err)
+			operation.state.withdrawErr = fmt.Errorf("observer withdrawal rejected: %w", boundedReportError(err))
 		}
 		operation.state.withdrawals = operation.state.withdrawals[1:]
 		return
@@ -872,11 +873,50 @@ func (s *SnapshotSink) transportFailed(
 	delay := s.retryDelay(transport.failures)
 	transport.nextAttempt = now.Add(delay)
 	if !transport.degraded {
-		s.config.Logger.Warn("exporter transport degraded", "error", err, "retry_in", delay)
+		attributes := []any{"error_kind", reportErrorKind(err), "retry_in", delay}
+		var statusError *HTTPStatusError
+		if errors.As(err, &statusError) {
+			attributes = append(attributes, "http_status", statusError.StatusCode)
+		}
+		s.config.Logger.Warn("exporter transport degraded", attributes...)
 		transport.degraded = true
 	}
 	s.markDisconnected(states)
 	return nil
+}
+
+func reportErrorKind(err error) string {
+	var incompatible *IncompatibleServerError
+	var statusError *HTTPStatusError
+	switch {
+	case errors.As(err, &incompatible):
+		return "incompatible_server"
+	case errors.As(err, &statusError):
+		return "http_status"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	default:
+		return "transport"
+	}
+}
+
+func boundedReportError(err error) error {
+	var incompatible *IncompatibleServerError
+	var statusError *HTTPStatusError
+	switch {
+	case errors.As(err, &incompatible):
+		return &IncompatibleServerError{Reason: incompatible.Reason}
+	case errors.As(err, &statusError):
+		return &HTTPStatusError{StatusCode: statusError.StatusCode, Status: statusError.Status}
+	case errors.Is(err, context.DeadlineExceeded):
+		return context.DeadlineExceeded
+	case errors.Is(err, context.Canceled):
+		return context.Canceled
+	default:
+		return errors.New("report transport failed")
+	}
 }
 
 func (s *SnapshotSink) markDisconnected(states map[string]*sourceRuntimeState) {

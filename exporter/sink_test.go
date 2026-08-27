@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,23 @@ import (
 	"testing"
 	"time"
 )
+
+type lockedLogBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *lockedLogBuffer) Write(value []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(value)
+}
+
+func (b *lockedLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
 
 type sourceResult struct {
 	snapshot Snapshot
@@ -163,6 +181,48 @@ func stopSink(t *testing.T, cancel context.CancelFunc, done <-chan error) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("snapshot sink did not stop")
+	}
+}
+
+func TestSnapshotSinkRedactsTransportErrorDetails(t *testing.T) {
+	const canary = "private-tailnet-host.example:8080"
+	reporter := newRecordingSinkReporter()
+	reporter.errors = []error{errors.New(canary)}
+	var logs lockedLogBuffer
+	options := sinkOptions()
+	options.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	sink := newSnapshotSink(reporter, options)
+	source := newChannelSource()
+	source.push(runtimeSnapshot(time.Now(), "runtime-a", 0, 0))
+	if _, err := sink.Register("source-a", source); err != nil {
+		t.Fatal(err)
+	}
+	cancel, done := startSink(t, sink)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(logs.String(), "exporter transport degraded") {
+		time.Sleep(10 * time.Millisecond)
+	}
+	stopSink(t, cancel, done)
+	if !strings.Contains(logs.String(), "error_kind=transport") {
+		t.Fatalf("transport log missing safe classification: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), canary) {
+		t.Fatalf("transport log leaked error detail: %s", logs.String())
+	}
+}
+
+func TestBoundedReportErrorPreservesClassificationWithoutDetails(t *testing.T) {
+	const canary = "private response or endpoint"
+	bounded := boundedReportError(&HTTPStatusError{StatusCode: 403, Status: "403 Forbidden", Message: canary})
+	var statusError *HTTPStatusError
+	if !errors.As(bounded, &statusError) || statusError.StatusCode != 403 {
+		t.Fatalf("bounded error = %#v", bounded)
+	}
+	if strings.Contains(bounded.Error(), canary) {
+		t.Fatalf("bounded status error leaked detail: %v", bounded)
+	}
+	if transport := boundedReportError(errors.New(canary)); strings.Contains(transport.Error(), canary) {
+		t.Fatalf("bounded transport error leaked detail: %v", transport)
 	}
 }
 
