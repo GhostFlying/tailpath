@@ -4,7 +4,13 @@ set -eu
 repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 compose_file="$repository/compose.exporter-dogfood.yaml"
 sanitizer="$repository/scripts/sanitize-exporter-dogfood.sh"
-project=${TAILPATH_EXPORTER_DOGFOOD_PROJECT:-tailpath-exporter-dogfood}
+if test "${TAILPATH_EXPORTER_DOGFOOD_PROJECT+x}" = x; then
+  project_explicit=true
+  project=$TAILPATH_EXPORTER_DOGFOOD_PROJECT
+else
+  project_explicit=false
+  project=tailpath-exporter-dogfood
+fi
 auth_file=${TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE:-/tmp/tailpath-exporter-dogfood-secret/authkey}
 runtime_file=${TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE:-/tmp/tailpath-exporter-dogfood-runtime.env}
 udp_chain=TAILPATH-EXPORTER-DOGFOOD
@@ -14,10 +20,19 @@ fail() {
   exit 1
 }
 
-case "$project" in
-  tailpath-exporter-dogfood|tailpath-exporter-dogfood-*) ;;
-  *) fail "project must use the tailpath-exporter-dogfood prefix" ;;
-esac
+validate_project() {
+  project_value=$1
+  test -n "$project_value" || fail "project is required"
+  test "${#project_value}" -le 63 || fail "project is too long"
+  case "$project_value" in
+    tailpath-exporter-dogfood|tailpath-exporter-dogfood-*) ;;
+    *) fail "project must use the tailpath-exporter-dogfood prefix" ;;
+  esac
+  test "$project_value" != tailpath-exporter-dogfood- || fail "project suffix is required after the separator"
+  case "$project_value" in *[!a-z0-9_-]*) fail "project contains unsafe characters" ;; esac
+}
+
+validate_project "$project"
 
 compose() {
   docker compose -p "$project" -f "$compose_file" "$@"
@@ -81,6 +96,15 @@ validate_secret_file() {
   test "$file_permissions" = 444 || fail "auth key file mode must be 0444 inside its mode-0700 directory"
 }
 
+validate_evidence_dir() {
+  evidence_dir=$1
+  validate_private_path "$evidence_dir" /tmp/tailpath-exporter-dogfood-evidence "evidence directory"
+  test ! -L "$evidence_dir" || fail "evidence directory must not be a symbolic link"
+  test -d "$evidence_dir" || fail "evidence directory is missing"
+  evidence_permissions=$(stat -c '%a' "$evidence_dir" 2>/dev/null || stat -f '%Lp' "$evidence_dir")
+  test "$evidence_permissions" = 700 || fail "evidence directory mode must be 0700"
+}
+
 write_runtime() {
   validate_private_path "$runtime_file" /tmp/tailpath-exporter-dogfood-runtime "runtime state file"
   test ! -L "$runtime_file" || fail "runtime state file must not be a symbolic link"
@@ -88,6 +112,7 @@ write_runtime() {
   chmod 0600 "$temporary"
   {
     echo "TAILPATH_VERSION=$TAILPATH_VERSION"
+    echo "TAILPATH_EXPORTER_DOGFOOD_PROJECT=$project"
     echo "TAILPATH_EXPORTER_DOGFOOD_PREFIX=$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
     echo "TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
     echo "TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$auth_file"
@@ -110,6 +135,13 @@ load_runtime() {
   permissions=$(stat -c '%a' "$runtime_file" 2>/dev/null || stat -f '%Lp' "$runtime_file")
   test "$permissions" = 600 || fail "runtime state file mode must be 0600"
   TAILPATH_VERSION=$(runtime_value TAILPATH_VERSION) || fail "runtime state is missing TAILPATH_VERSION"
+  runtime_project=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_PROJECT) \
+    || fail "runtime state is missing Compose project"
+  validate_project "$runtime_project"
+  if test "$project_explicit" = true && test "$project" != "$runtime_project"; then
+    fail "explicit Compose project does not match runtime state"
+  fi
+  project=$runtime_project
   TAILPATH_EXPORTER_DOGFOOD_PREFIX=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_PREFIX) \
     || fail "runtime state is missing hostname prefix"
   TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_EVIDENCE) \
@@ -118,11 +150,8 @@ load_runtime() {
     || fail "runtime state is missing auth key file"
   validate_tag "$TAILPATH_VERSION"
   validate_prefix "$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
-  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
-    /tmp/tailpath-exporter-dogfood-evidence "runtime evidence directory"
+  validate_evidence_dir "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
   validate_secret_file "$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE"
-  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory became a symbolic link"
-  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory is missing"
   auth_file=$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
   export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX
   export TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
@@ -315,11 +344,7 @@ up() {
   validate_secret_file "$auth_file"
   test -s "$auth_file" || fail "a non-empty reusable ephemeral key file is required"
   TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=${TAILPATH_EXPORTER_DOGFOOD_EVIDENCE:-$(mktemp -d /tmp/tailpath-exporter-dogfood-evidence.XXXXXX)}
-  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
-    /tmp/tailpath-exporter-dogfood-evidence "evidence directory"
-  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must not be a symbolic link"
-  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must already exist"
-  chmod 0700 "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
+  validate_evidence_dir "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
   require_clean_project
   export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
   export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE=false
@@ -446,8 +471,7 @@ lifecycle() {
 }
 
 purge_raw() {
-  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory became a symbolic link"
-  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory is missing"
+  validate_evidence_dir "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
   find "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" -maxdepth 1 -type f \
     \( -name '*.raw.json' -o -name '*.raw.log' \) -delete
   echo "private raw evidence removed"
