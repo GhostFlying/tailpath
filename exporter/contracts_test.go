@@ -48,4 +48,15 @@ func TestPublicContractsRequireNoInternalImports(t *testing.T) {
 	if err != nil || !capabilities.SupportsFeature(exporter.FeatureObserverWithdrawal) {
 		t.Fatalf("capabilities = %#v, err=%v", capabilities, err)
 	}
+
+	sink := exporter.NewSnapshotSink(reporter, exporter.SnapshotSinkOptions{
+		ReporterInstanceID: "00000000-0000-4000-8000-000000000001",
+	})
+	registration, err := sink.Register("runtime-a", source)
+	if err != nil || registration.Key() != "runtime-a" {
+		t.Fatalf("registration = %#v, err=%v", registration, err)
+	}
+	if err := registration.Withdraw(context.Background()); err != nil {
+		t.Fatalf("withdraw before Run: %v", err)
+	}
 }

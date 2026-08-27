@@ -100,6 +100,14 @@ traffic. LocalAPI and report failures use jittered exponential retry from two
 seconds through a sixty-second base delay. An accepted complete hello resets
 the retry state.
 
+Embedded SnapshotSink sources are sampled concurrently with a fixed
+fifteen-second call timeout. The process batches same-kind observer reports for
+100 milliseconds, with no more than 64 observers or 1 MiB of encoded JSON per
+request, while one loop owns the reporter sequence. Invalid, rejected, timed
+out, or oversized source state is isolated from sibling runtimes. A rejected
+multi-observer request is split to locate the failing source. The production
+timing and size limits are not public configuration knobs.
+
 Peer Relay sampling is capability-detected independently from normal status.
 Unsupported, disabled, or transiently failing relay telemetry cannot stop
 ordinary peer collection. A new session, the first healthy sample after any
@@ -162,6 +170,12 @@ path reconciliation. The logical edge remains recent until its normal evidence
 deadline, and persisted traffic, path events, inventory, and canonical identity
 remain unchanged. A later complete hello claims the observer and establishes a
 new counter baseline; it cannot reactivate old traffic.
+
+SnapshotSink retains a pending withdrawal only in process memory and retries
+transient transport failure. Identity replacement sends withdrawal for the old
+reported identity before hello for the replacement. Cancellation or process
+failure cannot guarantee a final message, so server freshness remains the
+fallback lifecycle; no durable withdrawal or traffic queue exists.
 
 Peer Relay session updates do not use LocalAPI inventory or hello messages. A
 relay update continues to associate its trusted reporter with the relay observer
