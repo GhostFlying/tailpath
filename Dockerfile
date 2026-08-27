@@ -20,7 +20,9 @@ COPY . .
 RUN --mount=type=cache,id=tailpath-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=tailpath-go-build,target=/root/.cache/go-build \
     GOPROXY=${GOPROXY} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/tailpath ./cmd/tailpath \
+    && GOPROXY=${GOPROXY} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/tailpath-tsnet-multi ./examples/tsnet-multi \
     && test "$(/out/tailpath version)" = "${VERSION}" \
+    && test -x /out/tailpath-tsnet-multi \
     && mkdir -p /out/state/tsnet
 
 FROM go-build AS perf-build
@@ -34,6 +36,7 @@ ENTRYPOINT ["/usr/local/bin/tailpath-load"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 COPY --from=go-build /out/tailpath /usr/local/bin/tailpath
+COPY --from=go-build /out/tailpath-tsnet-multi /usr/local/bin/tailpath-tsnet-multi
 COPY --from=web-build /src/web/dist /opt/tailpath/web
 COPY --from=go-build --chown=nonroot:nonroot /out/state /var/lib/tailpath
 VOLUME ["/var/lib/tailpath"]
