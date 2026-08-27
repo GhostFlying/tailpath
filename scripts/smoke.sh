@@ -17,8 +17,10 @@ key_pending=0
 compose_auth_file="$auth_file"
 TAILPATH_SMOKE_RELAY_IP=""
 TAILPATH_SMOKE_SERVER_UNDERLAY_IP=""
+TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION="${TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION:-}"
 
 export TAILPATH_SMOKE_AUTHKEY_FILE="$compose_auth_file"
+export TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION
 
 compose() {
   if test -n "$compose_binary"; then
@@ -58,6 +60,15 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+validate_image_tag() {
+  candidate_image_tag="$1"
+  test -n "$candidate_image_tag" || fail "ordinary collector image tag must not be empty"
+  test "${#candidate_image_tag}" -le 128 || fail "ordinary collector image tag is too long"
+  case "$candidate_image_tag" in
+    *[!A-Za-z0-9_.-]*) fail "ordinary collector image tag contains invalid characters" ;;
+  esac
+}
+
 wait_healthy() {
   service="$1"
   attempt=0
@@ -83,6 +94,7 @@ load_runtime() {
   compose_auth_file="$TAILPATH_SMOKE_COMPOSE_AUTH_FILE"
   TAILPATH_SMOKE_AUTHKEY_FILE="$compose_auth_file"
   export TAILPATH_VERSION TAILPATH_SMOKE_SERVER_URL TAILPATH_SMOKE_AUTHKEY_FILE
+  export TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION
   export TAILPATH_SMOKE_RELAY_IP TAILPATH_SMOKE_RELAY_PORT
   export TAILPATH_SMOKE_SERVER_UNDERLAY_IP
 }
@@ -97,6 +109,7 @@ write_runtime() {
     echo "TAILPATH_SMOKE_RELAY_IP=$TAILPATH_SMOKE_RELAY_IP"
     echo "TAILPATH_SMOKE_RELAY_PORT=$relay_port"
     echo "TAILPATH_SMOKE_SERVER_UNDERLAY_IP=$TAILPATH_SMOKE_SERVER_UNDERLAY_IP"
+    echo "TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION=$TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION"
   } > "$temporary"
   mv "$temporary" "$runtime_file"
 }
@@ -205,11 +218,20 @@ up() {
     case "$candidate_sha" in
       *[!0-9a-f]*) fail "TAILPATH_VERSION commit SHA must be lowercase hexadecimal" ;;
     esac
-    compose pull server
+    TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION="${TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION:-$TAILPATH_VERSION}"
+    validate_image_tag "$TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION"
+    export TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION
+    compose pull server collector-a collector-b collector-r
   else
     TAILPATH_VERSION="smoke-$(git rev-parse --short=12 HEAD)"
+    TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION="${TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION:-$TAILPATH_VERSION}"
+    validate_image_tag "$TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION"
     export TAILPATH_VERSION
+    export TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION
     compose build server
+    if test "$TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION" != "$TAILPATH_VERSION"; then
+      compose pull collector-a collector-b
+    fi
   fi
   stage_compose_key
   TAILPATH_SMOKE_SERVER_URL=""
@@ -260,6 +282,8 @@ status() {
   done
   echo "$server_hostname ${TAILPATH_SMOKE_SERVER_URL#http://}"
   echo "$relay_hostname $TAILPATH_SMOKE_RELAY_IP:$relay_port"
+  echo "server version $(compose exec -T server /usr/local/bin/tailpath version)"
+  echo "ordinary collector version $(compose exec -T collector-a /usr/local/bin/tailpath version)"
 }
 
 topology() {
