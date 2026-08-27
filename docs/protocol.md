@@ -44,8 +44,11 @@ remain valid.
 
 Every envelope has a UUID report ID, reporter instance UUID, monotonic sequence,
 and collection timestamp. Normal messages may contain several observer peer
-views. A relay update instead contains one or more sessions with an explicit
-relay identity and two scoped relay clients; the two forms cannot be mixed.
+views, each with its own collection timestamp so one skewed runtime cannot
+mislabel its batch siblings. A protocol-v1 observer that omits this optional
+field inherits the envelope timestamp. A relay update instead contains one or
+more sessions with an explicit relay identity and two scoped relay clients; the
+two forms cannot be mixed.
 
 ## Sparse reporting
 

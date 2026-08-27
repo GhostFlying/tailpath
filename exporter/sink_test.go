@@ -77,6 +77,40 @@ type recordingSinkReporter struct {
 	maxPayloadBytes int
 }
 
+type sequenceValidatingReporter struct {
+	lastSequence      int64
+	invalidObserver   string
+	mixedRejected     bool
+	invalidIsolated   bool
+	heartbeatInterval int64
+}
+
+func (r *sequenceValidatingReporter) Capabilities(context.Context) (Capabilities, error) {
+	return Capabilities{ObserverProtocolVersions: []int{ProtocolVersion},
+		Features: []string{FeatureMultiObserver, FeatureObserverWithdrawal}}, nil
+}
+
+func (r *sequenceValidatingReporter) Send(_ context.Context, report ReportEnvelope) (ReportReceipt, error) {
+	hasInvalid := false
+	for _, observer := range report.Observers {
+		if observer.Observer.StableNodeID == r.invalidObserver {
+			hasInvalid = true
+		}
+	}
+	if hasInvalid {
+		if len(report.Observers) > 1 {
+			r.mixedRejected = true
+		} else if r.mixedRejected {
+			r.invalidIsolated = true
+		}
+		return ReportReceipt{}, &HTTPStatusError{StatusCode: 400, Status: "400 Bad Request"}
+	}
+	resync := report.Sequence != r.lastSequence+1
+	r.lastSequence = report.Sequence
+	return ReportReceipt{Accepted: true, ResyncRequired: resync,
+		HeartbeatIntervalMS: r.heartbeatInterval}, nil
+}
+
 func newRecordingSinkReporter() *recordingSinkReporter {
 	return &recordingSinkReporter{
 		capabilities: Capabilities{
@@ -437,6 +471,39 @@ func TestSnapshotSinkSplitsRejectedBatchToProtectSibling(t *testing.T) {
 	last := reports[len(reports)-1]
 	if len(last.Observers) != 1 || last.Observers[0].Observer.StableNodeID != "good" {
 		t.Fatalf("healthy sibling was not isolated: %#v", reports)
+	}
+}
+
+func TestSnapshotSinkFinishesRejectedBatchIsolationAfterSequenceGap(t *testing.T) {
+	reporter := &sequenceValidatingReporter{invalidObserver: "invalid", heartbeatInterval: 60000}
+	sink := newSnapshotSink(reporter, sinkOptions())
+	at := time.Now().UTC()
+	healthyReference := &observerReference{identity: NodeIdentity{StableNodeID: "healthy"}, generation: "healthy-generation"}
+	invalidReference := &observerReference{identity: NodeIdentity{StableNodeID: "invalid"}, generation: "invalid-generation"}
+	healthyState := &sourceRuntimeState{registration: &Registration{key: "a-healthy"},
+		latest: runtimeSnapshot(at, "healthy", 0, 0), hasLatest: true, healthy: true, serverRef: healthyReference}
+	invalidState := &sourceRuntimeState{registration: &Registration{key: "z-invalid"},
+		latest: runtimeSnapshot(at, "invalid", 0, 0), hasLatest: true, healthy: true, serverRef: invalidReference}
+	operations := []observerOperation{
+		snapshotOperation(healthyState, ReportTrafficSample, "healthy-generation", nil),
+		snapshotOperation(invalidState, ReportTrafficSample, "invalid-generation", nil),
+	}
+	transport := transportRuntimeState{}
+	controlIDs := make(map[string]struct{})
+	heartbeat := time.Minute
+	sequence := int64(0)
+	resync, err := sink.sendBatch(context.Background(), operations, &transport, controlIDs,
+		&heartbeat, &sequence, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resync || !reporter.mixedRejected || !reporter.invalidIsolated {
+		t.Fatalf("isolation = resync:%v mixed:%v invalid:%v sequence:%d",
+			resync, reporter.mixedRejected, reporter.invalidIsolated, sequence)
+	}
+	if invalidState.healthy || healthyState.serverRef == nil {
+		t.Fatalf("states after isolation = healthy ref:%#v invalid healthy:%v",
+			healthyState.serverRef, invalidState.healthy)
 	}
 }
 

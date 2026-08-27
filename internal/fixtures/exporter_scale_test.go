@@ -155,6 +155,9 @@ func TestExporterScalePersistsWithdrawalAndReconnectAcrossRestart(t *testing.T) 
 		return len(topology.Edges) == DefaultScaleEdgeCount && reporter.trafficObservers() >= DefaultScaleNodeCount
 	})
 	before := application.Aggregator.Snapshot()
+	if skewed := countClockSkewed(before); skewed != 9 {
+		t.Fatalf("clock-skewed observers = %d, want 9", skewed)
+	}
 	edgeID := edgeForStableNode(t, before, "scale-001")
 	historyBefore, err := database.EdgeHistory(context.Background(), edgeID, baselineAt.Add(-time.Minute))
 	if err != nil {
@@ -227,6 +230,9 @@ func TestExporterScalePersistsWithdrawalAndReconnectAcrossRestart(t *testing.T) 
 		t.Fatalf("restart topology = %d nodes/%d edges/%d observers/%d online",
 			len(afterRestart.Nodes), len(afterRestart.Edges), len(afterRestart.Observers), countOnline(afterRestart))
 	}
+	if skewed := countClockSkewed(afterRestart); skewed != 9 {
+		t.Fatalf("restart clock-skewed observers = %d, want 9", skewed)
+	}
 	restartedHistory, err := restartedDatabase.EdgeHistory(context.Background(), edgeID, baselineAt.Add(-time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -273,6 +279,16 @@ func countOnline(topology domain.Topology) int {
 	count := 0
 	for _, observer := range topology.Observers {
 		if observer.Online {
+			count++
+		}
+	}
+	return count
+}
+
+func countClockSkewed(topology domain.Topology) int {
+	count := 0
+	for _, observer := range topology.Observers {
+		if observer.ClockSkewed {
 			count++
 		}
 	}

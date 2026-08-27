@@ -132,9 +132,10 @@ type ObservationProvenance struct {
 	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
 }
 
-// ObserverReport For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers.
+// ObserverReport For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers. collectedAt is the time for this observer inside a multi-observer envelope; legacy reports may omit it and use the envelope timestamp.
 type ObserverReport struct {
-	InventoryGeneration string `json:"inventoryGeneration"`
+	CollectedAt         *time.Time `json:"collectedAt,omitempty"`
+	InventoryGeneration string     `json:"inventoryGeneration"`
 
 	// Observer At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 	Observer NodeIdentity       `json:"observer"`
