@@ -78,13 +78,15 @@ single-observer and internal. Issue #116 publishes handwritten snapshot,
 reporter, and HTTP transport contracts without exposing internal, generated, or
 Tailscale types. Issue #117 implements the concurrent SnapshotSink with one
 reporter sequence, bounded batching, isolated source/reporter recovery, and
-explicit withdrawal. The native migration, embedded tsnet adapter, and
+explicit withdrawal. The native collector now uses the shared SnapshotSink for
+ordinary LocalAPI state, with Peer Relay as an independently sampled optional
+source capability on the same reporter session. The embedded tsnet adapter and
 multi-instance example remain.
 
 ## Next step
 
-Land the protocol and exporter foundation, then migrate the native collector in
-#118 and implement the embedded tsnet adapter in #119.
+Land the protocol, exporter foundation, and native migration, then implement
+the embedded tsnet adapter in #119.
 
 ## Verification
 

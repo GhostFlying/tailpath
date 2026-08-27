@@ -11,6 +11,7 @@ import (
 	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
@@ -27,25 +28,25 @@ func NewLocalSourceWithClient(client *local.Client) *LocalSource {
 	return &LocalSource{client: client}
 }
 
-func (s *LocalSource) Snapshot(ctx context.Context) (collector.Snapshot, error) {
+func (s *LocalSource) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 	status, err := s.client.Status(ctx)
 	if err != nil {
-		return collector.Snapshot{}, err
+		return exporter.Snapshot{}, err
 	}
 	if status.Self == nil {
-		return collector.Snapshot{}, fmt.Errorf("tailscale status does not include self")
+		return exporter.Snapshot{}, fmt.Errorf("tailscale status does not include self")
 	}
 	relays := relayIdentities(status)
-	snapshot := collector.Snapshot{
+	snapshot := exporter.Snapshot{
 		CollectedAt: time.Now(),
 		Observer:    peerIdentity(status.Self),
-		Peers:       make([]collector.PeerSnapshot, 0, len(status.Peer)),
+		Peers:       make([]exporter.PeerSnapshot, 0, len(status.Peer)),
 	}
 	for _, peer := range status.Peer {
 		if peer == nil {
 			continue
 		}
-		snapshot.Peers = append(snapshot.Peers, collector.PeerSnapshot{
+		snapshot.Peers = append(snapshot.Peers, exporter.PeerSnapshot{
 			Identity: peerIdentity(peer),
 			RxBytes:  peer.RxBytes,
 			TxBytes:  peer.TxBytes,
@@ -70,7 +71,7 @@ func (s *LocalSource) Diagnostic(ctx context.Context) (collector.Diagnostic, err
 		}
 	}
 	return collector.Diagnostic{
-		Self:      peerIdentity(status.Self),
+		Self:      domainIdentity(peerIdentity(status.Self)),
 		OS:        normalizeOS(status.Self.OS),
 		PeerCount: peerCount,
 	}, nil
@@ -93,12 +94,12 @@ func normalizeOS(value string) string {
 	}
 }
 
-func peerIdentity(peer *ipnstate.PeerStatus) domain.NodeIdentity {
+func peerIdentity(peer *ipnstate.PeerStatus) exporter.NodeIdentity {
 	ips := make([]string, 0, len(peer.TailscaleIPs))
 	for _, ip := range peer.TailscaleIPs {
 		ips = append(ips, ip.String())
 	}
-	identity := domain.NodeIdentity{
+	identity := exporter.NodeIdentity{
 		StableNodeID: string(peer.ID),
 		Hostname:     peer.HostName,
 		DNSName:      peer.DNSName,
@@ -114,22 +115,30 @@ func peerIdentity(peer *ipnstate.PeerStatus) domain.NodeIdentity {
 	return identity
 }
 
-func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]string) domain.PathObservation {
+func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]string) exporter.Path {
 	if peer.PeerRelay != "" {
 		relayIP, vni := peerRelayEndpoint(peer.PeerRelay)
-		return domain.PathObservation{
-			Kind:                  domain.PathPeerRelay,
+		return exporter.Path{
+			Kind:                  exporter.PathPeerRelay,
 			PeerRelayStableNodeID: relayByIP[relayIP],
 			PeerRelayVNI:          vni,
 		}
 	}
 	if peer.CurAddr != "" {
-		return domain.PathObservation{Kind: domain.PathDirect, DirectEndpoint: peer.CurAddr}
+		return exporter.Path{Kind: exporter.PathDirect, DirectEndpoint: peer.CurAddr}
 	}
 	if peer.Relay != "" {
-		return domain.PathObservation{Kind: domain.PathDERP, DERPRegion: peer.Relay}
+		return exporter.Path{Kind: exporter.PathDERP, DERPRegion: peer.Relay}
 	}
-	return domain.PathObservation{Kind: domain.PathUnknown}
+	return exporter.Path{Kind: exporter.PathUnknown}
+}
+
+func domainIdentity(identity exporter.NodeIdentity) domain.NodeIdentity {
+	return domain.NodeIdentity{
+		StableNodeID: identity.StableNodeID, NodeID: identity.NodeID, NodeKey: identity.NodeKey,
+		DiscoKey: identity.DiscoKey, Hostname: identity.Hostname, DNSName: identity.DNSName, OS: identity.OS,
+		TailscaleIPs: append([]string(nil), identity.TailscaleIPs...),
+	}
 }
 
 func relayIdentities(status *ipnstate.Status) map[string]string {

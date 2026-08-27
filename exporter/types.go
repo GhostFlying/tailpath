@@ -146,6 +146,52 @@ type Source interface {
 	Snapshot(context.Context) (Snapshot, error)
 }
 
+// RelaySource is an optional capability implemented by sources that can
+// passively observe Peer Relay sessions in addition to ordinary peer state.
+// SnapshotSink samples this capability independently so relay failures cannot
+// delay ordinary observations.
+type RelaySource interface {
+	PeerRelaySnapshot(context.Context) (RelaySnapshot, error)
+}
+
+type RelayCapability string
+
+type RelayIdentityEvidence string
+
+const (
+	RelayOff              RelayCapability = "off"
+	RelayUnsupported      RelayCapability = "unsupported"
+	RelayDisabled         RelayCapability = "disabled"
+	RelayEnabled          RelayCapability = "enabled"
+	RelayTransientFailure RelayCapability = "transient_failure"
+
+	RelayIdentityAvailable RelayIdentityEvidence = "available"
+	RelayIdentityDegraded  RelayIdentityEvidence = "degraded"
+)
+
+type RelaySnapshot struct {
+	CollectedAt      time.Time
+	Capability       RelayCapability
+	IdentityEvidence RelayIdentityEvidence
+	Sessions         []RelaySessionSnapshot
+}
+
+type RelaySessionSnapshot struct {
+	SessionID string
+	VNI       int64
+	Source    RelayClientSnapshot
+	Target    RelayClientSnapshot
+}
+
+type RelayClientSnapshot struct {
+	SessionClientID string
+	Identity        *NodeIdentity
+	DiscoShort      string
+	Endpoint        string
+	PacketsSent     uint64
+	BytesSent       uint64
+}
+
 type Reporter interface {
 	Capabilities(context.Context) (Capabilities, error)
 	Send(context.Context, ReportEnvelope) (ReportReceipt, error)

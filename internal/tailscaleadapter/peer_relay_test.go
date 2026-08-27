@@ -12,8 +12,8 @@ import (
 	"tailscale.com/net/udprelay/status"
 	"tailscale.com/types/key"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
-	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
 func TestPeerRelaySnapshotClassifiesCapability(t *testing.T) {
@@ -190,11 +190,11 @@ func TestRelaySessionSkipsOnlyIndistinguishableCollision(t *testing.T) {
 func TestRelayClientOrderingIgnoresCanonicalIdentityOrder(t *testing.T) {
 	left := collector.RelayClientSnapshot{
 		DiscoShort: "d:bbbbbbbbbbbbbbbb",
-		Identity:   &domain.NodeIdentity{NodeKey: "node-a", DiscoKey: "disco-a"},
+		Identity:   &exporter.NodeIdentity{NodeKey: "node-a", DiscoKey: "disco-a"},
 	}
 	right := collector.RelayClientSnapshot{
 		DiscoShort: "d:aaaaaaaaaaaaaaaa",
-		Identity:   &domain.NodeIdentity{NodeKey: "node-z", DiscoKey: "disco-z"},
+		Identity:   &exporter.NodeIdentity{NodeKey: "node-z", DiscoKey: "disco-z"},
 	}
 	if relayClientSortKey(left) < relayClientSortKey(right) {
 		t.Fatalf("canonical identity order replaced short-disco order: %q < %q",

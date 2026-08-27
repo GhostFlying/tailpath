@@ -14,6 +14,21 @@ func (function sourceFunc) Snapshot(ctx context.Context) (exporter.Snapshot, err
 	return function(ctx)
 }
 
+type relaySourceStub struct {
+	sourceFunc
+}
+
+func (relaySourceStub) PeerRelaySnapshot(context.Context) (exporter.RelaySnapshot, error) {
+	return exporter.RelaySnapshot{
+		Capability: exporter.RelayEnabled,
+		Sessions: []exporter.RelaySessionSnapshot{{
+			SessionID: "session", VNI: 7,
+			Source: exporter.RelayClientSnapshot{SessionClientID: "left"},
+			Target: exporter.RelayClientSnapshot{SessionClientID: "right"},
+		}},
+	}, nil
+}
+
 type reporterStub struct{}
 
 func (reporterStub) Capabilities(context.Context) (exporter.Capabilities, error) {
@@ -39,6 +54,9 @@ func TestPublicContractsRequireNoInternalImports(t *testing.T) {
 		}, nil
 	})
 	var reporter exporter.Reporter = reporterStub{}
+	var relaySource exporter.RelaySource = relaySourceStub{sourceFunc: sourceFunc(func(context.Context) (exporter.Snapshot, error) {
+		return exporter.Snapshot{}, nil
+	})}
 
 	snapshot, err := source.Snapshot(context.Background())
 	if err != nil || snapshot.Observer.DisplayName() != "Runtime A" {
@@ -47,6 +65,10 @@ func TestPublicContractsRequireNoInternalImports(t *testing.T) {
 	capabilities, err := reporter.Capabilities(context.Background())
 	if err != nil || !capabilities.SupportsFeature(exporter.FeatureObserverWithdrawal) {
 		t.Fatalf("capabilities = %#v, err=%v", capabilities, err)
+	}
+	if relay, err := relaySource.PeerRelaySnapshot(context.Background()); err != nil ||
+		relay.Capability != exporter.RelayEnabled || len(relay.Sessions) != 1 {
+		t.Fatalf("relay snapshot = %#v, err=%v", relay, err)
 	}
 
 	sink := exporter.NewSnapshotSink(reporter, exporter.SnapshotSinkOptions{

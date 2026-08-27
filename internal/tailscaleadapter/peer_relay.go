@@ -17,8 +17,8 @@ import (
 	"tailscale.com/net/udprelay/status"
 	"tailscale.com/types/key"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
-	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
 const maxLocalAPIResponseBytes = 4 << 20
@@ -152,7 +152,7 @@ func adaptRelayClient(
 		PacketsSent: client.PacketsTx, BytesSent: client.BytesTx,
 	}
 	if identity, ok := identities[short]; ok {
-		result.Identity = &domain.NodeIdentity{NodeKey: identity.nodeKey, DiscoKey: identity.discoKey}
+		result.Identity = &exporter.NodeIdentity{NodeKey: identity.nodeKey, DiscoKey: identity.discoKey}
 	}
 	result.SessionClientID = scopedRelayID("client", vni, relayClientStableKey(result))
 	return result
