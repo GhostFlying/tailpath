@@ -356,7 +356,7 @@ wait_relay_reporting() {
   while :; do
     if api_from_a /api/v1/topology \
       | jq -e --arg hostname "$relay_hostname" \
-        'any(.observers[]?; .hostname == $hostname and .online == true)' >/dev/null; then
+        'any(.observers[]?; (.hostname == $hostname or (.hostname | startswith($hostname + "-"))) and .online == true)' >/dev/null; then
       return 0
     fi
     attempt=$((attempt + 1))
