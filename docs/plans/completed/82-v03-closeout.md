@@ -25,12 +25,18 @@ independent review found no remaining blocker.
 
 ## Next step
 
-Open the documentation PR, run `make check`, and have a human rebase-merge it.
-After merge, close issues #82 and #78 and the v0.3 milestone. Keep #58 open for
-future tsnet/macOS validation.
+Complete. PR #111 passed all hosted checks and was rebase-merged. Issue #82 was
+closed automatically; issue #78 and the v0.3 milestone can now be closed. Issue
+#58 remains open for future tsnet/macOS validation.
 
 ## Verification
 
 - `make check`
 - Confirm no v0.3 active plan remains after the PR is merged.
 - Confirm issue #58 remains outside the v0.3 milestone.
+
+## Completion summary
+
+The v0.3 implementation plans are archived, immutable Peer Relay dogfood and
+independent review evidence are retained, and the remaining platform
+qualification is tracked separately from the completed milestone.
