@@ -46,6 +46,12 @@ LocalClient from an unstarted server may start that server, as defined by
 Tailscale; the application still owns login, readiness, restart, and close.
 The adapter never calls `Up`, probes peers, or changes preferences.
 
+The runnable `examples/tsnet-multi` application proves the ownership model with
+three persisted runtime identities and a fourth dedicated reporter identity.
+Only the runtime sources are registered. Its opt-in lifecycle demo withdraws
+and recreates one runtime from the same state directory while the process-level
+reporting session remains online.
+
 The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from
 peer counters, and hidden from user activity by default. The classification is

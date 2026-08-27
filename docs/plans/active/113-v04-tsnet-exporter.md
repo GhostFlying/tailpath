@@ -82,12 +82,13 @@ explicit withdrawal. The native collector now uses the shared SnapshotSink for
 ordinary LocalAPI state, with Peer Relay as an independently sampled optional
 source capability on the same reporter session. Issue #119 now provides a
 passive public tsnet Source backed by the same status normalization as the
-native collector. The runnable multi-instance example remains.
+native collector. Issue #120 adds the runnable three-runtime example with a
+dedicated reporting identity and an opt-in withdrawal/restart demonstration.
 
 ## Next step
 
-Land the protocol, exporter foundation, native migration, and embedded adapter,
-then add the runnable multi-instance example in #120.
+Land the exporter implementation and runnable example, then enforce the
+integration, compatibility, UI, and scale gates in #121.
 
 ## Verification
 
