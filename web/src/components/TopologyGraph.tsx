@@ -228,6 +228,7 @@ export function TopologyGraph(props: Props) {
   const renderEpoch = useRef(0);
   const focusPending = useRef(true);
   const renderedTopologyAt = useRef<string | null>(null);
+  const renderedVisibility = useRef<string | null>(null);
   const topologyNodeIDs = useRef<string[]>([]);
   const renderedFingerprints = useRef(new Map<string, string>());
   const cachedPositions = useRef(
@@ -259,6 +260,7 @@ export function TopologyGraph(props: Props) {
     renderEpoch.current = 0;
     focusPending.current = true;
     renderedTopologyAt.current = null;
+    renderedVisibility.current = null;
     renderedFingerprints.current.clear();
     const cy = cytoscape({
       container: container.current,
@@ -309,6 +311,9 @@ export function TopologyGraph(props: Props) {
     const topologyChanged =
       renderedTopologyAt.current !== props.topology.generatedAt;
     renderedTopologyAt.current = props.topology.generatedAt;
+    const visibility = `${props.pathFilter}:${props.showRecent}:${props.showControlTraffic}`;
+    const visibilityChanged = renderedVisibility.current !== visibility;
+    renderedVisibility.current = visibility;
     const viewport = { zoom: cy.zoom(), pan: cy.pan() };
     captureCurrentPositions(cy, cachedPositions.current);
     topologyNodeIDs.current = props.topology.nodes.map((node) => node.id);
@@ -328,7 +333,9 @@ export function TopologyGraph(props: Props) {
     const hasSharedCanonicalNode = [...nextCanonicalIDs].some((id) =>
       previousCanonicalIDs.has(id),
     );
-    if (nextCanonicalIDs.size === 0) {
+    if (visibilityChanged && !firstRender) {
+      focusPending.current = false;
+    } else if (nextCanonicalIDs.size === 0 && topologyChanged) {
       focusPending.current = true;
     } else if (firstRender || (topologyChanged && !hasSharedCanonicalNode)) {
       focusPending.current = true;
@@ -373,11 +380,11 @@ export function TopologyGraph(props: Props) {
     seedNewNodes(cy, newCanonicalNodes, knownNodeIDs);
     deriveVirtualPositions(cy);
     if (container.current) container.current.dataset.ready = "false";
+    const movableNodeIDs = new Set(newCanonicalNodes.map((node) => node.id()));
     if (newCanonicalNodes.length > 0) {
-      const newIDs = new Set(newCanonicalNodes.map((node) => node.id()));
       const locked: NodeSingular[] = [];
       cy.nodes().forEach((node) => {
-        if (!newIDs.has(node.id())) {
+        if (!movableNodeIDs.has(node.id())) {
           node.lock();
           locked.push(node);
         }
@@ -399,7 +406,7 @@ export function TopologyGraph(props: Props) {
       }
       locked.forEach((node) => node.unlock());
     }
-    if (structureChanged) enforceSparseEdgeClearance(cy);
+    if (structureChanged) enforceSparseEdgeClearance(cy, movableNodeIDs);
     deriveVirtualPositions(cy);
     initialized.current = true;
     if (!firstRender && !shouldFocusTopology) {
@@ -421,6 +428,7 @@ export function TopologyGraph(props: Props) {
         }
         updateGraphDiagnostics(cy, container.current, layoutRuns.current);
         persistPositionsNow(cy);
+        if (container.current) container.current.dataset.ready = "true";
       }),
     );
   }, [elements]);
@@ -650,7 +658,10 @@ function seedNewNodes(
   deriveVirtualPositions(cy);
 }
 
-function enforceSparseEdgeClearance(cy: Core) {
+function enforceSparseEdgeClearance(
+  cy: Core,
+  movableNodeIDs?: ReadonlySet<string>,
+) {
   if (cy.nodes("[persistable]").length > sparseGraphNodeLimit) return;
   for (let pass = 0; pass < sparseGraphNodeLimit; pass += 1) {
     let adjusted = false;
@@ -664,6 +675,9 @@ function enforceSparseEdgeClearance(cy: Core) {
       ) {
         return;
       }
+      const sourceMovable = movableNodeIDs?.has(source.id()) ?? true;
+      const targetMovable = movableNodeIDs?.has(target.id()) ?? true;
+      if (!sourceMovable && !targetMovable) return;
       const desired = Math.max(
         minimumEdgeCenterDistance,
         Number(edge.data("idealLength")) || 0,
@@ -680,17 +694,22 @@ function enforceSparseEdgeClearance(cy: Core) {
         dy = Math.sin(angle);
         distance = 1;
       }
-      const shift = (desired - distance) / 2;
+      const shift =
+        (desired - distance) / (sourceMovable && targetMovable ? 2 : 1);
       const unitX = dx / distance;
       const unitY = dy / distance;
-      source.position({
-        x: sourcePosition.x - unitX * shift,
-        y: sourcePosition.y - unitY * shift,
-      });
-      target.position({
-        x: targetPosition.x + unitX * shift,
-        y: targetPosition.y + unitY * shift,
-      });
+      if (sourceMovable) {
+        source.position({
+          x: sourcePosition.x - unitX * shift,
+          y: sourcePosition.y - unitY * shift,
+        });
+      }
+      if (targetMovable) {
+        target.position({
+          x: targetPosition.x + unitX * shift,
+          y: targetPosition.y + unitY * shift,
+        });
+      }
       adjusted = true;
     });
     if (!adjusted) break;
@@ -806,7 +825,6 @@ function updateGraphDiagnostics(
   element.dataset.layoutRuns = String(runs);
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
   element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
-  element.dataset.ready = "true";
 }
 
 function stableHash(value: string): number {
