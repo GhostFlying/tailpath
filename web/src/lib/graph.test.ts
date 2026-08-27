@@ -266,6 +266,36 @@ describe("edgeIsVisible", () => {
     expect(edgeIsVisible(recent, "direct", true)).toBe(true);
     expect(edgeIsVisible(active, "derp", true)).toBe(false);
   });
+
+  it("hides system telemetry edges unless explicitly enabled", () => {
+    const fixture = topology();
+    fixture.edges[0].systemTelemetry = true;
+    fixture.edges[1].path.kind = "direct";
+    const hidden = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      showControlTraffic: false,
+      query: "",
+    });
+    expect(hidden.filter((element) => element.group === "edges")).toHaveLength(
+      1,
+    );
+    expect(
+      hidden
+        .filter((element) => element.group === "nodes")
+        .map((element) => element.data?.id),
+    ).toEqual(["c", "d"]);
+
+    const shown = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      showControlTraffic: true,
+      query: "",
+    });
+    expect(shown.filter((element) => element.group === "edges")).toHaveLength(
+      2,
+    );
+  });
 });
 
 describe("emptyTrafficReason", () => {
@@ -318,6 +348,7 @@ function edge(
     id,
     source,
     target,
+    systemTelemetry: false,
     path: { kind, derpRegion: kind === "derp" ? "hkg" : undefined },
     state: "active",
     aToBBytesPerSecond: 1,

@@ -279,7 +279,10 @@ type TopologyEdge struct {
 	Path               PathObservation         `json:"path"`
 	Source             string                  `json:"source"`
 	State              TopologyEdgeState       `json:"state"`
-	Target             string                  `json:"target"`
+
+	// SystemTelemetry True when either endpoint is the dedicated Tailpath control identity.
+	SystemTelemetry bool   `json:"systemTelemetry"`
+	Target          string `json:"target"`
 }
 
 // TopologyEdgeState defines model for TopologyEdge.State.

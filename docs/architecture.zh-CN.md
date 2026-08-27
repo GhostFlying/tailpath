@@ -19,7 +19,10 @@ Tailscale 类型只能存在于 `internal/tailscaleadapter`。协议、聚合、
 都使用 Tailpath 自己的 domain 类型，避免 LocalAPI 版本变化污染 wire 和数据库。
 
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
-telemetry，不做 counter 扣减，也不进入用户 activity。
+telemetry，不做 counter 扣减，也默认不进入用户 activity。该分类仍保留在运行时状态、
+SQLite traffic/history 和 provenance 中；需要检查时，Live 提供
+`Show Tailpath control traffic` 选项。未解析的 relay client 不会被猜测为该 identity。
+共享 tailscaled identity 属于 degraded opt-in，因为它无法将控制流量与其他应用分开。
 
 当前拓扑由内存提供读取。每个 accepted report、traffic bucket 和逻辑路径变更都在
 同一个 SQLite transaction 中提交。Typed candidate state 首次立即 checkpoint，之后

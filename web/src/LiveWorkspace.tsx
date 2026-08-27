@@ -18,7 +18,9 @@ import {
 } from "./lib/graph";
 import {
   readShowRecentPreference,
+  readShowControlTrafficPreference,
   writeShowRecentPreference,
+  writeShowControlTrafficPreference,
 } from "./lib/uiPreferences";
 
 export default function LiveWorkspace() {
@@ -26,6 +28,11 @@ export default function LiveWorkspace() {
   const [pathFilter, setPathFilter] = useState<PathFilter>("all");
   const [showRecent, setShowRecent] = useState(() =>
     readShowRecentPreference(
+      typeof window === "undefined" ? undefined : window.localStorage,
+    ),
+  );
+  const [showControlTraffic, setShowControlTraffic] = useState(() =>
+    readShowControlTrafficPreference(
       typeof window === "undefined" ? undefined : window.localStorage,
     ),
   );
@@ -39,13 +46,20 @@ export default function LiveWorkspace() {
   const countedEdges = useMemo(
     () =>
       (topology?.edges ?? []).filter(
-        (edge) => showRecent || edge.state === "active",
+        (edge) =>
+          (showRecent || edge.state === "active") &&
+          (showControlTraffic || !edge.systemTelemetry),
       ),
-    [topology, showRecent],
+    [topology, showRecent, showControlTraffic],
   );
   const counts = useMemo(() => pathCounts(countedEdges), [countedEdges]);
   const emptyReason = topology
-    ? emptyTrafficReason(topology.edges, pathFilter, showRecent)
+    ? emptyTrafficReason(
+        topology.edges,
+        pathFilter,
+        showRecent,
+        showControlTraffic,
+      )
     : null;
   const skewedRuntimes =
     topology?.observers.filter((observer) => observer.clockSkewed).length ?? 0;
@@ -55,14 +69,25 @@ export default function LiveWorkspace() {
   const staleRuntimes = totalRuntimes - liveRuntimes;
 
   useEffect(() => {
-    if (selectedEdge && !edgeIsVisible(selectedEdge, pathFilter, showRecent)) {
+    if (
+      selectedEdge &&
+      !edgeIsVisible(selectedEdge, pathFilter, showRecent, showControlTraffic)
+    ) {
       setSelectedEdgeId(null);
     }
-  }, [pathFilter, selectedEdge, showRecent]);
+  }, [pathFilter, selectedEdge, showRecent, showControlTraffic]);
 
   function updateShowRecent(next: boolean) {
     setShowRecent(next);
     writeShowRecentPreference(
+      typeof window === "undefined" ? undefined : window.localStorage,
+      next,
+    );
+  }
+
+  function updateShowControlTraffic(next: boolean) {
+    setShowControlTraffic(next);
+    writeShowControlTrafficPreference(
       typeof window === "undefined" ? undefined : window.localStorage,
       next,
     );
@@ -79,8 +104,7 @@ export default function LiveWorkspace() {
             </span>
             <span>
               <strong>
-                {topology?.edges.filter((edge) => edge.state === "active")
-                  .length ?? 0}
+                {countedEdges.filter((edge) => edge.state === "active").length}
               </strong>{" "}
               active edges
             </span>
@@ -99,6 +123,8 @@ export default function LiveWorkspace() {
           onQueryChange={setQuery}
           showRecent={showRecent}
           onShowRecentChange={updateShowRecent}
+          showControlTraffic={showControlTraffic}
+          onShowControlTrafficChange={updateShowControlTraffic}
           counts={counts}
           edgeCount={countedEdges.length}
           liveRuntimes={liveRuntimes}
@@ -112,6 +138,7 @@ export default function LiveWorkspace() {
               topology={topology}
               pathFilter={pathFilter}
               showRecent={showRecent}
+              showControlTraffic={showControlTraffic}
               query={query}
               selectedEdgeId={selectedEdgeId}
               onSelectEdge={setSelectedEdgeId}
