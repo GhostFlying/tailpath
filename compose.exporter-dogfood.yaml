@@ -1,0 +1,105 @@
+name: tailpath-exporter-dogfood
+
+services:
+  server:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:?set immutable edge-full-main-sha tag}
+    command:
+      - server
+      - --network=tsnet
+      - --hostname=${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}-server
+      - --state-dir=/var/lib/tailpath/tsnet
+      - --database=/var/lib/tailpath/tailpath.db
+      - --web-dir=/opt/tailpath/web
+      - --admin-listen=127.0.0.1:8091
+      - --heartbeat-interval=15s
+    environment:
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+    secrets: [tailscale-authkey]
+    volumes: [server-state:/var/lib/tailpath]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tailpath", "healthcheck", "--url=http://127.0.0.1:8091/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 2s
+    networks: [underlay]
+    restart: "no"
+
+  exporter:
+    image: ghcr.io/ghostflying/tailpath:${TAILPATH_VERSION:?set immutable edge-full-main-sha tag}
+    entrypoint: ["/usr/local/bin/tailpath-tsnet-multi"]
+    command:
+      - --server=http://${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}-server:8080
+      - --state-dir=/var/lib/tailpath-exporter
+      - --hostname-prefix=${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}
+      - --auth-key=file:/run/secrets/tailscale-authkey
+      - --control-url=${TS_CONTROL_URL:-}
+      - --workload-demo
+      - --lifecycle-demo=${TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE:-false}
+      - --lifecycle-step=${TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE_STEP:-30s}
+    secrets: [tailscale-authkey]
+    volumes: [exporter-state:/var/lib/tailpath-exporter]
+    depends_on:
+      server:
+        condition: service_healthy
+    networks: [underlay]
+    restart: "no"
+
+  udp-helper:
+    image: ${TAILSCALE_IMAGE:-tailscale/tailscale:v1.102.2}
+    network_mode: service:exporter
+    cap_add: [NET_ADMIN]
+    entrypoint: ["sh", "-c", "exec sleep infinity"]
+    depends_on: [exporter]
+    restart: "no"
+
+  inspector-tailscale:
+    image: ${TAILSCALE_IMAGE:-tailscale/tailscale:v1.102.2}
+    hostname: ${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}-inspector
+    environment:
+      TS_ACCEPT_DNS: "true"
+      TS_AUTH_ONCE: "true"
+      TS_AUTHKEY: file:/run/secrets/tailscale-authkey
+      TS_HOSTNAME: ${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}-inspector
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+      TS_ACCEPT_RISK: ${TS_ACCEPT_RISK:-}
+      TS_CONTROL_URL: ${TS_CONTROL_URL:-}
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: [/dev/net/tun:/dev/net/tun]
+    secrets: [tailscale-authkey]
+    volumes:
+      - inspector-state:/var/lib/tailscale
+      - inspector-run:/var/run/tailscale
+    healthcheck:
+      test: ["CMD", "tailscale", "--socket=/var/run/tailscale/tailscaled.sock", "ip", "-4"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 2s
+    networks: [underlay]
+    restart: "no"
+
+  inspector:
+    image: ${BUSYBOX_IMAGE:-busybox:1.37.0}
+    network_mode: service:inspector-tailscale
+    command: ["sh", "-c", "exec sleep infinity"]
+    depends_on:
+      inspector-tailscale:
+        condition: service_healthy
+    restart: "no"
+
+networks:
+  underlay:
+
+secrets:
+  tailscale-authkey:
+    file: ${TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE:?set a mode-0600 reusable ephemeral key file}
+
+volumes:
+  server-state:
+  exporter-state:
+  inspector-state:
+  inspector-run:
