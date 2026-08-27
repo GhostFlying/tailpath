@@ -70,5 +70,5 @@ adapter and aggregator now reject that evidence without producing a self-edge.
 
 ## Next step
 
-Run focused and hosted gates on the collision fix, then close the independent
-finding before making the PR ready.
+Complete. The collision fix and cross-layer restart coverage were merged and
+included in the v0.3 independent review.

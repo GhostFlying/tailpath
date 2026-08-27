@@ -57,6 +57,5 @@ included in the CI artifact set.
 
 ## Next step
 
-Push the reviewed fixes and require the final PR head to pass `make check` in
-CI before marking it ready. After merge, close the v0.3 release gate only when
-the mixed-version dogfood window from #80 is also recorded.
+Complete. Control-traffic classification, persistence, Live filtering, and
+Inspector behavior were merged and covered by the v0.3 dogfood window.

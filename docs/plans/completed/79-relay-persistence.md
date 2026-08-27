@@ -55,4 +55,5 @@ JSON, redirect, restart, rollup, and seven-day History retention.
 
 ## Next step
 
-Run the full repository gate, open the stacked PR, and record hosted checks.
+Complete. Sanitized persistence, restart, redirect, retention, and History
+coverage passed the v0.3 gates.

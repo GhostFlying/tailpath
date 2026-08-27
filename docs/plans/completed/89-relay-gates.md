@@ -76,5 +76,5 @@ comparable performance results.
 
 ## Next step
 
-Land the stacked PR, publish its immutable edge artifact from `main`, and run
-the separately reviewed real-host dogfood plan from issue #80.
+Complete. The strict relay scale, persistence, browser, and mixed-path gates
+are included in the v0.3 closeout evidence.

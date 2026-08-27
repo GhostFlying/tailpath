@@ -46,4 +46,5 @@ and single-worker browser execution remained healthy.
 
 ## Next step
 
-Open the stacked review PR and verify the hosted gate.
+Complete. Production-asset browser gates passed locally and in hosted CI and
+are included in the v0.3 closeout evidence.

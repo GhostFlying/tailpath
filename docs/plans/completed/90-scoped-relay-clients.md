@@ -58,5 +58,5 @@ checkpoint tests prove that underlay endpoints are not durable.
 
 ## Next step
 
-Review and merge the stacked PR, then implement #86 against this generated
-contract.
+Complete. The version-1 scoped relay protocol and generated contract were
+merged and are covered by the v0.3 closeout.

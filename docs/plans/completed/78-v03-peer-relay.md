@@ -96,6 +96,5 @@ development proxy caused concurrent History readiness stalls.
 
 ## Next step
 
-Close issue #101 review findings, land the stacked implementation and gate PRs
-in order, publish the immutable edge artifact from `main`, then complete issue
-#80 real-host dogfood and issue #82 milestone closeout.
+Complete. The implementation, immutable-main dogfood, independent review, and
+milestone closeout are recorded by issue #82.

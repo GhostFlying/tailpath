@@ -54,4 +54,5 @@ VNI and can reconcile exactly one missing side without global weak aliases.
 
 ## Next step
 
-Run the full repository gate, open the issue PR, and record hosted checks.
+Complete. Scoped relay reconciliation, conservative identity resolution, and
+restart/fallback coverage passed the v0.3 gates.

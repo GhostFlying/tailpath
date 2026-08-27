@@ -95,7 +95,5 @@ accepted without broadening the observer match.
 
 ## Next step
 
-Attach the sanitized ledger to PR #100, rerun the final repository checks after
-the dogfood-only commits, complete the independent read-only review, then mark
-the PR ready and rebase-merge it. Revoke the reusable Tailnet key after the
-disposable smoke project is destroyed.
+Complete. The sanitized ledger, immutable artifact qualification, independent
+review, and PR #100 merge are recorded in the v0.3 closeout.

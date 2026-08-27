@@ -48,5 +48,5 @@ collector scheduling or report behavior changed.
 
 ## Next step
 
-Review and merge the stacked adapter PR, then implement #83 against the typed
-runtime snapshot.
+Complete. The passive relay adapter and its upstream-shaped fixture coverage
+were merged as part of the v0.3 implementation.
