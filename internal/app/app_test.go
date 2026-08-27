@@ -137,6 +137,132 @@ func TestRestartReplaysReportsAfterCheckpoint(t *testing.T) {
 	}
 }
 
+func TestObserverWithdrawalForcesCheckpointAndSurvivesRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	trafficAt := now.Add(100 * time.Millisecond)
+	traffic := trafficReport(trafficAt)
+	traffic.Sequence = 2
+	if _, err := application.SubmitAt(context.Background(), traffic, trafficAt); err != nil {
+		t.Fatal(err)
+	}
+	withdrawAt := now.Add(200 * time.Millisecond)
+	withdrawal := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "withdraw", ReporterInstanceID: "reporter", Sequence: 3,
+		CollectedAt: withdrawAt, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, InventoryGeneration: "inventory",
+		}},
+	}
+	if _, err := application.SubmitAt(context.Background(), withdrawal, withdrawAt); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !checkpoint.UpdatedAt.Equal(withdrawAt) {
+		t.Fatalf("withdrawal did not force checkpoint: %#v", checkpoint)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	restarted, err := New(database, testOptions(func() time.Time { return withdrawAt }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topology := restarted.Aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].State != domain.EdgeRecent ||
+		len(topology.Observers) != 1 || topology.Observers[0].Online {
+		t.Fatalf("withdrawal did not survive restart: %#v", topology)
+	}
+	history, found, err := restarted.Store.EdgeHistoryWindow(
+		context.Background(), topology.Edges[0].ID, domain.History15Minutes, withdrawAt,
+	)
+	if err != nil || !found || history.LastTrafficAt.IsZero() || len(history.PathEvents) == 0 {
+		t.Fatalf("withdrawal removed history: found=%t history=%#v err=%v", found, history, err)
+	}
+}
+
+func TestObserverWithdrawalSurvivesJournalReplay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	now := time.Date(2026, 8, 28, 13, 0, 0, 0, time.UTC)
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	trafficAt := now.Add(100 * time.Millisecond)
+	traffic := trafficReport(trafficAt)
+	traffic.Sequence = 2
+	if _, err := application.SubmitAt(context.Background(), traffic, trafficAt); err != nil {
+		t.Fatal(err)
+	}
+	withdrawAt := now.Add(200 * time.Millisecond)
+	withdrawal := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "journaled-withdraw", ReporterInstanceID: "reporter", Sequence: 3,
+		CollectedAt: withdrawAt, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "a", Hostname: "A"}, InventoryGeneration: "inventory",
+		}},
+	}
+	inserted, err := database.Record(context.Background(), withdrawal, withdrawAt, nil, nil, nil)
+	if err != nil || !inserted {
+		t.Fatalf("journal withdrawal: inserted=%t err=%v", inserted, err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	restarted, err := New(database, testOptions(func() time.Time { return withdrawAt }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topology := restarted.Aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].State != domain.EdgeRecent || topology.Observers[0].Online {
+		t.Fatalf("journal replay lost withdrawal: %#v", topology)
+	}
+	checkpoint, err := database.RestoreCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := database.RestoreReportsAfter(context.Background(), checkpoint.LastReportRowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(later) != 0 {
+		t.Fatalf("startup replay did not advance checkpoint: %#v", later)
+	}
+}
+
 func TestCanonicalAllocationForcesCheckpointBeforeJournalReplay(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tailpath.db")
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)

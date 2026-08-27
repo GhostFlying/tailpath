@@ -180,8 +180,9 @@ components:
       type: object
       required: [version, reportId, reporterInstanceId, sequence, collectedAt, kind]
       description: >-
-        Normal observer messages contain observers. relay_session_update contains
-        relaySessions instead; the server rejects envelopes that mix the two forms.
+        Normal observer messages contain observers. observer_withdrawal contains
+        observer identities without peers. relay_session_update contains relaySessions
+        instead; the server rejects envelopes that mix the forms.
       properties:
         version:
           type: integer
@@ -213,14 +214,14 @@ components:
             $ref: '#/components/schemas/RelaySessionObservation'
     ReportKind:
       type: string
-      enum: [observer_hello, inventory_update, traffic_sample, observer_heartbeat, relay_session_update]
+      enum: [observer_hello, inventory_update, traffic_sample, observer_heartbeat, observer_withdrawal, relay_session_update]
     ObserverReport:
       type: object
       required: [observer, inventoryGeneration]
       description: >-
         For hello and inventory_update, peers is the observer's complete current
         runtime peer view. For traffic_sample it is sparse and contains only
-        peers with business byte deltas.
+        peers with business byte deltas. observer_withdrawal forbids peers.
       properties:
         observer:
           $ref: '#/components/schemas/NodeIdentity'

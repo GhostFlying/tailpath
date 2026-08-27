@@ -86,7 +86,7 @@ func TestCapabilitiesAdvertiseImplementedProtocolFeatures(t *testing.T) {
 	}
 	if !capabilities.SupportsProtocol(domain.ProtocolVersion) ||
 		!capabilities.SupportsFeature(domain.FeatureMultiObserver) ||
-		capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) {
+		!capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) {
 		t.Fatalf("unexpected capabilities: %#v", capabilities)
 	}
 }

@@ -30,6 +30,14 @@ inventory, so the complete replacement can withdraw peers removed across a
 collector restart. Non-owner inventory, traffic, and heartbeat messages cannot
 update the observer.
 
+Explicit observer withdrawal clears only the current reporter ownership and
+records a server-received withdrawal time on the observer and its current edge
+provenance. The observer becomes offline immediately. Withdrawn provenance is
+excluded from Live path and rate reconciliation while the logical edge follows
+its ordinary recent expiry. Inventory, canonical identity, redirects, and
+History remain durable so a later hello can reclaim the same observer without
+inventing catch-up traffic.
+
 A logical edge is an unordered node pair. Directional rates are kept
 separately. A-to-B prefers A's TX delta and falls back to B's RX delta, then to
 third-party Peer Relay evidence; the values from independent provenance are
