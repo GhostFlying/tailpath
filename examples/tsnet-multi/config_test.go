@@ -24,7 +24,7 @@ func TestConfigUsesEnvironmentAndFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.serverURL != "http://flag:8080" || config.stateDir != "/flag/state" ||
+	if config.serverURL != "http://flag:8080" || config.stateDir != filepath.Clean("/flag/state") ||
 		config.hostnamePrefix != "flag" || config.authKey != "tskey-flag" ||
 		config.controlURL != "https://control.example" || !config.lifecycleDemo ||
 		config.lifecycleStep != 2*time.Second {
