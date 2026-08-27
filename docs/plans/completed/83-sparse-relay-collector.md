@@ -58,5 +58,5 @@ native runner configuration. Relay failures do not degrade ordinary reports.
 
 ## Next step
 
-Review hosted platform results, then merge the stacked PR before #87 begins
-server-side scoped reconciliation.
+Complete. Sparse relay sampling, reconnect behavior, configuration, and native
+runner coverage were merged and included in the v0.3 gates.

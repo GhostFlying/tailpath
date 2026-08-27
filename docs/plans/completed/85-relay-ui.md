@@ -66,4 +66,5 @@ identity-status vocabulary.
 
 ## Next step
 
-Mark the stacked PR ready for human review.
+Complete. Relay Live/History presentation and the browser fidelity checks were
+merged and included in the v0.3 closeout evidence.
