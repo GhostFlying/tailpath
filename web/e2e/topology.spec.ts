@@ -104,6 +104,64 @@ test("reports known runtime freshness without implying expected coverage", async
   });
 });
 
+test("hides control traffic by default and persists the explicit option", async ({
+  page,
+}, testInfo) => {
+  const generatedAt = "2026-08-27T00:00:00Z";
+  await page.route("**/api/v1/topology", async (route) => {
+    await route.fulfill({
+      json: {
+        generatedAt,
+        nodes: [
+          topologyNode("client-a", "Client A", generatedAt),
+          topologyNode("client-b", "Client B", generatedAt),
+          topologyNode("client-c", "Client C", generatedAt),
+          topologyNode("tailpath-control", "Tailpath Control", generatedAt),
+        ],
+        edges: [
+          topologyEdge("business", "client-a", "client-b", false, generatedAt),
+          topologyEdge(
+            "control",
+            "client-c",
+            "tailpath-control",
+            true,
+            generatedAt,
+          ),
+        ],
+        observers: [],
+      },
+    });
+  });
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  const controlSwitch = page.getByRole("switch", {
+    name: "Show Tailpath control traffic",
+  });
+  await expect(controlSwitch).toHaveAttribute("aria-checked", "false");
+  await expect(graph).toHaveAttribute("data-edge-count", "1");
+  await expect(graph).toHaveAttribute("data-node-count", "2");
+
+  await controlSwitch.click();
+  await expect(controlSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(graph).toHaveAttribute("data-edge-count", "2");
+  await expect(graph).toHaveAttribute("data-node-count", "4");
+  await page.screenshot({
+    path: testInfo.outputPath("tailpath-control-traffic.png"),
+    fullPage: true,
+  });
+
+  await page.reload();
+  await expect(
+    page.getByRole("switch", { name: "Show Tailpath control traffic" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(graph).toHaveAttribute("data-edge-count", "2");
+  await page
+    .getByRole("switch", { name: "Show Tailpath control traffic" })
+    .click();
+  await expect(graph).toHaveAttribute("data-edge-count", "1");
+});
+
 test("centers a readable sparse component when traffic enters an empty graph", async ({
   page,
 }, testInfo) => {
@@ -416,6 +474,40 @@ function runtimeObserver(
     lastCollectedAt: observedAt,
     clockSkewMs: clockSkewed ? 90_000 : 0,
     clockSkewed,
+  };
+}
+
+function topologyNode(id: string, hostname: string, observedAt: string) {
+  return {
+    id,
+    stableNodeId: id,
+    hostname,
+    os: "linux",
+    observable: false,
+    online: true,
+    lastEvidenceAt: observedAt,
+    clockSkewed: false,
+  };
+}
+
+function topologyEdge(
+  id: string,
+  source: string,
+  target: string,
+  systemTelemetry: boolean,
+  observedAt: string,
+) {
+  return {
+    id,
+    source,
+    target,
+    systemTelemetry,
+    path: { kind: "direct" },
+    state: "active",
+    aToBBytesPerSecond: 2048,
+    bToABytesPerSecond: 1024,
+    lastActive: observedAt,
+    observations: [],
   };
 }
 

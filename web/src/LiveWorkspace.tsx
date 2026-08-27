@@ -13,6 +13,7 @@ import { useTopology, type ConnectionState } from "./hooks/useTopology";
 import {
   edgeIsVisible,
   emptyTrafficReason,
+  visibleTopologyNodeIDs,
   type EmptyTrafficReason,
   type PathFilter,
 } from "./lib/graph";
@@ -53,6 +54,18 @@ export default function LiveWorkspace() {
     [topology, showRecent, showControlTraffic],
   );
   const counts = useMemo(() => pathCounts(countedEdges), [countedEdges]);
+  const visibleNodeIDs = useMemo(
+    () =>
+      topology
+        ? visibleTopologyNodeIDs(
+            topology,
+            pathFilter,
+            showRecent,
+            showControlTraffic,
+          )
+        : new Set<string>(),
+    [pathFilter, showControlTraffic, showRecent, topology],
+  );
   const emptyReason = topology
     ? emptyTrafficReason(
         topology.edges,
@@ -76,6 +89,12 @@ export default function LiveWorkspace() {
       setSelectedEdgeId(null);
     }
   }, [pathFilter, selectedEdge, showRecent, showControlTraffic]);
+
+  useEffect(() => {
+    if (selectedNodeId && !visibleNodeIDs.has(selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+  }, [selectedNodeId, visibleNodeIDs]);
 
   function updateShowRecent(next: boolean) {
     setShowRecent(next);

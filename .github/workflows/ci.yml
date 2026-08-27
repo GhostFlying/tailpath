@@ -42,6 +42,7 @@ jobs:
             web/test-results/**/mobile-tabs-*.png
             web/test-results/**/history-mobile-metadata.png
             web/test-results/**/tailpath-runtime-status-*.png
+            web/test-results/**/tailpath-control-traffic.png
           if-no-files-found: ignore
           retention-days: 14
 

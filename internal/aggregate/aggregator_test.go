@@ -390,6 +390,87 @@ func TestRelaySessionMarksControlIdentityAsSystemTelemetry(t *testing.T) {
 	}
 }
 
+func TestSystemTelemetrySurvivesOrdinaryObservationCanonicalMergeAndRestore(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	ids := []string{"n_observer", "z_control", "a_alias"}
+	aggregator := New(Options{
+		ControlNodeIDs: []string{"server"},
+		NewNodeID: func() string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	})
+	control := domain.NodeIdentity{StableNodeID: "server", DiscoKey: "disco-control"}
+	hello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "observer"}, InventoryGeneration: "g1",
+			Peers: []domain.PeerObservation{
+				{Peer: control},
+				{Peer: domain.NodeIdentity{NodeKey: "node-alias"}},
+			},
+		}},
+	}
+	if _, err := aggregator.ApplyAt(hello, now); err != nil {
+		t.Fatal(err)
+	}
+	traffic := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "traffic", ReporterInstanceID: "reporter", Sequence: 2,
+		CollectedAt: now.Add(time.Second), Kind: domain.ReportTrafficSample,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "observer"}, InventoryGeneration: "g1",
+			Peers: []domain.PeerObservation{{
+				Peer: control, TxDelta: 10, RxDelta: 5, SampleDurationMS: 1000,
+				LastActive: now.Add(time.Second), Path: domain.PathObservation{Kind: domain.PathDirect},
+			}},
+		}},
+	}
+	result, err := aggregator.ApplyAt(traffic, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Traffic) != 1 || len(aggregator.Snapshot().Edges) != 1 ||
+		!aggregator.Snapshot().Edges[0].SystemTelemetry {
+		t.Fatalf("ordinary control traffic was not retained and classified: result=%#v topology=%#v", result, aggregator.Snapshot())
+	}
+
+	merge := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "merge", ReporterInstanceID: "reporter", Sequence: 3,
+		CollectedAt: now.Add(2 * time.Second), Kind: domain.ReportInventoryUpdate,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "observer"}, InventoryGeneration: "g2",
+			Peers: []domain.PeerObservation{{Peer: domain.NodeIdentity{
+				StableNodeID: "renamed", DiscoKey: "disco-control", NodeKey: "node-alias",
+			}}},
+		}},
+	}
+	if result, err = aggregator.ApplyAt(merge, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	} else if !result.CanonicalStateChanged {
+		t.Fatal("control alias merge was not exposed as canonical state change")
+	}
+	merged := aggregator.Snapshot()
+	if len(merged.Edges) != 1 || !merged.Edges[0].SystemTelemetry {
+		t.Fatalf("canonical merge lost control classification: %#v", merged.Edges)
+	}
+	payload, err := aggregator.MarshalState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(payload, []byte(`"systemTelemetry":true`)) {
+		t.Fatalf("checkpoint omitted control classification: %s", payload)
+	}
+	restored := New(Options{})
+	if err := restored.RestoreState(payload); err != nil {
+		t.Fatal(err)
+	}
+	if topology := restored.Snapshot(); len(topology.Edges) != 1 || !topology.Edges[0].SystemTelemetry {
+		t.Fatalf("restored topology lost control classification: %#v", topology.Edges)
+	}
+}
+
 func TestRelaySessionNormalizesIdentityStatusWithCanonicalDirection(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

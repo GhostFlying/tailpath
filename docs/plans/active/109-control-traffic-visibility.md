@@ -22,8 +22,9 @@ without presenting it as user data-plane activity by default.
 
 ## Implementation
 
-1. Add the classification to domain, OpenAPI, generated types, runtime edge
-   state, and history summaries/details where needed for future filtering.
+1. Add the classification to domain, OpenAPI, generated types, and runtime edge
+   state. History retains the existing traffic and provenance records without
+   adding a separate filter in this version.
 2. Classify relay-derived logical edges against the server control StableNodeID
    set after identity reconciliation, including canonical redirects.
 3. Add aggregator, storage/restart, HTTP, and browser tests for control-only,
@@ -46,12 +47,16 @@ edges remain available from the topology API and in SQLite/history; the Live
 preference is persistent and off by default. Unresolved relay clients are not
 classified as control traffic.
 
-Focused Go and web tests, generated-file checks, TypeScript checks, and the
-desktop/mobile topology browser suite pass. Full `make check` still needs the
-standard final run in the canonical devcontainer environment.
+Independent review found and the branch now covers ordinary collector control
+edges, sticky classification across canonical merge/checkpoint/restore, and
+Inspector cleanup when a node becomes hidden. Focused Go tests, 53 web unit
+tests, generated-file checks, TypeScript and formatting checks, and the full
+desktop/mobile browser suite pass. The browser suite executed 28 tests and
+skipped 12 scale or platform-gated cases; the control-traffic screenshots are
+included in the CI artifact set.
 
 ## Next step
 
-Commit this coherent behavior/docs boundary, open the PR, and obtain review.
-After merge, close the v0.3 release gate only when the mixed-version dogfood
-window from #80 is also recorded.
+Push the reviewed fixes and require the final PR head to pass `make check` in
+CI before marking it ready. After merge, close the v0.3 release gate only when
+the mixed-version dogfood window from #80 is also recorded.
