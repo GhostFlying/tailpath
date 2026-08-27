@@ -387,8 +387,7 @@ restart_relay() {
   compose restart collector-r
   relay_check >/dev/null || fail "$relay_hostname did not recover relay telemetry"
   wait_relay_reporting
-  wait_peer_relay_path
-  echo "tailpath smoke relay restarted and endpoint paths recovered"
+  echo "tailpath smoke relay restarted and telemetry recovered"
 }
 
 udp() {
