@@ -138,6 +138,10 @@ jobs:
           jq -e '.services.server.volumes as $volumes | ($volumes | length) == 1 and $volumes[0].type == "volume" and $volumes[0].source == "tailpath-data" and $volumes[0].target == "/var/lib/tailpath"' <<<"$production"
           jq -e '.services.server.secrets as $secrets | ($secrets | length) == 1 and $secrets[0].source == "tailscale-authkey" and $secrets[0].target == "/run/secrets/tailscale-authkey"' <<<"$production"
           docker compose -f compose.smoke.yaml config --quiet
+          mixed="$(TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION=0.2.0 docker compose -f compose.smoke.yaml config --format json)"
+          jq -e '.services.server.image == "ghcr.io/ghostflying/tailpath:edge-0123456789abcdef0123456789abcdef01234567"' <<<"$mixed"
+          jq -e '.services["collector-a"].image == "ghcr.io/ghostflying/tailpath:0.2.0" and .services["collector-b"].image == "ghcr.io/ghostflying/tailpath:0.2.0"' <<<"$mixed"
+          jq -e '.services["collector-r"].image == "ghcr.io/ghostflying/tailpath:edge-0123456789abcdef0123456789abcdef01234567"' <<<"$mixed"
           sh -n scripts/smoke.sh
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6

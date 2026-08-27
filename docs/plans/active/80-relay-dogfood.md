@@ -80,14 +80,16 @@ evidence, but is not a prerequisite for validating the v0.3 telemetry path.
 
 The repeatable harness and immutable-main business-session matrix are complete.
 The reusable credential files were zeroed immediately after enrollment, and no
-production or long-lived node was modified. Independent review found two open
-release gates: the run did not retain a mixed-version server-first window, and
-issue #109 must restore the accepted dedicated-control-identity behavior for
-relay-observed collector delivery traffic.
+production or long-lived node was modified. Issue #109 is merged and restores
+the dedicated-control-identity behavior. The harness now supports a candidate
+server and relay collector with independently pinned older ordinary collectors;
+Compose configuration tests prove that `0.2.0` applies only to A/B while the
+server and relay collector retain the immutable candidate tag.
 
 ## Next step
 
-Implement #109, then rerun a focused candidate-server/older-ordinary-collector
-compatibility window and record its sanitized result. Re-run final repository
-checks and independent review before marking PR #100 ready. Revoke the reusable
-Tailnet key after the final ephemeral lab is destroyed.
+Wait for main commit `4dedf9d6b76357fad70531e15090eb7e79f02d03` to publish its
+immutable image, then run the focused candidate-server/`0.2.0` ordinary
+collector compatibility window and record only its sanitized result. Re-run
+final repository checks and independent review before marking PR #100 ready.
+Revoke the reusable Tailnet key after the final ephemeral lab is destroyed.
