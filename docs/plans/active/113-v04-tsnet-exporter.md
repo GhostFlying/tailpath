@@ -69,16 +69,17 @@ same model required by tsbridge without making an external repository a gate.
 
 ## Current state
 
-The v0.4 milestone, umbrella issue, and issues #114 through #123 exist. The
-server already stores ownership per canonical observer and accepts multiple
-observers in one envelope, but the collector engine is single-observer and
-internal. There is no capability endpoint, explicit withdrawal, public
-exporter package, embedded tsnet adapter, or multi-instance example.
+The v0.4 milestone, umbrella issue, and issues #114 through #123 exist. Issue
+#114 adds authenticated capability negotiation and advertises only the existing
+multi-observer behavior. The server already stores ownership per canonical
+observer and accepts multiple observers in one envelope, but the collector
+engine is single-observer and internal. Explicit withdrawal, the public
+exporter package, embedded tsnet adapter, and multi-instance example remain.
 
 ## Next step
 
-Land this governance PR, then implement #114 and #115 before publishing the
-exporter contracts and shared SnapshotSink.
+Land the governance and capability PRs, then implement #115 before publishing
+the exporter contracts and shared SnapshotSink.
 
 ## Verification
 

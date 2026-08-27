@@ -6,6 +6,19 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Return authenticated observer protocol capabilities.
+      responses:
+        '200':
+          description: Server capabilities available to trusted reporters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerCapabilities'
+        '401':
+          $ref: '#/components/responses/Problem'
   /reports:
     post:
       operationId: submitReport
@@ -146,6 +159,23 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    ServerCapabilities:
+      type: object
+      required: [observerProtocolVersions, features]
+      properties:
+        observerProtocolVersions:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+        features:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
     ReportEnvelope:
       type: object
       required: [version, reportId, reporterInstanceId, sequence, collectedAt, kind]

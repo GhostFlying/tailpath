@@ -10,6 +10,41 @@ import (
 
 const ProtocolVersion = 1
 
+const (
+	FeatureMultiObserver      = "multi-observer"
+	FeatureObserverWithdrawal = "observer-withdrawal"
+)
+
+type ServerCapabilities struct {
+	ObserverProtocolVersions []int    `json:"observerProtocolVersions"`
+	Features                 []string `json:"features"`
+}
+
+func CurrentServerCapabilities() ServerCapabilities {
+	return ServerCapabilities{
+		ObserverProtocolVersions: []int{ProtocolVersion},
+		Features:                 []string{FeatureMultiObserver},
+	}
+}
+
+func (c ServerCapabilities) SupportsProtocol(version int) bool {
+	for _, candidate := range c.ObserverProtocolVersions {
+		if candidate == version {
+			return true
+		}
+	}
+	return false
+}
+
+func (c ServerCapabilities) SupportsFeature(feature string) bool {
+	for _, candidate := range c.Features {
+		if candidate == feature {
+			return true
+		}
+	}
+	return false
+}
+
 type ReportKind string
 
 const (

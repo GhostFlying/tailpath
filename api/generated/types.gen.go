@@ -257,6 +257,12 @@ type ReportReceipt struct {
 	ResyncRequired       bool     `json:"resyncRequired"`
 }
 
+// ServerCapabilities defines model for ServerCapabilities.
+type ServerCapabilities struct {
+	Features                 []string `json:"features"`
+	ObserverProtocolVersions []int    `json:"observerProtocolVersions"`
+}
+
 // Topology defines model for Topology.
 type Topology struct {
 	Edges       []TopologyEdge `json:"edges"`

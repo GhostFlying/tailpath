@@ -62,13 +62,32 @@ func TestFixtureMutationRouteIsExplicitAndAuthorized(t *testing.T) {
 
 func TestReadAPIsRequireAuthorization(t *testing.T) {
 	server := newTestServer(t, nil)
-	for _, path := range []string{"/api/v1/topology", "/api/v1/events", "/api/v1/history/edges/edge"} {
+	for _, path := range []string{"/api/v1/capabilities", "/api/v1/topology", "/api/v1/events", "/api/v1/history/edges/edge"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		server.Handler().ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusUnauthorized {
 			t.Errorf("GET %s status = %d, want 401", path, recorder.Code)
 		}
+	}
+}
+
+func TestCapabilitiesAdvertiseImplementedProtocolFeatures(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("capabilities status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var capabilities domain.ServerCapabilities
+	if err := json.NewDecoder(recorder.Body).Decode(&capabilities); err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.SupportsProtocol(domain.ProtocolVersion) ||
+		!capabilities.SupportsFeature(domain.FeatureMultiObserver) ||
+		capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) {
+		t.Fatalf("unexpected capabilities: %#v", capabilities)
 	}
 }
 
