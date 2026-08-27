@@ -1,50 +1,22 @@
 package collector
 
-import (
-	"context"
-	"time"
+import "github.com/GhostFlying/tailpath/exporter"
 
-	"github.com/GhostFlying/tailpath/internal/domain"
-)
-
-type RelayCapability string
-
-type RelayIdentityEvidence string
+type RelayCapability = exporter.RelayCapability
+type RelayIdentityEvidence = exporter.RelayIdentityEvidence
 
 const (
-	RelayOff              RelayCapability = "off"
-	RelayUnsupported      RelayCapability = "unsupported"
-	RelayDisabled         RelayCapability = "disabled"
-	RelayEnabled          RelayCapability = "enabled"
-	RelayTransientFailure RelayCapability = "transient_failure"
+	RelayOff              = exporter.RelayOff
+	RelayUnsupported      = exporter.RelayUnsupported
+	RelayDisabled         = exporter.RelayDisabled
+	RelayEnabled          = exporter.RelayEnabled
+	RelayTransientFailure = exporter.RelayTransientFailure
 
-	RelayIdentityAvailable RelayIdentityEvidence = "available"
-	RelayIdentityDegraded  RelayIdentityEvidence = "degraded"
+	RelayIdentityAvailable = exporter.RelayIdentityAvailable
+	RelayIdentityDegraded  = exporter.RelayIdentityDegraded
 )
 
-type RelaySource interface {
-	PeerRelaySnapshot(context.Context) (RelaySnapshot, error)
-}
-
-type RelaySnapshot struct {
-	CollectedAt      time.Time
-	Capability       RelayCapability
-	IdentityEvidence RelayIdentityEvidence
-	Sessions         []RelaySessionSnapshot
-}
-
-type RelaySessionSnapshot struct {
-	SessionID string
-	VNI       int64
-	Source    RelayClientSnapshot
-	Target    RelayClientSnapshot
-}
-
-type RelayClientSnapshot struct {
-	SessionClientID string
-	Identity        *domain.NodeIdentity
-	DiscoShort      string
-	Endpoint        string
-	PacketsSent     uint64
-	BytesSent       uint64
-}
+type RelaySource = exporter.RelaySource
+type RelaySnapshot = exporter.RelaySnapshot
+type RelaySessionSnapshot = exporter.RelaySessionSnapshot
+type RelayClientSnapshot = exporter.RelayClientSnapshot

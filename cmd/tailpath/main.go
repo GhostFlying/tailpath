@@ -22,6 +22,7 @@ import (
 	"tailscale.com/client/local"
 	"tailscale.com/tsnet"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/collector"
@@ -372,18 +373,29 @@ func runCollector(arguments []string, logger *slog.Logger) error {
 	if config.check {
 		return checkCollector(context.Background(), source, source, config.relayTelemetry, os.Stdout)
 	}
-	reporter, err := collector.NewHTTPReporter(config.serverURL, nil)
+	reporter, err := exporter.NewHTTPReporter(config.serverURL, nil)
 	if err != nil {
 		return err
 	}
-	runner := collector.New(source, reporter, collector.Options{
-		Logger: logger, RelayTelemetry: config.relayTelemetry == "auto",
-	})
+	var observerSource exporter.Source = source
+	if config.relayTelemetry == "off" {
+		observerSource = ordinaryCollectorSource{Source: source}
+	}
+	sink := exporter.NewSnapshotSink(reporter, exporter.SnapshotSinkOptions{Logger: logger})
+	if _, err := sink.Register("tailscaled", observerSource); err != nil {
+		return fmt.Errorf("register tailscaled observer: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	logger.Info("collector started", "server", config.serverURL, "sample_interval", 2*time.Second,
 		"relay_telemetry", config.relayTelemetry)
-	return runner.Run(ctx)
+	return sink.Run(ctx)
+}
+
+// ordinaryCollectorSource intentionally hides LocalSource's optional relay
+// capability when the operator disables relay telemetry.
+type ordinaryCollectorSource struct {
+	exporter.Source
 }
 
 type collectorConfig struct {

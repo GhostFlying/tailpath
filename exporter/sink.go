@@ -91,6 +91,14 @@ type sourceResultEvent struct {
 
 func (sourceResultEvent) sinkEvent() {}
 
+type relayResultEvent struct {
+	registration *Registration
+	snapshot     RelaySnapshot
+	err          error
+}
+
+func (relayResultEvent) sinkEvent() {}
+
 type withdrawEvent struct {
 	registration *Registration
 }
@@ -118,6 +126,16 @@ type sourceRuntimeState struct {
 	sourceFailed bool
 	oversized    bool
 	withdrawErr  error
+
+	relayLatest           RelaySnapshot
+	relayBaseline         RelaySnapshot
+	relayHasLatest        bool
+	relayHasBaseline      bool
+	relayHealthy          bool
+	relayDirty            bool
+	relaySourceFailed     bool
+	relayCapability       RelayCapability
+	relayIdentityEvidence RelayIdentityEvidence
 }
 
 type observerOperation struct {
@@ -127,6 +145,13 @@ type observerOperation struct {
 	reference   observerReference
 	observer    ObserverReport
 	snapshot    Snapshot
+}
+
+type relayOperation struct {
+	state       *sourceRuntimeState
+	collectedAt time.Time
+	snapshot    RelaySnapshot
+	sessions    []RelaySessionObservation
 }
 
 type transportRuntimeState struct {
@@ -331,6 +356,13 @@ func (s *SnapshotSink) startSamplerLocked(registration *Registration) {
 		defer s.samplers.Done()
 		s.sampleSource(ctx, registration)
 	}()
+	if relaySource, ok := registration.source.(RelaySource); ok {
+		s.samplers.Add(1)
+		go func() {
+			defer s.samplers.Done()
+			s.sampleRelaySource(ctx, registration, relaySource)
+		}()
+	}
 }
 
 func (s *SnapshotSink) sampleSource(ctx context.Context, registration *Registration) {
@@ -412,7 +444,59 @@ func (s *SnapshotSink) handleEvent(states map[string]*sourceRuntimeState, event 
 			state.withdrawals = appendObserverReference(state.withdrawals, *state.serverRef)
 			state.serverRef = nil
 			state.needsHello = true
+			state.relayHasBaseline = false
+			state.relayDirty = false
 		}
+	case relayResultEvent:
+		s.mu.Lock()
+		active := s.registrations[event.registration.key] == event.registration
+		s.mu.Unlock()
+		if !active {
+			return
+		}
+		state := states[event.registration.key]
+		if state == nil {
+			state = &sourceRuntimeState{registration: event.registration, needsHello: true}
+			states[event.registration.key] = state
+		}
+		if state.withdrawing {
+			return
+		}
+		if event.err != nil {
+			if !state.relaySourceFailed {
+				s.config.Logger.Warn("relay telemetry degraded", "source", event.registration.key)
+			}
+			state.relaySourceFailed = true
+			state.relayHealthy = false
+			state.relayHasBaseline = false
+			state.relayDirty = false
+			return
+		}
+		if state.relaySourceFailed {
+			s.config.Logger.Info("relay telemetry recovered", "source", event.registration.key,
+				"capability", event.snapshot.Capability)
+		}
+		state.relaySourceFailed = false
+		s.logRelayStateTransition(event.registration.key, state, event.snapshot)
+		state.relayCapability = event.snapshot.Capability
+		state.relayIdentityEvidence = event.snapshot.IdentityEvidence
+		if event.snapshot.Capability != RelayEnabled {
+			state.relayHealthy = false
+			state.relayHasLatest = false
+			state.relayHasBaseline = false
+			state.relayDirty = false
+			return
+		}
+		state.relayHealthy = true
+		state.relayLatest = event.snapshot
+		state.relayHasLatest = true
+		if !state.relayHasBaseline {
+			state.relayBaseline = event.snapshot
+			state.relayHasBaseline = true
+			state.relayDirty = false
+			return
+		}
+		state.relayDirty = true
 	case withdrawEvent:
 		state := states[event.registration.key]
 		if state == nil {
@@ -422,6 +506,7 @@ func (s *SnapshotSink) handleEvent(states map[string]*sourceRuntimeState, event 
 		state.withdrawing = true
 		state.healthy = false
 		state.dirty = false
+		state.relayDirty = false
 		event.registration.mu.Lock()
 		if event.registration.cancel != nil {
 			event.registration.cancel()
@@ -490,6 +575,16 @@ func (s *SnapshotSink) flush(
 			return nil
 		}
 		s.finalizeUnreportedWithdrawals(states)
+	}
+	relayOperations := s.relayOperations(states)
+	if len(relayOperations) > 0 {
+		resync, err := s.sendRelayOperations(ctx, relayOperations, transport, controlIDs, heartbeatInterval, sequence)
+		if err != nil {
+			return s.transportFailed(states, transport, now, err)
+		}
+		if resync {
+			s.markDisconnected(states)
+		}
 	}
 	return nil
 }
@@ -696,6 +791,7 @@ func (s *SnapshotSink) applyOperation(operation observerOperation, now time.Time
 		state.dirty = false
 		state.lastReportAt = now
 		state.oversized = false
+		s.resetRelayBaseline(state)
 	case ReportInventoryUpdate:
 		if state.serverRef != nil {
 			state.serverRef.generation = operation.reference.generation
@@ -789,6 +885,8 @@ func (s *SnapshotSink) markDisconnected(states map[string]*sourceRuntimeState) {
 			continue
 		}
 		state.needsHello = true
+		state.relayHasBaseline = false
+		state.relayDirty = false
 		if state.hasLatest {
 			state.baseline = state.latest
 			state.hasBaseline = true

@@ -13,9 +13,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
+
+func TestOrdinaryCollectorSourceHidesRelayCapability(t *testing.T) {
+	source := &checkSource{}
+	wrapped := ordinaryCollectorSource{Source: source}
+	if _, ok := any(wrapped).(exporter.RelaySource); ok {
+		t.Fatal("relay-off wrapper still exposes RelaySource")
+	}
+}
 
 func TestCollectorConfigPrecedence(t *testing.T) {
 	environment := map[string]string{
@@ -109,6 +118,10 @@ type checkSource struct {
 	calls      int
 	relayCalls int
 	relayError error
+}
+
+func (s *checkSource) Snapshot(context.Context) (exporter.Snapshot, error) {
+	return exporter.Snapshot{}, nil
 }
 
 func (s *checkSource) Diagnostic(context.Context) (collector.Diagnostic, error) {
