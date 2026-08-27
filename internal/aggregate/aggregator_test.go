@@ -394,6 +394,7 @@ func TestSystemTelemetrySurvivesOrdinaryObservationCanonicalMergeAndRestore(t *t
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	ids := []string{"n_observer", "z_control", "a_alias"}
 	aggregator := New(Options{
+		Now:            func() time.Time { return now.Add(2 * time.Second) },
 		ControlNodeIDs: []string{"server"},
 		NewNodeID: func() string {
 			id := ids[0]
@@ -462,7 +463,7 @@ func TestSystemTelemetrySurvivesOrdinaryObservationCanonicalMergeAndRestore(t *t
 	if !bytes.Contains(payload, []byte(`"systemTelemetry":true`)) {
 		t.Fatalf("checkpoint omitted control classification: %s", payload)
 	}
-	restored := New(Options{})
+	restored := New(Options{Now: func() time.Time { return now.Add(2 * time.Second) }})
 	if err := restored.RestoreState(payload); err != nil {
 		t.Fatal(err)
 	}
