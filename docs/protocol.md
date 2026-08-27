@@ -2,6 +2,16 @@
 
 `api/openapi.yaml` owns JSON shapes. This document owns timing and meaning.
 
+## Capabilities
+
+An embedded v0.4 exporter first reads the authenticated
+`GET /api/v1/capabilities` endpoint. It requires observer protocol version 1,
+`multi-observer`, and, once implemented, `observer-withdrawal` before sending
+any observer state. A missing or malformed capability response is an
+incompatible server, not a reason to fall back to weaker lifecycle semantics.
+Existing collectors do not require this preflight and remain compatible with a
+v0.4 server.
+
 ## Messages
 
 - `observer_hello`: identity, complete current peer-view inventory, counter

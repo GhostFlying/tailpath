@@ -59,6 +59,7 @@ func New(application *app.App, options Options) *Server {
 		mux:        http.NewServeMux(),
 		eventEvery: options.TopologyEventInterval,
 	}
+	server.mux.HandleFunc("GET /api/v1/capabilities", server.getCapabilities)
 	server.mux.HandleFunc("POST /api/v1/reports", server.submitReport)
 	server.mux.HandleFunc("GET /api/v1/topology", server.getTopology)
 	server.mux.HandleFunc("GET /api/v1/events", server.streamEvents)
@@ -79,6 +80,10 @@ func New(application *app.App, options Options) *Server {
 	server.mux.HandleFunc("GET /healthz", health)
 	server.mux.HandleFunc("/", server.serveWeb)
 	return server
+}
+
+func (s *Server) getCapabilities(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusOK, domain.CurrentServerCapabilities())
 }
 
 func (s *Server) Handler() http.Handler {

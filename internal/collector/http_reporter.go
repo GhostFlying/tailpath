@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +16,17 @@ import (
 )
 
 type HTTPReporter struct {
-	endpoint string
-	client   *http.Client
+	endpoint        string
+	capabilitiesURL string
+	client          *http.Client
+}
+
+type IncompatibleServerError struct {
+	Reason string
+}
+
+func (e *IncompatibleServerError) Error() string {
+	return "incompatible Tailpath server: " + e.Reason
 }
 
 type HTTPStatusError struct {
@@ -49,9 +59,59 @@ func NewHTTPReporter(serverURL string, client *http.Client) (*HTTPReporter, erro
 		client = &http.Client{Transport: transport, Timeout: 15 * time.Second}
 	}
 	return &HTTPReporter{
-		endpoint: strings.TrimSuffix(serverURL, "/") + "/api/v1/reports",
-		client:   client,
+		endpoint:        strings.TrimSuffix(serverURL, "/") + "/api/v1/reports",
+		capabilitiesURL: strings.TrimSuffix(serverURL, "/") + "/api/v1/capabilities",
+		client:          client,
 	}, nil
+}
+
+func (r *HTTPReporter) Capabilities(ctx context.Context) (domain.ServerCapabilities, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.capabilitiesURL, nil)
+	if err != nil {
+		return domain.ServerCapabilities{}, err
+	}
+	response, err := r.client.Do(request)
+	if err != nil {
+		return domain.ServerCapabilities{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "capability endpoint is unavailable"}
+	}
+	if response.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return domain.ServerCapabilities{}, &HTTPStatusError{
+			StatusCode: response.StatusCode,
+			Status:     response.Status,
+			Message:    strings.TrimSpace(string(message)),
+		}
+	}
+	var capabilities domain.ServerCapabilities
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&capabilities); err != nil {
+		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "invalid capability response: " + err.Error()}
+	}
+	if err := ensureReporterEOF(decoder); err != nil {
+		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "invalid capability response: " + err.Error()}
+	}
+	return capabilities, nil
+}
+
+func (r *HTTPReporter) RequireCapabilities(ctx context.Context, features ...string) error {
+	capabilities, err := r.Capabilities(ctx)
+	if err != nil {
+		return err
+	}
+	if !capabilities.SupportsProtocol(domain.ProtocolVersion) {
+		return &IncompatibleServerError{Reason: fmt.Sprintf("observer protocol %d is not supported", domain.ProtocolVersion)}
+	}
+	for _, feature := range features {
+		if !capabilities.SupportsFeature(feature) {
+			return &IncompatibleServerError{Reason: fmt.Sprintf("required feature %q is unavailable", feature)}
+		}
+	}
+	return nil
 }
 
 func (r *HTTPReporter) Send(ctx context.Context, report domain.ReportEnvelope) (domain.ReportReceipt, error) {
@@ -82,4 +142,14 @@ func (r *HTTPReporter) Send(ctx context.Context, report domain.ReportEnvelope) (
 		return domain.ReportReceipt{}, fmt.Errorf("decode receipt: %w", err)
 	}
 	return receipt, nil
+}
+
+func ensureReporterEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); errors.Is(err, io.EOF) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return errors.New("response contains more than one JSON value")
 }
