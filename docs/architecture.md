@@ -19,6 +19,16 @@ The server authenticates the reporter connection with Tailscale WhoIs. Trusted
 reporters may describe another observer, which lets one tsbridge reporter carry
 snapshots for several independent tsnet nodes.
 
+The public SnapshotSink gives every registered runtime an isolated sampling
+goroutine and gives the process one serialization loop for capability preflight,
+batching, reporter sequence, receipts, and reconnect. Production timing and
+bounds are fixed: two-second sampling, a fifteen-second source timeout,
+100-millisecond batching, at most 64 observers and 1 MiB per request, and
+two-to-sixty-second jittered retry. Source failure does not stop siblings. A
+transport gap discards delta continuity and retains only each source's latest
+snapshot for the next complete hello, so neither memory nor restart can produce
+catch-up traffic.
+
 Tailpath-owned exporter contracts live in the public `exporter` package. They
 describe normalized snapshots, protocol reports, receipts, and transport
 capabilities without exposing generated OpenAPI or Tailscale implementation
@@ -84,6 +94,12 @@ process buckets behind durable coverage watermarks. Minute buckets remain open
 for a two-minute late-arrival grace period; hour rollup cannot pass complete
 minute coverage, and raw/minute deletion cannot pass the cursor of the tier
 that consumes it.
+
+Dynamic exporter identity replacement first withdraws the previously reported
+observer and then sends a complete hello for the replacement on the same
+process sequence. Explicit Registration withdrawal retries transient delivery
+in memory while the process runs, but there is no durable client queue. A
+process crash therefore falls back to the server's ordinary freshness expiry.
 
 History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
 join a persisted physical-to-logical edge map built from canonical redirects,
