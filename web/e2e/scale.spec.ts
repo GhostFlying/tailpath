@@ -17,7 +17,7 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
 
   const startedAt = Date.now();
   await page.goto("/");
-  await expect(page.getByText("Tailpath")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tailpath Live" })).toBeVisible();
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toHaveAttribute("data-edge-count", "1000", {
     timeout: 120_000,
@@ -78,6 +78,66 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
     topology.observers.filter((observer) => observer.clockSkewed),
   ).toHaveLength(9);
   expect(consoleErrors).toEqual([]);
+
+  const positionsBeforeLifecycle = await graph.getAttribute(
+    "data-layout-positions",
+  );
+  const viewportBeforeLifecycle = await graph.getAttribute("data-viewport");
+  const layoutRunsBeforeLifecycle =
+    await graph.getAttribute("data-layout-runs");
+  const withdrawStatus = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/fixture/observer-lifecycle", {
+      method: "POST",
+    });
+    return response.status;
+  });
+  expect(withdrawStatus).toBe(202);
+  await expect
+    .poll(() => reportingRuntimeCount(page))
+    .toEqual({ online: 249, total: 250 });
+  if (testInfo.project.name === "desktop-chromium") {
+    await expect(page.getByText("249 reporting · 1 stale")).toBeVisible();
+    await expect(page.getByText("249 live runtimes")).toBeVisible();
+  }
+  await expect(graph).toHaveAttribute(
+    "data-layout-runs",
+    layoutRunsBeforeLifecycle ?? "",
+  );
+  await expect(graph).toHaveAttribute(
+    "data-layout-positions",
+    positionsBeforeLifecycle ?? "",
+  );
+  await expect(graph).toHaveAttribute(
+    "data-viewport",
+    viewportBeforeLifecycle ?? "",
+  );
+
+  const reconnectStatus = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/fixture/observer-lifecycle", {
+      method: "POST",
+    });
+    return response.status;
+  });
+  expect(reconnectStatus).toBe(202);
+  await expect
+    .poll(() => reportingRuntimeCount(page))
+    .toEqual({ online: 250, total: 250 });
+  if (testInfo.project.name === "desktop-chromium") {
+    await expect(page.getByText("250 runtimes reporting")).toBeVisible();
+    await expect(page.getByText("250 live runtimes")).toBeVisible();
+  }
+  await expect(graph).toHaveAttribute(
+    "data-layout-runs",
+    layoutRunsBeforeLifecycle ?? "",
+  );
+  await expect(graph).toHaveAttribute(
+    "data-layout-positions",
+    positionsBeforeLifecycle ?? "",
+  );
+  await expect(graph).toHaveAttribute(
+    "data-viewport",
+    viewportBeforeLifecycle ?? "",
+  );
 
   let visibleUpdateElapsedMs: number | null = null;
   let topologyResponseElapsedMs: number | null = null;
@@ -162,3 +222,16 @@ test("renders the deterministic 250-node/1,000-edge fixture", async ({
     fullPage: true,
   });
 });
+
+async function reportingRuntimeCount(page: import("@playwright/test").Page) {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/v1/topology");
+    const topology = (await response.json()) as {
+      observers: Array<{ online: boolean }>;
+    };
+    return {
+      online: topology.observers.filter((observer) => observer.online).length,
+      total: topology.observers.length,
+    };
+  });
+}

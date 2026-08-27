@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
@@ -115,7 +116,7 @@ func (s *ScaleScenario) Reports(at time.Time) []TimedReport {
 	reports := make([]TimedReport, 0, len(s.nodes)*3)
 	for node := range s.nodes {
 		reports = append(reports, TimedReport{
-			Report:     s.helloReport(node, helloAt),
+			Report:     s.helloReport(node, helloAt, 1),
 			ReceivedAt: helloAt,
 		})
 	}
@@ -137,7 +138,7 @@ func (s *ScaleScenario) Reports(at time.Time) []TimedReport {
 func (s *ScaleScenario) HelloReports(at time.Time) []domain.ReportEnvelope {
 	reports := make([]domain.ReportEnvelope, len(s.nodes))
 	for node := range s.nodes {
-		reports[node] = s.helloReport(node, at.UTC())
+		reports[node] = s.helloReport(node, at.UTC(), 1)
 	}
 	return reports
 }
@@ -148,6 +149,46 @@ func (s *ScaleScenario) SteadyReports(at time.Time, sequence int64) []domain.Rep
 		reports[node] = s.steadyTrafficReport(node, at.UTC(), sequence)
 	}
 	return reports
+}
+
+// ExporterSnapshots projects the fixed scale topology through the public
+// exporter contract. The sequence controls monotonically increasing absolute
+// counters; it is deliberately not a reporter sequence.
+func (s *ScaleScenario) ExporterSnapshots(at time.Time, sequence int64) []exporter.Snapshot {
+	snapshots := make([]exporter.Snapshot, len(s.nodes))
+	for node := range s.nodes {
+		report := s.steadyTrafficReport(node, at.UTC(), sequence)
+		observer := report.Observers[0]
+		snapshot := exporter.Snapshot{
+			CollectedAt: report.CollectedAt,
+			Observer:    exporterIdentity(observer.Observer),
+			Peers:       make([]exporter.PeerSnapshot, len(observer.Peers)),
+		}
+		for index, peer := range observer.Peers {
+			snapshot.Peers[index] = exporter.PeerSnapshot{
+				Identity: exporterIdentity(peer.Peer),
+				RxBytes:  peer.RxBytes,
+				TxBytes:  peer.TxBytes,
+				Path: exporter.Path{
+					Kind:                  exporter.PathKind(peer.Path.Kind),
+					DirectEndpoint:        peer.Path.DirectEndpoint,
+					DERPRegion:            peer.Path.DERPRegion,
+					PeerRelayStableNodeID: peer.Path.PeerRelayStableNodeID,
+					PeerRelayVNI:          peer.Path.PeerRelayVNI,
+				},
+			}
+		}
+		snapshots[node] = snapshot
+	}
+	return snapshots
+}
+
+func (s *ScaleScenario) ObserverWithdrawalReport(node int, at time.Time, sequence int64) domain.ReportEnvelope {
+	return s.envelope(node, sequence, domain.ReportObserverWithdrawal, at.UTC(), nil)
+}
+
+func (s *ScaleScenario) ObserverHelloReport(node int, at time.Time, sequence int64) domain.ReportEnvelope {
+	return s.helloReport(node, at.UTC(), sequence)
 }
 
 func (s *ScaleScenario) EdgeMutationReport(at time.Time, sequence int64) domain.ReportEnvelope {
@@ -163,6 +204,10 @@ func (s *ScaleScenario) EdgeMutationReport(at time.Time, sequence int64) domain.
 		Path:             s.pathForObserver(edge, edge.target),
 		LastActive:       at.UTC(),
 	}})
+}
+
+func (s *ScaleScenario) EdgeMutationObserver() int {
+	return s.edges[1].source
 }
 
 func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.Time) error {
@@ -181,7 +226,19 @@ func (s *ScaleScenario) Load(ctx context.Context, application *app.App, at time.
 // RefreshRuntime keeps the test-only browser fixture inside the ten-second
 // active window after the intentionally unoptimized persistent load finishes.
 func (s *ScaleScenario) RefreshRuntime(aggregator *aggregate.Aggregator, at time.Time, sequence int64) error {
+	return s.RefreshRuntimeExcluding(aggregator, at, sequence, -1)
+}
+
+func (s *ScaleScenario) RefreshRuntimeExcluding(
+	aggregator *aggregate.Aggregator,
+	at time.Time,
+	sequence int64,
+	excludedNode int,
+) error {
 	for node := range s.nodes {
+		if node == excludedNode {
+			continue
+		}
 		report := s.trafficReport(node, at.UTC(), false, sequence)
 		result, err := aggregator.ApplyAt(report, at.UTC())
 		if err != nil {
@@ -194,7 +251,46 @@ func (s *ScaleScenario) RefreshRuntime(aggregator *aggregate.Aggregator, at time
 	return nil
 }
 
-func (s *ScaleScenario) helloReport(node int, receivedAt time.Time) domain.ReportEnvelope {
+func (s *ScaleScenario) RefreshRuntimeSequences(
+	aggregator *aggregate.Aggregator,
+	at time.Time,
+	sequences []int64,
+	excludedNode int,
+) error {
+	if len(sequences) != len(s.nodes) {
+		return fmt.Errorf("scale refresh has %d sequences for %d nodes", len(sequences), len(s.nodes))
+	}
+	for node := range s.nodes {
+		if node == excludedNode {
+			continue
+		}
+		sequences[node]++
+		report := s.trafficReport(node, at.UTC(), false, sequences[node])
+		result, err := aggregator.ApplyAt(report, at.UTC())
+		if err != nil {
+			return fmt.Errorf("refresh scale report %s: %w", report.ReportID, err)
+		}
+		if !result.Receipt.Accepted || result.Receipt.ResyncRequired {
+			return fmt.Errorf("scale refresh report %s was not accepted cleanly", report.ReportID)
+		}
+	}
+	return nil
+}
+
+func exporterIdentity(identity domain.NodeIdentity) exporter.NodeIdentity {
+	return exporter.NodeIdentity{
+		StableNodeID: identity.StableNodeID,
+		NodeID:       identity.NodeID,
+		NodeKey:      identity.NodeKey,
+		DiscoKey:     identity.DiscoKey,
+		Hostname:     identity.Hostname,
+		DNSName:      identity.DNSName,
+		OS:           identity.OS,
+		TailscaleIPs: append([]string(nil), identity.TailscaleIPs...),
+	}
+}
+
+func (s *ScaleScenario) helloReport(node int, receivedAt time.Time, sequence int64) domain.ReportEnvelope {
 	peers := make([]domain.PeerObservation, 0, len(s.neighbors[node]))
 	for _, edgeIndex := range s.neighbors[node] {
 		edge := s.edges[edgeIndex]
@@ -208,7 +304,7 @@ func (s *ScaleScenario) helloReport(node int, receivedAt time.Time) domain.Repor
 			LastActive: receivedAt,
 		})
 	}
-	return s.envelope(node, 1, domain.ReportObserverHello, receivedAt, peers)
+	return s.envelope(node, sequence, domain.ReportObserverHello, receivedAt, peers)
 }
 
 func (s *ScaleScenario) trafficReport(node int, receivedAt time.Time, recent bool, sequence int64) domain.ReportEnvelope {

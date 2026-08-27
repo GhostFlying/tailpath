@@ -60,6 +60,31 @@ func TestFixtureMutationRouteIsExplicitAndAuthorized(t *testing.T) {
 	}
 }
 
+func TestFixtureLifecycleRouteIsExplicitAndAuthorized(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/fixture/observer-lifecycle", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("production fixture route status = %d, want 404", recorder.Code)
+	}
+
+	called := false
+	server = newTestServerWithOptions(t, Options{
+		Authorizer: staticAuthorizer{},
+		FixtureLifecycle: func(context.Context) (any, error) {
+			called = true
+			return map[string]any{"state": "withdrawn"}, nil
+		},
+	})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/fixture/observer-lifecycle", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusAccepted || !called {
+		t.Fatalf("fixture route status = %d called = %t", recorder.Code, called)
+	}
+}
+
 func TestReadAPIsRequireAuthorization(t *testing.T) {
 	server := newTestServer(t, nil)
 	for _, path := range []string{"/api/v1/capabilities", "/api/v1/topology", "/api/v1/events", "/api/v1/history/edges/edge"} {
@@ -91,7 +116,7 @@ func TestCapabilitiesAdvertiseImplementedProtocolFeatures(t *testing.T) {
 	}
 }
 
-func TestReportIngestAndTopology(t *testing.T) {
+func TestLegacySingleObserverReportIngestsWithoutCapabilityNegotiation(t *testing.T) {
 	server := newTestServer(t, staticAuthorizer{})
 	report := domain.ReportEnvelope{
 		Version: domain.ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,

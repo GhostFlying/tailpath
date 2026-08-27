@@ -76,6 +76,16 @@ restart, History provenance, and directional de-duplication. Database, WAL,
 topology, History, and logs are scanned for documentation-range endpoint and
 disco canaries.
 
+The v0.4 exporter gate projects the same fixed-seed mixed-path topology through
+250 public `Source` registrations sharing one `SnapshotSink` and reporter
+identity. It enforces the global monotonic sequence, 64-observer and 1 MiB
+request bounds, immediate durable withdrawal, same-key re-registration, zero
+synthetic reconnect traffic, and checkpoint/journal restart recovery. The scale
+browser fixture withdraws and reconnects one runtime while asserting the
+reporting/stale summary changes without a layout run, coordinate change, or
+viewport change. A separate HTTP test keeps protocol-v1 single-observer reports
+compatible without requiring capability negotiation.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,
