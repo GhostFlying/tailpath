@@ -229,7 +229,7 @@ test("renders the live fixture topology without overlap", async ({
     if (message.type() === "error") consoleErrors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByText("Tailpath")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tailpath Live" })).toBeVisible();
   if (testInfo.project.name.startsWith("desktop")) {
     await expect(page.getByText("active edges")).toBeVisible();
   } else {

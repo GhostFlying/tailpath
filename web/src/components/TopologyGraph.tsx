@@ -25,6 +25,7 @@ interface Props {
   topology: Topology;
   pathFilter: PathFilter;
   showRecent: boolean;
+  showControlTraffic: boolean;
   query: string;
   selectedEdgeId: string | null;
   onSelectEdge: (edgeId: string | null) => void;
@@ -239,9 +240,16 @@ export function TopologyGraph(props: Props) {
       buildElements(props.topology, {
         pathFilter: props.pathFilter,
         showRecent: props.showRecent,
+        showControlTraffic: props.showControlTraffic,
         query: props.query,
       }),
-    [props.topology, props.pathFilter, props.showRecent, props.query],
+    [
+      props.topology,
+      props.pathFilter,
+      props.showRecent,
+      props.showControlTraffic,
+      props.query,
+    ],
   );
 
   useEffect(() => {

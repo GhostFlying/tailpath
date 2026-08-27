@@ -23,6 +23,7 @@ export type EmptyTrafficReason = "no-active" | "no-recent" | "no-match";
 interface BuildOptions {
   pathFilter: PathFilter;
   showRecent: boolean;
+  showControlTraffic?: boolean;
   query: string;
 }
 
@@ -31,7 +32,12 @@ export function buildElements(
   options: BuildOptions,
 ): ElementDefinition[] {
   const visibleEdges = topology.edges.filter((edge) =>
-    edgeIsVisible(edge, options.pathFilter, options.showRecent),
+    edgeIsVisible(
+      edge,
+      options.pathFilter,
+      options.showRecent,
+      options.showControlTraffic,
+    ),
   );
   const nodeMap = new Map(topology.nodes.map((node) => [node.id, node]));
   const stableNodeMap = new Map(
@@ -279,10 +285,12 @@ export function edgeIsVisible(
   edge: TopologyEdge,
   pathFilter: PathFilter,
   showRecent: boolean,
+  showControlTraffic = true,
 ): boolean {
   return (
     (pathFilter === "all" || edge.path.kind === pathFilter) &&
-    (showRecent || edge.state === "active")
+    (showRecent || edge.state === "active") &&
+    (showControlTraffic || !edge.systemTelemetry)
   );
 }
 
@@ -290,8 +298,13 @@ export function emptyTrafficReason(
   edges: TopologyEdge[],
   pathFilter: PathFilter,
   showRecent: boolean,
+  showControlTraffic = true,
 ): EmptyTrafficReason | null {
-  if (edges.some((edge) => edgeIsVisible(edge, pathFilter, showRecent))) {
+  if (
+    edges.some((edge) =>
+      edgeIsVisible(edge, pathFilter, showRecent, showControlTraffic),
+    )
+  ) {
     return null;
   }
   if (

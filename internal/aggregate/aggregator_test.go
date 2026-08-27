@@ -361,6 +361,35 @@ func TestRelaySessionCreatesEndpointEdgeWithRelayProvenance(t *testing.T) {
 	}
 }
 
+func TestRelaySessionMarksControlIdentityAsSystemTelemetry(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	next := 0
+	aggregator := New(Options{
+		Now:            func() time.Time { return now },
+		ControlNodeIDs: []string{"server"},
+		NewNodeID: func() string {
+			next++
+			return fmt.Sprintf("generated-%d", next)
+		},
+	})
+	result, err := aggregator.ApplyAt(relayReport(
+		1, "control-session", 7,
+		domain.RelaySessionClient{SessionClientID: "server", Identity: identity(node("server", "Server"))},
+		domain.RelaySessionClient{SessionClientID: "client", Identity: identity(node("client", "Client"))},
+		1200, 400,
+	), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Traffic) != 1 {
+		t.Fatalf("control traffic records = %d, want one retained internal record", len(result.Traffic))
+	}
+	topology := aggregator.Snapshot()
+	if len(topology.Edges) != 1 || !topology.Edges[0].SystemTelemetry {
+		t.Fatalf("control edge classification = %#v", topology.Edges)
+	}
+}
+
 func TestRelaySessionNormalizesIdentityStatusWithCanonicalDirection(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

@@ -100,12 +100,13 @@ type relaySessionState struct {
 }
 
 type edgeState struct {
-	ID            string                     `json:"id"`
-	Source        string                     `json:"source"`
-	Target        string                     `json:"target"`
-	LastActive    time.Time                  `json:"lastActive"`
-	LastKnownPath domain.PathObservation     `json:"lastKnownPath"`
-	Observations  map[string]edgeObservation `json:"observations"`
+	ID              string                     `json:"id"`
+	Source          string                     `json:"source"`
+	Target          string                     `json:"target"`
+	SystemTelemetry bool                       `json:"systemTelemetry,omitempty"`
+	LastActive      time.Time                  `json:"lastActive"`
+	LastKnownPath   domain.PathObservation     `json:"lastKnownPath"`
+	Observations    map[string]edgeObservation `json:"observations"`
 }
 
 type edgeObservation struct {
@@ -305,6 +306,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			if sourceID == targetID {
 				continue
 			}
+			systemTelemetry := a.isControlNodeLocked(sourceID) || a.isControlNodeLocked(targetID)
 			a.touchPeerLocked(sourceID, receivedAt)
 			a.touchPeerLocked(targetID, receivedAt)
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
@@ -324,6 +326,9 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				report.CollectedAt, receivedAt, relayID, source, target, session,
 				sourceStatus, targetStatus, aToBBytes, bToABytes,
 			)
+			if systemTelemetry {
+				a.state.Edges[edgeID].SystemTelemetry = true
+			}
 			result.Traffic = append(result.Traffic, domain.AcceptedTraffic{
 				EdgeID: edgeID, SourceID: source, TargetID: target, ObserverID: relayID,
 				AToBBytes: aToBBytes, BToABytes: bToABytes, ReceivedAt: receivedAt,
@@ -356,6 +361,19 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	}
 	result.Changed = true
 	return result, nil
+}
+
+func (a *Aggregator) isControlNodeLocked(nodeID string) bool {
+	node := a.state.Nodes[nodeID]
+	if node == nil || node.Identity.StableNodeID == "" {
+		return false
+	}
+	for _, controlID := range a.controlIDs {
+		if node.Identity.StableNodeID == controlID {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Aggregator) replaceInventoryLocked(observer *observerRuntimeState, observerID, generation string, members map[string]struct{}) {
@@ -1158,7 +1176,8 @@ func (a *Aggregator) markPeerRelayNodesVisibleLocked(visibleNodes map[string]str
 func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.TopologyEdge {
 	result := domain.TopologyEdge{
 		ID: edge.ID, Source: edge.Source, Target: edge.Target, LastActive: edge.LastActive,
-		Observations: []domain.ObservationProvenance{},
+		SystemTelemetry: edge.SystemTelemetry || a.isControlNodeLocked(edge.Source) || a.isControlNodeLocked(edge.Target),
+		Observations:    []domain.ObservationProvenance{},
 	}
 	var sourceObservation, targetObservation, relayObservation *edgeObservation
 	for _, observation := range edge.Observations {

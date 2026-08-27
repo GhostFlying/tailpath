@@ -322,6 +322,7 @@ type TopologyEdge struct {
 	ID                 string                  `json:"id"`
 	Source             string                  `json:"source"`
 	Target             string                  `json:"target"`
+	SystemTelemetry    bool                    `json:"systemTelemetry"`
 	Path               PathObservation         `json:"path"`
 	State              EdgeState               `json:"state"`
 	AToBBytesPerSecond float64                 `json:"aToBBytesPerSecond"`

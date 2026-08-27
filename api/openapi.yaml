@@ -421,7 +421,7 @@ components:
               $ref: '#/components/schemas/IdentityStatus'
     TopologyEdge:
       type: object
-      required: [id, source, target, path, state, aToBBytesPerSecond, bToABytesPerSecond, lastActive, observations]
+      required: [id, source, target, systemTelemetry, path, state, aToBBytesPerSecond, bToABytesPerSecond, lastActive, observations]
       properties:
         id:
           type: string
@@ -429,6 +429,9 @@ components:
           type: string
         target:
           type: string
+        systemTelemetry:
+          type: boolean
+          description: True when either endpoint is the dedicated Tailpath control identity.
         path:
           $ref: '#/components/schemas/PathObservation'
         state:

@@ -239,6 +239,8 @@ export interface components {
             id: string;
             source: string;
             target: string;
+            /** @description True when either endpoint is the dedicated Tailpath control identity. */
+            systemTelemetry: boolean;
             path: components["schemas"]["PathObservation"];
             /** @enum {string} */
             state: "active" | "recent";

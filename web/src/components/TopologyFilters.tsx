@@ -19,6 +19,8 @@ interface Props {
   onQueryChange: (query: string) => void;
   showRecent: boolean;
   onShowRecentChange: (showRecent: boolean) => void;
+  showControlTraffic: boolean;
+  onShowControlTrafficChange: (showControlTraffic: boolean) => void;
   counts: Record<PathKind, number>;
   edgeCount: number;
   liveRuntimes: number;
@@ -113,6 +115,25 @@ export function TopologyFilters(props: Props) {
           aria-checked={props.showRecent}
           aria-label="Show recent"
           onClick={() => props.onShowRecentChange(!props.showRecent)}
+        >
+          <span />
+        </button>
+      </div>
+      <div className="recent-option control-traffic-option">
+        <span>
+          <span className="desktop-control-traffic-label">
+            Show Tailpath control traffic
+          </span>
+          <span className="mobile-control-traffic-label">Control traffic</span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={props.showControlTraffic}
+          aria-label="Show Tailpath control traffic"
+          onClick={() =>
+            props.onShowControlTrafficChange(!props.showControlTraffic)
+          }
         >
           <span />
         </button>
