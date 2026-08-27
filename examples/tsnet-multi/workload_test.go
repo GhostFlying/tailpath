@@ -90,6 +90,27 @@ func TestDogfoodWorkloadDoesNotLogTransportDetails(t *testing.T) {
 	}
 }
 
+func TestClientWithTimeoutBoundsHangingTransportWithoutMutatingOwner(t *testing.T) {
+	transport := &blockingRoundTripper{}
+	base := &http.Client{Transport: transport}
+	bounded := clientWithTimeout(base, 20*time.Millisecond)
+	started := time.Now()
+	_, err := bounded.Get("http://reporter.invalid")
+	if err == nil || time.Since(started) > time.Second {
+		t.Fatalf("bounded client error after %s = %v", time.Since(started), err)
+	}
+	if base.Timeout != 0 || bounded == base || bounded.Transport != transport {
+		t.Fatalf("client ownership changed: base=%#v bounded=%#v", base, bounded)
+	}
+}
+
+type blockingRoundTripper struct{}
+
+func (*blockingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	<-request.Context().Done()
+	return nil, request.Context().Err()
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {

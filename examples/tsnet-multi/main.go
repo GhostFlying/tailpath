@@ -43,7 +43,8 @@ func run(arguments []string, getenv func(string) string, logger *slog.Logger) er
 		return fmt.Errorf("start reporting identity: %w", err)
 	}
 	defer reporterServer.Close()
-	reporter, err := exporter.NewHTTPReporter(config.serverURL, reporterServer.HTTPClient())
+	reporter, err := exporter.NewHTTPReporter(config.serverURL,
+		clientWithTimeout(reporterServer.HTTPClient(), 15*time.Second))
 	if err != nil {
 		return err
 	}
@@ -104,6 +105,15 @@ func run(arguments []string, getenv func(string) string, logger *slog.Logger) er
 		}
 	}
 	return errors.Join(runErr, closeErr)
+}
+
+func clientWithTimeout(client *http.Client, timeout time.Duration) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	bounded := *client
+	bounded.Timeout = timeout
+	return &bounded
 }
 
 type tsnetRuntimeFactory struct {
