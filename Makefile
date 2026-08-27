@@ -16,7 +16,7 @@ generate: ## Regenerate Go and TypeScript API models.
 	pnpm --dir web generate:api
 
 fmt: ## Format Go and web source.
-	gofmt -w $$(find cmd internal -name '*.go' -type f)
+	gofmt -w $$(find cmd examples exporter internal -name '*.go' -type f)
 	pnpm --dir web format
 
 test-go: ## Run Go tests.
@@ -42,7 +42,7 @@ check: ## Run generated-file, formatting, test, and build checks.
 	./scripts/tests/select-edge-tag.sh
 	./scripts/tests/sanitize-exporter-dogfood.sh
 	./scripts/tests/sanitize-relay-dogfood.sh
-	test -z "$$(gofmt -l $$(find cmd internal -name '*.go' -type f))"
+	test -z "$$(gofmt -l $$(find cmd examples exporter internal -name '*.go' -type f))"
 	go vet ./...
 	go test ./...
 	pnpm --dir web check
