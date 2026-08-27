@@ -18,6 +18,7 @@ type config struct {
 	controlURL     string
 	lifecycleDemo  bool
 	lifecycleStep  time.Duration
+	workloadDemo   bool
 }
 
 func parseConfig(arguments []string, getenv func(string) string) (config, error) {
@@ -32,6 +33,7 @@ func parseConfig(arguments []string, getenv func(string) string) (config, error)
 	controlURL := flags.String("control-url", getenv("TS_CONTROL_URL"), "optional Tailscale control URL")
 	lifecycleDemo := flags.Bool("lifecycle-demo", false, "remove and restart the third runtime once")
 	lifecycleStep := flags.Duration("lifecycle-step", 30*time.Second, "delay between lifecycle demo transitions")
+	workloadDemo := flags.Bool("workload-demo", false, "run ordinary HTTP traffic from runtime A to runtime B")
 	if err := flags.Parse(arguments); err != nil {
 		return config{}, err
 	}
@@ -58,7 +60,7 @@ func parseConfig(arguments []string, getenv func(string) string) (config, error)
 		serverURL: strings.TrimSpace(*serverURL), stateDir: filepath.Clean(*stateDir),
 		hostnamePrefix: strings.TrimSpace(*hostnamePrefix), authKey: resolvedKey,
 		controlURL: strings.TrimSpace(*controlURL), lifecycleDemo: *lifecycleDemo,
-		lifecycleStep: *lifecycleStep,
+		lifecycleStep: *lifecycleStep, workloadDemo: *workloadDemo,
 	}, nil
 }
 

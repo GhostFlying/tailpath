@@ -19,7 +19,7 @@ func TestConfigUsesEnvironmentAndFlags(t *testing.T) {
 	getenv := func(key string) string { return environment[key] }
 	config, err := parseConfig([]string{
 		"--server=http://flag:8080", "--state-dir=/flag/state", "--hostname-prefix=flag",
-		"--auth-key=tskey-flag", "--lifecycle-demo", "--lifecycle-step=2s",
+		"--auth-key=tskey-flag", "--lifecycle-demo", "--lifecycle-step=2s", "--workload-demo",
 	}, getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestConfigUsesEnvironmentAndFlags(t *testing.T) {
 	if config.serverURL != "http://flag:8080" || config.stateDir != filepath.Clean("/flag/state") ||
 		config.hostnamePrefix != "flag" || config.authKey != "tskey-flag" ||
 		config.controlURL != "https://control.example" || !config.lifecycleDemo ||
-		config.lifecycleStep != 2*time.Second {
+		config.lifecycleStep != 2*time.Second || !config.workloadDemo {
 		t.Fatalf("config = %#v", config)
 	}
 }

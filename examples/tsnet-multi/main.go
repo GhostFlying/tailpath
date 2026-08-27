@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -58,11 +60,21 @@ func run(arguments []string, getenv func(string) string, logger *slog.Logger) er
 	sinkContext, stopSink := context.WithCancel(context.Background())
 	sinkDone := make(chan error, 1)
 	go func() { sinkDone <- sink.Run(sinkContext) }()
+	var workload *dogfoodWorkload
+	if config.workloadDemo {
+		workload, err = startDogfoodWorkload(signalContext, manager, logger)
+		if err != nil {
+			stopSink()
+			<-sinkDone
+			_ = manager.Close(context.Background())
+			return err
+		}
+	}
 	if config.lifecycleDemo {
 		go runLifecycleDemo(signalContext, manager, specs[2], config.lifecycleStep, logger)
 	}
-	logger.Info("tsnet exporter example started", "server", config.serverURL, "runtimes", len(specs),
-		"lifecycle_demo", config.lifecycleDemo)
+	logger.Info("tsnet exporter example started", "runtimes", len(specs),
+		"lifecycle_demo", config.lifecycleDemo, "workload_demo", config.workloadDemo)
 
 	var runErr error
 	sinkExited := false
@@ -71,9 +83,14 @@ func run(arguments []string, getenv func(string) string, logger *slog.Logger) er
 	case runErr = <-sinkDone:
 		sinkExited = true
 		stopSignals()
+	case runErr = <-workloadFailure(workload):
+		stopSignals()
 	}
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelShutdown()
+	if workload != nil {
+		runErr = errors.Join(runErr, workload.Close(shutdownContext))
+	}
 	closeErr := manager.Close(shutdownContext)
 	stopSink()
 	if !sinkExited {
@@ -111,6 +128,19 @@ func (f tsnetRuntimeFactory) Start(ctx context.Context, spec runtimeSpec) (runti
 type tsnetRuntime struct {
 	*tailpathtsnet.Source
 	server *tailscaletsnet.Server
+}
+
+func (r *tsnetRuntime) Listen(network, address string) (net.Listener, error) {
+	return r.server.Listen(network, address)
+}
+
+func (r *tsnetRuntime) HTTPClient() *http.Client {
+	return r.server.HTTPClient()
+}
+
+func (r *tsnetRuntime) TailscaleIPv4() string {
+	ipv4, _ := r.server.TailscaleIPs()
+	return ipv4.String()
 }
 
 func (r *tsnetRuntime) Close() error {

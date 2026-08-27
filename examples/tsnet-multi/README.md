@@ -39,5 +39,12 @@ runtime from the same persisted state. Adjust the delay with
 
 The example starts and stops its own tsnet servers but does not ping or probe
 peers. Generate ordinary application traffic separately when validating paths
-and rates. Stop it with SIGINT or SIGTERM; it attempts accepted withdrawal for
+and rates. For the isolated Tailpath dogfood only, `--workload-demo` starts an
+HTTP listener on runtime B and repeatedly downloads a bounded stream through
+runtime A's tsnet HTTP client. Requests explicitly close their connection so a
+disposable namespace fault can exercise genuine path restoration. This option
+is disabled by default and does not participate in observation or path
+classification.
+
+Stop the example with SIGINT or SIGTERM; it attempts accepted withdrawal for
 all observers before closing their tsnet identities.

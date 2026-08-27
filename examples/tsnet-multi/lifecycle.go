@@ -107,6 +107,16 @@ func (m *runtimeManager) Restart(ctx context.Context, key string) error {
 	return m.addLocked(ctx, spec)
 }
 
+func (m *runtimeManager) Runtime(key string) (runtimeInstance, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	runtime := m.runtimes[key]
+	if runtime == nil {
+		return nil, false
+	}
+	return runtime.instance, true
+}
+
 func (m *runtimeManager) Close(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
