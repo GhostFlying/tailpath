@@ -74,13 +74,15 @@ The v0.4 milestone, umbrella issue, and issues #114 through #123 exist. Issue
 observer withdrawal and advertises that lifecycle only with its persisted
 server behavior. The server stores ownership per canonical observer and accepts
 multiple observers in one envelope, but the collector engine is still
-single-observer and internal. The public exporter package, embedded tsnet
-adapter, and multi-instance example remain.
+single-observer and internal. Issue #116 publishes handwritten snapshot,
+reporter, and HTTP transport contracts without exposing internal, generated, or
+Tailscale types. The shared engine, embedded tsnet adapter, and multi-instance
+example remain.
 
 ## Next step
 
-Land the governance, capability, and withdrawal PRs, then publish the exporter
-contracts and shared SnapshotSink in issues #116 and #117.
+Land the governance, capability, withdrawal, and contract PRs, then implement
+the shared SnapshotSink in issue #117.
 
 ## Verification
 
