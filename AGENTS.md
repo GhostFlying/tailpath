@@ -19,9 +19,9 @@ Use the dev container as the canonical toolchain. Run `make check` before a PR
 is marked ready. Generated API files must be refreshed with `make generate` and
 must not be edited by hand.
 
-Tailscale types are confined to `internal/tailscaleadapter`. Domain, storage,
-HTTP, and web code use Tailpath-owned types. Released SQL migrations are
-append-only.
+Tailscale types are confined to `internal/tailscaleadapter` and the public
+`exporter/tsnet` adapter. Exporter core, domain, storage, HTTP, and web code use
+Tailpath-owned types. Released SQL migrations are append-only.
 
 ## Plans And Documentation
 

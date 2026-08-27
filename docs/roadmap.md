@@ -31,7 +31,11 @@ restart, path-transition, privacy, and existing scale gates.
 
 ## v0.4: tsnet and tsbridge
 
-Public exporter package, SnapshotSink, HTTPReporter, and multi-instance example.
+Public exporter and tsnet adapter packages, an authenticated capability and
+withdrawal lifecycle, one process-level multi-observer SnapshotSink, a public
+HTTPReporter, native collector reuse, and a runnable multi-instance example.
+v0.4 exits after isolated Linux dogfood proves independent runtime identity,
+traffic, withdrawal, restart, History, and existing scale behavior.
 
 ## v1.0: Stable
 
