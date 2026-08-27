@@ -149,10 +149,12 @@ export interface components {
         };
         /** @enum {string} */
         ReportKind: "observer_hello" | "inventory_update" | "traffic_sample" | "observer_heartbeat" | "observer_withdrawal" | "relay_session_update";
-        /** @description For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers. */
+        /** @description For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers. collectedAt is the time for this observer inside a multi-observer envelope; legacy reports may omit it and use the envelope timestamp. */
         ObserverReport: {
             observer: components["schemas"]["NodeIdentity"];
             inventoryGeneration: string;
+            /** Format: date-time */
+            collectedAt?: string;
             peers?: components["schemas"]["PeerObservation"][];
         };
         /** @description At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes. */

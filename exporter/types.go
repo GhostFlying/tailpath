@@ -211,6 +211,7 @@ type PeerObservation struct {
 type ObserverReport struct {
 	Observer            NodeIdentity      `json:"observer"`
 	InventoryGeneration string            `json:"inventoryGeneration"`
+	CollectedAt         *time.Time        `json:"collectedAt,omitempty"`
 	Peers               []PeerObservation `json:"peers,omitempty"`
 }
 

@@ -238,6 +238,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	touchedEdges := make(map[string]domain.PathObservation)
 	if report.Kind == domain.ReportObserverWithdrawal {
 		for _, observation := range report.Observers {
+			collectedAt := observation.CollectionTime(report.CollectedAt)
 			observerID, ok := a.lookupIdentityLocked(observation.Observer, receivedAt)
 			if !ok {
 				continue
@@ -246,7 +247,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			if observer == nil || observer.OwnerReporterInstanceID != report.ReporterInstanceID {
 				continue
 			}
-			a.touchObserverLocked(observerID, report.CollectedAt, receivedAt)
+			a.touchObserverLocked(observerID, collectedAt, receivedAt)
 			a.withdrawObserverLocked(report.ReporterInstanceID, reporter, observerID, receivedAt)
 			result.CheckpointRequired = true
 		}
@@ -256,10 +257,11 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			continue
 		}
 		observerID, _ := resolveIdentity(observation.Observer)
+		collectedAt := observation.CollectionTime(report.CollectedAt)
 		if report.Kind == domain.ReportObserverHello {
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
 		}
-		a.touchObserverLocked(observerID, report.CollectedAt, receivedAt)
+		a.touchObserverLocked(observerID, collectedAt, receivedAt)
 		observerState := a.state.Observers[observerID]
 
 		switch report.Kind {
@@ -301,7 +303,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 						result.CanonicalStateChanged = true
 					}
 				}
-				a.applyPeerLocked(report.CollectedAt, receivedAt, observerID, peerID, peer)
+				a.applyPeerLocked(collectedAt, receivedAt, observerID, peerID, peer)
 				a.markSystemTelemetryLocked(edgeID, observerID, peerID)
 				aToBBytes, bToABytes := peer.TxDelta, peer.RxDelta
 				if observerID != source {

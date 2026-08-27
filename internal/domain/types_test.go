@@ -79,6 +79,34 @@ func TestObserverWithdrawalForbidsPeerState(t *testing.T) {
 	}
 }
 
+func TestObserverCollectionTimeFallsBackToEnvelope(t *testing.T) {
+	fallback := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	observerAt := fallback.Add(6 * time.Minute)
+	legacy := ObserverReport{}
+	if got := legacy.CollectionTime(fallback); !got.Equal(fallback) {
+		t.Fatalf("legacy collection time = %v, want %v", got, fallback)
+	}
+	report := ReportEnvelope{
+		Version: ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: fallback, Kind: ReportObserverHello,
+		Observers: []ObserverReport{{
+			Observer: NodeIdentity{StableNodeID: "a"}, InventoryGeneration: "inventory",
+			CollectedAt: &observerAt,
+		}},
+	}
+	if err := report.Validate(); err != nil {
+		t.Fatalf("per-observer collection time rejected: %v", err)
+	}
+	if got := report.Observers[0].CollectionTime(fallback); !got.Equal(observerAt) {
+		t.Fatalf("observer collection time = %v, want %v", got, observerAt)
+	}
+	zero := time.Time{}
+	report.Observers[0].CollectedAt = &zero
+	if err := report.Validate(); err == nil {
+		t.Fatal("zero per-observer collection time was accepted")
+	}
+}
+
 func TestRelaySessionUpdateRequiresThirdPartyTrafficObservation(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	report := ReportEnvelope{

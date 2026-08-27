@@ -612,7 +612,10 @@ func (s *SnapshotSink) operationsForKind(
 			reference := state.withdrawals[0]
 			operations = append(operations, observerOperation{
 				state: state, kind: kind, collectedAt: now, reference: reference,
-				observer: ObserverReport{Observer: cloneIdentity(reference.identity), InventoryGeneration: reference.generation},
+				observer: ObserverReport{
+					Observer: cloneIdentity(reference.identity), InventoryGeneration: reference.generation,
+					CollectedAt: timePointer(now),
+				},
 			})
 		case ReportObserverHello:
 			if state.withdrawing || len(state.withdrawals) != 0 || !state.healthy || !state.hasLatest || !state.needsHello {
@@ -666,10 +669,16 @@ func snapshotOperation(state *sourceRuntimeState, kind ReportKind, generation st
 		state: state, kind: kind, collectedAt: state.latest.CollectedAt,
 		reference: observerReference{identity: cloneIdentity(state.latest.Observer), generation: generation},
 		observer: ObserverReport{
-			Observer: cloneIdentity(state.latest.Observer), InventoryGeneration: generation, Peers: peers,
+			Observer: cloneIdentity(state.latest.Observer), InventoryGeneration: generation,
+			CollectedAt: timePointer(state.latest.CollectedAt), Peers: peers,
 		},
 		snapshot: cloneSnapshot(state.latest),
 	}
+}
+
+func timePointer(value time.Time) *time.Time {
+	copy := value
+	return &copy
 }
 
 func (s *SnapshotSink) sendOperations(
@@ -732,10 +741,12 @@ func (s *SnapshotSink) sendBatch(
 			if len(operations) > 1 {
 				middle := len(operations) / 2
 				resync, leftErr := s.sendBatch(ctx, operations[:middle], transport, controlIDs, heartbeatInterval, sequence, reportedAt)
-				if leftErr != nil || resync {
-					return resync, leftErr
+				if leftErr != nil {
+					return false, leftErr
 				}
-				return s.sendBatch(ctx, operations[middle:], transport, controlIDs, heartbeatInterval, sequence, reportedAt)
+				rightResync, rightErr := s.sendBatch(ctx, operations[middle:], transport, controlIDs,
+					heartbeatInterval, sequence, reportedAt)
+				return resync || rightResync, rightErr
 			}
 			s.rejectOperation(operations[0], err)
 			return false, nil

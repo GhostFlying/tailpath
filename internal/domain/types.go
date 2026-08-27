@@ -168,7 +168,15 @@ type PeerObservation struct {
 type ObserverReport struct {
 	Observer            NodeIdentity      `json:"observer"`
 	InventoryGeneration string            `json:"inventoryGeneration"`
+	CollectedAt         *time.Time        `json:"collectedAt,omitempty"`
 	Peers               []PeerObservation `json:"peers,omitempty"`
+}
+
+func (o ObserverReport) CollectionTime(fallback time.Time) time.Time {
+	if o.CollectedAt == nil {
+		return fallback
+	}
+	return *o.CollectedAt
 }
 
 type RelaySessionObservation struct {
@@ -265,6 +273,9 @@ func (r ReportEnvelope) Validate() error {
 		}
 		if observer.InventoryGeneration == "" {
 			return errors.New("inventoryGeneration is required")
+		}
+		if observer.CollectedAt != nil && observer.CollectedAt.IsZero() {
+			return errors.New("observer collectedAt cannot be zero")
 		}
 		if r.Kind == ReportObserverWithdrawal && len(observer.Peers) != 0 {
 			return errors.New("observer withdrawals cannot contain peers")
