@@ -14,6 +14,8 @@
 - [v0.1 passive dogfood runbook](runbooks/v0.1-dogfood.md)
 - [v0.3 real Peer Relay dogfood](runbooks/v0.3-peer-relay-dogfood.md)
 - [v0.3 Peer Relay dogfood ledger](evidence/v0.3-peer-relay-dogfood.md)
+- [v0.4 embedded exporter dogfood](runbooks/v0.4-exporter-dogfood.md)
+- [v0.4 embedded exporter dogfood ledger](evidence/v0.4-exporter-dogfood.md)
 - [UI style guide](styleguide.md)
 - [Roadmap](roadmap.md)
 - [Architecture decisions](adr/README.md)

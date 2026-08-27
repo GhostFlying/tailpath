@@ -56,6 +56,13 @@ database migration, and retain the old image until restart, Live, History, and
 collector reconnect checks pass. Production deployments should use a
 versioned release tag or digest instead.
 
+The `tailpath-tsnet-multi` binary included in edge images is an integration and
+dogfood example, not a production supervisor. Its optional `--workload-demo`
+generates ordinary application traffic and is disabled by default. The isolated
+[v0.4 exporter runbook](runbooks/v0.4-exporter-dogfood.md) accepts only an
+immutable full-SHA edge image and must not be reused as a production Compose
+deployment.
+
 Linux collectors can run natively or through the optional `collector`
 host-network Compose profile with the tailscaled LocalAPI socket mounted
 read-only. The collector reaches the server through its Tailnet hostname or

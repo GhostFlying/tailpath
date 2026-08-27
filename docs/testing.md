@@ -86,6 +86,14 @@ reporting/stale summary changes without a layout run, coordinate change, or
 viewport change. A separate HTTP test keeps protocol-v1 single-observer reports
 compatible without requiring capability negotiation.
 
+The separate v0.4 embedded-exporter dogfood uses one immutable full-SHA `main`
+image in an isolated Tailnet. Three application-owned tsnet runtimes share one
+dedicated reporter identity and generate an opt-in ordinary HTTP workload. Its
+project-scoped helper validates Direct -> DERP -> Direct restoration, accepted
+withdrawal, persisted runtime identity, server/exporter restart, stable logical
+History, and a bounded no-catch-up rate. Raw topology and logs remain outside
+the repository; fail-closed sanitizers retain only boolean/count/path results.
+
 Playwright covers desktop and Pixel 7 fixture rendering, graph/legend framing,
 path filters, the persisted recent option, mobile search, empty activity states,
 console errors, and non-overlap. The fixed-seed scale scenario covers 250 nodes,

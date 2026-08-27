@@ -138,6 +138,9 @@ jobs:
           jq -e '.services.server.volumes as $volumes | ($volumes | length) == 1 and $volumes[0].type == "volume" and $volumes[0].source == "tailpath-data" and $volumes[0].target == "/var/lib/tailpath"' <<<"$production"
           jq -e '.services.server.secrets as $secrets | ($secrets | length) == 1 and $secrets[0].source == "tailscale-authkey" and $secrets[0].target == "/run/secrets/tailscale-authkey"' <<<"$production"
           docker compose -f compose.smoke.yaml config --quiet
+          TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 \
+            TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=/tmp/tailpath-smoke-authkey \
+            docker compose -f compose.exporter-dogfood.yaml config --quiet
           mixed="$(TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION=0.2.0 docker compose -f compose.smoke.yaml config --format json)"
           jq -e '.services.server.image == "ghcr.io/ghostflying/tailpath:edge-0123456789abcdef0123456789abcdef01234567"' <<<"$mixed"
           jq -e '.services["collector-a"].image == "ghcr.io/ghostflying/tailpath:0.2.0" and .services["collector-b"].image == "ghcr.io/ghostflying/tailpath:0.2.0"' <<<"$mixed"
@@ -155,6 +158,12 @@ jobs:
         run: |
           docker image inspect tailpath:test --format '{{json .Config.Volumes}}' \
             | jq -e '. == {"/var/lib/tailpath": {}}'
+          set +e
+          example_help="$(docker run --rm --entrypoint /usr/local/bin/tailpath-tsnet-multi tailpath:test --help 2>&1)"
+          example_status=$?
+          set -e
+          test "$example_status" -eq 1
+          grep -F 'Usage of tsnet-multi' <<<"$example_help"
 
   publish-edge:
     name: Publish immutable edge image

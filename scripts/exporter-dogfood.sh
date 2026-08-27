@@ -1,0 +1,379 @@
+#!/bin/sh
+set -eu
+
+repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+compose_file="$repository/compose.exporter-dogfood.yaml"
+sanitizer="$repository/scripts/sanitize-exporter-dogfood.sh"
+project=${TAILPATH_EXPORTER_DOGFOOD_PROJECT:-tailpath-exporter-dogfood}
+auth_file=${TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE:-/tmp/tailpath-exporter-dogfood-authkey}
+runtime_file=${TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE:-/tmp/tailpath-exporter-dogfood-runtime.env}
+udp_chain=TAILPATH-EXPORTER-DOGFOOD
+
+fail() {
+  echo "tailpath exporter dogfood: $*" >&2
+  exit 1
+}
+
+case "$project" in
+  tailpath-exporter-dogfood|tailpath-exporter-dogfood-*) ;;
+  *) fail "project must use the tailpath-exporter-dogfood prefix" ;;
+esac
+
+compose() {
+  docker compose -p "$project" -f "$compose_file" "$@"
+}
+
+zero_key() {
+  test ! -f "$auth_file" || chmod u+w "$auth_file"
+  test ! -f "$auth_file" || : >"$auth_file"
+}
+
+validate_tag() {
+  tag=$1
+  sha=${tag#edge-}
+  test "$tag" != "$sha" || fail "TAILPATH_VERSION must be edge-<full-main-sha>"
+  test "${#sha}" -eq 40 || fail "candidate SHA must contain 40 lowercase hex characters"
+  case "$sha" in *[!0-9a-f]*) fail "candidate SHA must contain lowercase hex only" ;; esac
+}
+
+validate_prefix() {
+  value=$1
+  test -n "$value" || fail "hostname prefix is required"
+  test "${#value}" -le 32 || fail "hostname prefix is too long"
+  case "$value" in *[!a-z0-9-]*) fail "hostname prefix must use lowercase letters, digits, and hyphens" ;; esac
+}
+
+validate_private_path() {
+  value=$1
+  prefix=$2
+  label=$3
+  case "$value" in
+    "$prefix"|"$prefix".*) ;;
+    *) fail "$label must stay under its dedicated /tmp prefix" ;;
+  esac
+  case "$value" in *[!A-Za-z0-9_./-]*) fail "$label contains unsafe characters" ;; esac
+}
+
+write_runtime() {
+  temporary=$(mktemp "${runtime_file}.XXXXXX")
+  chmod 0600 "$temporary"
+  {
+    echo "TAILPATH_VERSION=$TAILPATH_VERSION"
+    echo "TAILPATH_EXPORTER_DOGFOOD_PREFIX=$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
+    echo "TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
+    echo "TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$auth_file"
+  } >"$temporary"
+  mv "$temporary" "$runtime_file"
+}
+
+load_runtime() {
+  test -f "$runtime_file" || fail "run scripts/exporter-dogfood.sh up first"
+  # This file contains only values generated and validated by this script.
+  . "$runtime_file"
+  validate_tag "$TAILPATH_VERSION"
+  validate_prefix "$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
+  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
+    /tmp/tailpath-exporter-dogfood-evidence "runtime evidence directory"
+  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE" \
+    /tmp/tailpath-exporter-dogfood-authkey "auth key file"
+  auth_file=$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
+  export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX
+  export TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
+}
+
+wait_healthy() {
+  service=$1
+  attempt=0
+  while :; do
+    health=$(compose ps "$service" --format json 2>/dev/null \
+      | jq -rs '[.[] | if type == "array" then .[] else . end][0].Health // empty' 2>/dev/null || true)
+    test "$health" != healthy || return 0
+    attempt=$((attempt + 1))
+    if test "$attempt" -ge 90; then
+      compose logs --no-color "$service" >&2 || true
+      fail "$service did not become healthy"
+    fi
+    sleep 2
+  done
+}
+
+wait_exporter() {
+  attempt=0
+  while ! compose logs --no-color exporter 2>/dev/null | grep -F "tsnet exporter example started" >/dev/null; do
+    attempt=$((attempt + 1))
+    if test "$attempt" -ge 90; then
+      compose logs --no-color exporter >&2 || true
+      fail "exporter did not start"
+    fi
+    sleep 2
+  done
+}
+
+server_ip() {
+  hostname="${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-server"
+  compose exec -T inspector-tailscale tailscale --socket=/var/run/tailscale/tailscaled.sock status --json \
+    | jq -er --arg hostname "$hostname" '
+        [.Peer[]? | select(.HostName == $hostname) | .TailscaleIPs[0]][0] // empty
+      '
+}
+
+api() {
+  path=${1:-/api/v1/topology}
+  ip=$(server_ip) || fail "inspector cannot resolve the Tailpath server"
+  compose exec -T inspector wget -q -O - "http://$ip:8080$path"
+}
+
+runtime_hosts() {
+  printf '%s\n' \
+    "${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-a" \
+    "${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-b" \
+    "${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-c" \
+    "${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-reporter"
+}
+
+wait_runtime_counts() {
+  want_online=$1
+  want_stale=$2
+  attempt=0
+  hosts=$(runtime_hosts)
+  host_a=$(printf '%s\n' "$hosts" | sed -n '1p')
+  host_b=$(printf '%s\n' "$hosts" | sed -n '2p')
+  host_c=$(printf '%s\n' "$hosts" | sed -n '3p')
+  reporter=$(printf '%s\n' "$hosts" | sed -n '4p')
+  while :; do
+    if topology=$(api /api/v1/topology 2>/dev/null) \
+      && summary=$(printf '%s\n' "$topology" | "$sanitizer" topology wait "$host_a" "$host_b" "$host_c" "$reporter" 2>/dev/null) \
+      && printf '%s\n' "$summary" | jq -e \
+        --argjson online "$want_online" --argjson stale "$want_stale" '
+          .runtimes.reporting == $online and .runtimes.stale == $stale and
+          .observerCount == 3 and .reporter.presentAsObserver == false
+        ' >/dev/null; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 90 || fail "runtime counts did not reach $want_online reporting / $want_stale stale"
+    sleep 2
+  done
+}
+
+capture() {
+  scenario=${1:-}
+  case "$scenario" in
+    ""|*[!A-Za-z0-9_-]*|?????????????????????????????????*) fail "scenario must be 1-32 safe ASCII characters" ;;
+  esac
+  hosts=$(runtime_hosts)
+  host_a=$(printf '%s\n' "$hosts" | sed -n '1p')
+  host_b=$(printf '%s\n' "$hosts" | sed -n '2p')
+  host_c=$(printf '%s\n' "$hosts" | sed -n '3p')
+  reporter=$(printf '%s\n' "$hosts" | sed -n '4p')
+  topology_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$scenario-topology.raw.json"
+  topology_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$scenario-topology.json"
+  api /api/v1/topology >"$topology_raw"
+  "$sanitizer" topology "$scenario" "$host_a" "$host_b" "$host_c" "$reporter" \
+    <"$topology_raw" >"$topology_safe"
+  edge_id=$(jq -er --arg hostA "$host_a" --arg hostB "$host_b" '
+    [.nodes[] | select(.hostname == $hostA)][0].id as $a
+    | [.nodes[] | select(.hostname == $hostB)][0].id as $b
+    | [.edges[] | select(([.source,.target]|sort) == ([$a,$b]|sort))][0].id
+  ' "$topology_raw")
+  case "$edge_id" in ""|*[!A-Za-z0-9_-]*) fail "business edge ID is unsafe" ;; esac
+  history_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$scenario-history.raw.json"
+  history_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$scenario-history.json"
+  api "/api/v1/history/edges/$edge_id?window=15m" >"$history_raw"
+  "$sanitizer" history "$scenario" <"$history_raw" >"$history_safe"
+  jq -s '{topology:.[0],history:.[1]}' "$topology_safe" "$history_safe"
+}
+
+wait_path() {
+  expected=${1:-}
+  case "$expected" in direct|derp) ;; *) fail "path must be direct or derp" ;; esac
+  attempt=0
+  while :; do
+    if capture "wait-$expected" | jq -e --arg expected "$expected" \
+      '.topology.businessEdge.path == $expected and .topology.businessEdge.state == "active" and
+       .topology.businessEdge.forwardPositive and .topology.businessEdge.reversePositive' >/dev/null; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 90 || fail "business edge did not become active $expected"
+    sleep 2
+  done
+}
+
+udp() {
+  action=${1:-}
+  case "$action" in derp|restore|status) ;; *) fail "udp action must be derp, restore, or status" ;; esac
+  compose exec -T udp-helper sh -s -- "$action" "$udp_chain" <<'EOF'
+set -eu
+action=$1
+chain=$2
+for firewall in iptables ip6tables; do
+  command -v "$firewall" >/dev/null 2>&1 || continue
+  "$firewall" -S OUTPUT >/dev/null 2>&1 || continue
+  case "$action" in
+    derp)
+      "$firewall" -n -L "$chain" >/dev/null 2>&1 || "$firewall" -N "$chain"
+      "$firewall" -F "$chain"
+      "$firewall" -A "$chain" -p udp --dport 53 -j RETURN
+      "$firewall" -A "$chain" -p udp -j REJECT
+      "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1 || "$firewall" -I OUTPUT 1 -j "$chain"
+      ;;
+    restore)
+      while "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1; do
+        "$firewall" -D OUTPUT -j "$chain"
+      done
+      if "$firewall" -n -L "$chain" >/dev/null 2>&1; then
+        "$firewall" -F "$chain"
+        "$firewall" -X "$chain"
+      fi
+      ;;
+    status)
+      if "$firewall" -C OUTPUT -j "$chain" >/dev/null 2>&1; then
+        "$firewall" -S "$chain"
+      else
+        echo "$firewall open"
+      fi
+      ;;
+  esac
+done
+EOF
+}
+
+up() {
+  command -v docker >/dev/null 2>&1 || fail "docker is required"
+  command -v jq >/dev/null 2>&1 || fail "jq is required"
+  TAILPATH_VERSION=${TAILPATH_VERSION:-}
+  validate_tag "$TAILPATH_VERSION"
+  TAILPATH_EXPORTER_DOGFOOD_PREFIX=${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}
+  validate_prefix "$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
+  validate_private_path "$auth_file" /tmp/tailpath-exporter-dogfood-authkey "auth key file"
+  test ! -L "$auth_file" || fail "auth key file must not be a symbolic link"
+  test -s "$auth_file" || fail "a non-empty mode-0600 reusable ephemeral key file is required"
+  permissions=$(stat -c '%a' "$auth_file" 2>/dev/null || stat -f '%Lp' "$auth_file")
+  test "$permissions" = 600 || fail "auth key file mode must be 0600"
+  TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=${TAILPATH_EXPORTER_DOGFOOD_EVIDENCE:-$(mktemp -d /tmp/tailpath-exporter-dogfood-evidence.XXXXXX)}
+  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
+    /tmp/tailpath-exporter-dogfood-evidence "evidence directory"
+  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must not be a symbolic link"
+  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must already exist"
+  chmod 0700 "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
+  export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
+  export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE=false
+  write_runtime
+  trap zero_key EXIT HUP INT TERM
+  compose pull
+  compose up -d server inspector-tailscale inspector exporter udp-helper
+  wait_healthy server
+  wait_healthy inspector-tailscale
+  wait_exporter
+  wait_runtime_counts 3 0
+  zero_key
+  trap - EXIT HUP INT TERM
+  echo "immutable exporter dogfood enrolled; auth key file zeroed"
+  echo "private evidence: $TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
+}
+
+restart_server() {
+  compose restart server
+  wait_healthy server
+  wait_runtime_counts 3 0
+}
+
+restart_exporter() {
+  export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE=false
+  compose up -d --force-recreate exporter udp-helper
+  wait_exporter
+  wait_runtime_counts 3 0
+}
+
+assert_continuity() {
+  before=${1:-}
+  after=${2:-}
+  for scenario in "$before" "$after"; do
+    case "$scenario" in
+      ""|*[!A-Za-z0-9_-]*|?????????????????????????????????*)
+        fail "continuity scenarios must use 1-32 safe ASCII characters"
+        ;;
+    esac
+  done
+  before_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$before-topology.raw.json"
+  after_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-topology.raw.json"
+  before_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$before-topology.json"
+  after_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-topology.json"
+  after_history="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-history.json"
+  for required in "$before_raw" "$after_raw" "$before_safe" "$after_safe" "$after_history"; do
+    test -f "$required" || fail "missing capture file for continuity check"
+  done
+  host_a="${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-a"
+  host_b="${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-b"
+  edge_query='[.nodes[] | select(.hostname == $hostA)][0].id as $a
+    | [.nodes[] | select(.hostname == $hostB)][0].id as $b
+    | [.edges[] | select(([.source,.target]|sort) == ([$a,$b]|sort))][0].id'
+  before_edge=$(jq -er --arg hostA "$host_a" --arg hostB "$host_b" "$edge_query" "$before_raw")
+  after_edge=$(jq -er --arg hostA "$host_a" --arg hostB "$host_b" "$edge_query" "$after_raw")
+  test "$before_edge" = "$after_edge" || fail "canonical business edge changed across outage"
+  jq -e --argjson before "$(jq '.businessEdge.bytesPerSecond' "$before_safe")" '
+    .businessEdge.bytesPerSecond <= ([($before * 4), 16777216] | max) and
+    .businessEdge.forwardPositive and .businessEdge.reversePositive
+  ' "$after_safe" >/dev/null || fail "post-recovery rate violates the no-catch-up bound"
+  jq -e '.trafficPoints > 0 and .directionalTraffic.forwardPositive and .directionalTraffic.reversePositive' \
+    "$after_history" >/dev/null || fail "History did not survive continuity check"
+  echo "continuity and no-catch-up checks passed"
+}
+
+lifecycle() {
+  export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE=true
+  export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE_STEP=60s
+  compose up -d --force-recreate exporter udp-helper
+  wait_exporter
+  wait_runtime_counts 3 0
+  host_c="${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-c"
+  before_id=$(api /api/v1/topology | jq -er --arg host "$host_c" '[.nodes[] | select(.hostname == $host)][0].id')
+  wait_runtime_counts 2 1
+  capture withdrawn
+  wait_runtime_counts 3 0
+  after_id=$(api /api/v1/topology | jq -er --arg host "$host_c" '[.nodes[] | select(.hostname == $host)][0].id')
+  test "$before_id" = "$after_id" || fail "runtime C identity changed after withdrawal and restart"
+  capture restarted
+}
+
+purge_raw() {
+  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory became a symbolic link"
+  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory is missing"
+  find "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" -maxdepth 1 -type f \
+    \( -name '*.raw.json' -o -name '*.raw.log' \) -delete
+  echo "private raw evidence removed"
+}
+
+down() {
+  udp restore >/dev/null 2>&1 || true
+  compose down --volumes --remove-orphans
+  zero_key
+  echo "project state removed; inspect and delete raw evidence in ${TAILPATH_EXPORTER_DOGFOOD_EVIDENCE:-unknown}"
+}
+
+load_for_command() {
+  load_runtime
+  TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$auth_file
+  export TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
+}
+
+command=${1:-}
+case "$command" in
+  up) up ;;
+  status) load_for_command; compose ps; compose exec -T server /usr/local/bin/tailpath version ;;
+  topology) load_for_command; api /api/v1/topology ;;
+  capture) load_for_command; capture "${2:-}" ;;
+  wait-path) load_for_command; wait_path "${2:-}" ;;
+  udp) load_for_command; udp "${2:-}" ;;
+  restart-server) load_for_command; restart_server ;;
+  restart-exporter) load_for_command; restart_exporter ;;
+  lifecycle) load_for_command; lifecycle ;;
+  assert-continuity) load_for_command; assert_continuity "${2:-}" "${3:-}" ;;
+  purge-raw) load_for_command; purge_raw ;;
+  down) load_for_command; down ;;
+  *)
+    echo "usage: exporter-dogfood.sh <up|status|topology|capture SCENARIO|wait-path direct|derp|udp derp|restore|status|restart-server|restart-exporter|lifecycle|assert-continuity BEFORE AFTER|purge-raw|down>" >&2
+    exit 2
+    ;;
+esac
