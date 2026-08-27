@@ -11,6 +11,7 @@ import {
   minimumEdgeCenterDistance,
   trafficVisualCeiling,
   trafficWidth,
+  visibleTopologyNodeIDs,
 } from "./graph";
 
 describe("buildElements", () => {
@@ -285,6 +286,10 @@ describe("edgeIsVisible", () => {
         .filter((element) => element.group === "nodes")
         .map((element) => element.data?.id),
     ).toEqual(["c", "d"]);
+    expect([...visibleTopologyNodeIDs(fixture, "all", true, false)]).toEqual([
+      "c",
+      "d",
+    ]);
 
     const shown = buildElements(fixture, {
       pathFilter: "all",

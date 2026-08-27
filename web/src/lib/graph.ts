@@ -48,13 +48,12 @@ export function buildElements(
   const intermediates = new Map(
     visibleEdges.map((edge) => [edge.id, intermediateFor(edge, stableNodeMap)]),
   );
-  const relevantNodeIDs = new Set(
-    visibleEdges.flatMap((edge) => [edge.source, edge.target]),
+  const relevantNodeIDs = visibleTopologyNodeIDs(
+    topology,
+    options.pathFilter,
+    options.showRecent,
+    options.showControlTraffic,
   );
-  for (const edge of visibleEdges) {
-    const intermediate = intermediates.get(edge.id);
-    if (intermediate?.nodeID) relevantNodeIDs.add(intermediate.nodeID);
-  }
   const peerRelayNodeIDs = new Set(
     [...intermediates.values()]
       .map((intermediate) => intermediate?.nodeID)
@@ -98,6 +97,30 @@ export function buildElements(
     elements.push(edgeElement(edge, intermediate.id, edge.target, "target"));
   }
   return elements;
+}
+
+export function visibleTopologyNodeIDs(
+  topology: Topology,
+  pathFilter: PathFilter,
+  showRecent: boolean,
+  showControlTraffic = true,
+): Set<string> {
+  const visibleEdges = topology.edges.filter((edge) =>
+    edgeIsVisible(edge, pathFilter, showRecent, showControlTraffic),
+  );
+  const result = new Set(
+    visibleEdges.flatMap((edge) => [edge.source, edge.target]),
+  );
+  const nodesByStableID = new Map(
+    topology.nodes.flatMap((node) =>
+      node.stableNodeId ? [[node.stableNodeId, node] as const] : [],
+    ),
+  );
+  for (const edge of visibleEdges) {
+    const intermediate = intermediateFor(edge, nodesByStableID);
+    if (intermediate?.nodeID) result.add(intermediate.nodeID);
+  }
+  return result;
 }
 
 function nodeElement(
