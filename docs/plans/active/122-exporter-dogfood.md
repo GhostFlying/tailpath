@@ -39,6 +39,9 @@ application traffic.
 - Refuse a new qualification when the Compose project already owns containers,
   volumes, or networks, so a prior candidate cannot contaminate state or
   History.
+- Persist the validated Compose project in the private runtime file, reject
+  later environment mismatches, and revalidate exact mode-0700 evidence
+  permissions before every private capture or destructive purge.
 
 ## Scenarios
 

@@ -26,6 +26,7 @@ fi
 
 cat >"$runtime_file" <<EOF
 TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567
+TAILPATH_EXPORTER_DOGFOOD_PROJECT=tailpath-exporter-dogfood-fixture
 TAILPATH_EXPORTER_DOGFOOD_PREFIX=tailpath-exporter-dogfood
 TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$evidence
 TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$auth_file
@@ -88,10 +89,38 @@ test ! -e "$evidence/private.raw.json"
 test ! -e "$evidence/private.raw.log"
 test -e "$evidence/safe.json"
 
+fake_bin=$temporary/bin
+fake_log=$temporary/docker.log
+mkdir "$fake_bin"
+cat >"$fake_bin/docker" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$TAILPATH_FAKE_DOCKER_LOG"
+EOF
+chmod 0755 "$fake_bin/docker"
+PATH="$fake_bin:$PATH" TAILPATH_FAKE_DOCKER_LOG="$fake_log" \
+  TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" "$helper" status >/dev/null
+test "$(wc -l <"$fake_log")" -eq 2
+test "$(grep -cF 'compose -p tailpath-exporter-dogfood-fixture' "$fake_log")" -eq 2
+if PATH="$fake_bin:$PATH" TAILPATH_FAKE_DOCKER_LOG="$fake_log" \
+  TAILPATH_EXPORTER_DOGFOOD_PROJECT=tailpath-exporter-dogfood-other \
+  TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" "$helper" status >/dev/null 2>&1; then
+  echo "exporter dogfood accepted a Compose project mismatch" >&2
+  exit 1
+fi
+
+chmod 0755 "$evidence"
+if PATH="$fake_bin:$PATH" TAILPATH_FAKE_DOCKER_LOG="$fake_log" \
+  TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" "$helper" status >/dev/null 2>&1; then
+  echo "exporter dogfood accepted evidence permission drift" >&2
+  exit 1
+fi
+chmod 0700 "$evidence"
+
 outside="$temporary/outside"
 touch "$outside"
 cat >"$runtime_file" <<EOF
 TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567
+TAILPATH_EXPORTER_DOGFOOD_PROJECT=tailpath-exporter-dogfood-fixture
 TAILPATH_EXPORTER_DOGFOOD_PREFIX=tailpath-exporter-dogfood
 TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$evidence/../$(basename "$temporary")
 TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$auth_file
