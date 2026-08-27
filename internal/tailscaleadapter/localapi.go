@@ -3,9 +3,6 @@ package tailscaleadapter
 import (
 	"context"
 	"fmt"
-	"net/netip"
-	"strconv"
-	"strings"
 	"time"
 
 	"tailscale.com/client/local"
@@ -14,6 +11,7 @@ import (
 	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
 	"github.com/GhostFlying/tailpath/internal/domain"
+	"github.com/GhostFlying/tailpath/internal/tailscalestatus"
 )
 
 type LocalSource struct {
@@ -33,27 +31,7 @@ func (s *LocalSource) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 	if err != nil {
 		return exporter.Snapshot{}, err
 	}
-	if status.Self == nil {
-		return exporter.Snapshot{}, fmt.Errorf("tailscale status does not include self")
-	}
-	relays := relayIdentities(status)
-	snapshot := exporter.Snapshot{
-		CollectedAt: time.Now(),
-		Observer:    peerIdentity(status.Self),
-		Peers:       make([]exporter.PeerSnapshot, 0, len(status.Peer)),
-	}
-	for _, peer := range status.Peer {
-		if peer == nil {
-			continue
-		}
-		snapshot.Peers = append(snapshot.Peers, exporter.PeerSnapshot{
-			Identity: peerIdentity(peer),
-			RxBytes:  peer.RxBytes,
-			TxBytes:  peer.TxBytes,
-			Path:     pathObservation(peer, relays),
-		})
-	}
-	return snapshot, nil
+	return tailscalestatus.Snapshot(status, time.Now())
 }
 
 func (s *LocalSource) Diagnostic(ctx context.Context) (collector.Diagnostic, error) {
@@ -78,59 +56,15 @@ func (s *LocalSource) Diagnostic(ctx context.Context) (collector.Diagnostic, err
 }
 
 func normalizeOS(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "linux":
-		return "linux"
-	case "darwin", "macos":
-		return "macos"
-	case "windows":
-		return "windows"
-	case "ios":
-		return "ios"
-	case "android":
-		return "android"
-	default:
-		return value
-	}
+	return tailscalestatus.NormalizeOS(value)
 }
 
 func peerIdentity(peer *ipnstate.PeerStatus) exporter.NodeIdentity {
-	ips := make([]string, 0, len(peer.TailscaleIPs))
-	for _, ip := range peer.TailscaleIPs {
-		ips = append(ips, ip.String())
-	}
-	identity := exporter.NodeIdentity{
-		StableNodeID: string(peer.ID),
-		Hostname:     peer.HostName,
-		DNSName:      peer.DNSName,
-		OS:           normalizeOS(peer.OS),
-		TailscaleIPs: ips,
-	}
-	if peer.NodeID != 0 {
-		identity.NodeID = fmt.Sprint(peer.NodeID)
-	}
-	if !peer.PublicKey.IsZero() {
-		identity.NodeKey = peer.PublicKey.String()
-	}
-	return identity
+	return tailscalestatus.PeerIdentity(peer)
 }
 
 func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]string) exporter.Path {
-	if peer.PeerRelay != "" {
-		relayIP, vni := peerRelayEndpoint(peer.PeerRelay)
-		return exporter.Path{
-			Kind:                  exporter.PathPeerRelay,
-			PeerRelayStableNodeID: relayByIP[relayIP],
-			PeerRelayVNI:          vni,
-		}
-	}
-	if peer.CurAddr != "" {
-		return exporter.Path{Kind: exporter.PathDirect, DirectEndpoint: peer.CurAddr}
-	}
-	if peer.Relay != "" {
-		return exporter.Path{Kind: exporter.PathDERP, DERPRegion: peer.Relay}
-	}
-	return exporter.Path{Kind: exporter.PathUnknown}
+	return tailscalestatus.Path(peer, relayByIP)
 }
 
 func domainIdentity(identity exporter.NodeIdentity) domain.NodeIdentity {
@@ -142,39 +76,15 @@ func domainIdentity(identity exporter.NodeIdentity) domain.NodeIdentity {
 }
 
 func relayIdentities(status *ipnstate.Status) map[string]string {
-	result := make(map[string]string)
-	for _, peer := range status.Peer {
-		if peer == nil || peer.ID == "" {
-			continue
-		}
-		for _, ip := range peer.TailscaleIPs {
-			result[ip.String()] = string(peer.ID)
-		}
-	}
-	return result
+	return tailscalestatus.RelayIdentities(status)
 }
 
 func peerRelayIP(value string) string {
-	address, _ := peerRelayEndpoint(value)
-	return address
+	return tailscalestatus.PeerRelayIP(value)
 }
 
 func peerRelayEndpoint(value string) (string, *int64) {
-	endpoint := value
-	var vni *int64
-	if marker := strings.LastIndex(value, ":vni:"); marker >= 0 {
-		endpoint = value[:marker]
-		parsed, err := strconv.ParseUint(value[marker+len(":vni:"):], 10, 24)
-		if err == nil {
-			converted := int64(parsed)
-			vni = &converted
-		}
-	}
-	address, err := netip.ParseAddrPort(endpoint)
-	if err != nil {
-		return "", nil
-	}
-	return address.Addr().Unmap().String(), vni
+	return tailscalestatus.PeerRelayEndpoint(value)
 }
 
 type Authorizer struct {

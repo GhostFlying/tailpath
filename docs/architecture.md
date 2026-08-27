@@ -32,10 +32,19 @@ catch-up traffic.
 Tailpath-owned exporter contracts live in the public `exporter` package. They
 describe normalized snapshots, protocol reports, receipts, and transport
 capabilities without exposing generated OpenAPI or Tailscale implementation
-types. Tailscale types otherwise stop at `internal/tailscaleadapter`; the
-embedded adapter is the deliberate `exporter/tsnet` exception. Tailpath domain
-types cross the protocol, aggregation, storage, and UI boundaries. This keeps
-LocalAPI release changes out of the public, wire, and database models.
+types. Tailscale implementation types otherwise stop at
+`internal/tailscaleadapter` and `internal/tailscalestatus`; the embedded
+adapter's `tsnet.Server` and `local.Client` constructors are the deliberate
+`exporter/tsnet` exception. Tailpath domain types cross the protocol,
+aggregation, storage, and UI boundaries. This keeps LocalAPI release changes
+out of the wire and database models.
+
+`exporter/tsnet` turns either one configured `tsnet.Server` or an existing
+embedded `local.Client` into one Source. It reads only LocalAPI status and
+shares the same normalization code as the native collector. Obtaining a
+LocalClient from an unstarted server may start that server, as defined by
+Tailscale; the application still owns login, readiness, restart, and close.
+The adapter never calls `Up`, probes peers, or changes preferences.
 
 The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from

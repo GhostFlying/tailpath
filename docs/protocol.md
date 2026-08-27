@@ -16,6 +16,9 @@ The public `exporter` package owns the handwritten application contracts for
 snapshots, reports, receipts, capabilities, and HTTP delivery. Generated
 OpenAPI types remain server/client schema artifacts and are not the embedded
 application API. Upstream Tailscale types are confined to source adapters.
+The public `exporter/tsnet` adapter converts one embedded LocalAPI status view
+into one Source snapshot. It uses only the passive status endpoint; it does not
+probe peers or infer devices hidden from that runtime's control-plane view.
 
 ## Messages
 
