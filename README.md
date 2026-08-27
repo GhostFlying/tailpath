@@ -33,6 +33,10 @@ through Linux Compose only.
 See [deployment](docs/deployment.md) for the native collector installers and
 their platform-specific background-service behavior.
 
+Applications embedding several tsnet runtimes can use the alpha public
+`exporter` packages. See the runnable
+[multi-instance tsnet example](examples/tsnet-multi/README.md).
+
 ## Development
 
 Open the repository in its dev container, then run:

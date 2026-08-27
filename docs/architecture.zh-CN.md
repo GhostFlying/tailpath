@@ -25,6 +25,11 @@ status，并与 native collector 共用相同的 identity/path 规范化逻辑�
 上游语义，从尚未启动的 server 获取 LocalClient 可能启动该 server；登录、ready、
 重启和关闭仍由应用负责。adapter 不调用 `Up`、不探测 peer，也不修改 preferences。
 
+可运行的 `examples/tsnet-multi` 使用三个持久化 runtime identity 和第四个专用
+reporter identity 验证该模型；只有前三者注册为 Source。显式启用 lifecycle demo
+后，程序会 withdraw 并从同一 state dir 重建其中一个 runtime，而进程级 reporter
+session 保持在线。
+
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
 telemetry，不做 counter 扣减，也默认不进入用户 activity。该分类仍保留在运行时状态、
 SQLite traffic/history 和 provenance 中；需要检查时，Live 提供
