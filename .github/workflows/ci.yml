@@ -132,14 +132,17 @@ jobs:
           TAILPATH_AUTHKEY_FILE: /tmp/tailpath-production-authkey
         run: |
           install -m 444 /dev/null "$TAILPATH_AUTHKEY_FILE"
-          install -m 600 /dev/null /tmp/tailpath-smoke-authkey
+          install -d -m 700 /tmp/tailpath-exporter-dogfood-secret.ci
+          install -m 600 /dev/null /tmp/tailpath-exporter-dogfood-secret.ci/authkey
+          printf 'fixture-key' > /tmp/tailpath-exporter-dogfood-secret.ci/authkey
+          chmod 444 /tmp/tailpath-exporter-dogfood-secret.ci/authkey
           production="$(docker compose -f compose.yaml config --format json)"
           jq -e '.services.server.environment.TS_AUTHKEY == "file:/run/secrets/tailscale-authkey"' <<<"$production"
           jq -e '.services.server.volumes as $volumes | ($volumes | length) == 1 and $volumes[0].type == "volume" and $volumes[0].source == "tailpath-data" and $volumes[0].target == "/var/lib/tailpath"' <<<"$production"
           jq -e '.services.server.secrets as $secrets | ($secrets | length) == 1 and $secrets[0].source == "tailscale-authkey" and $secrets[0].target == "/run/secrets/tailscale-authkey"' <<<"$production"
           docker compose -f compose.smoke.yaml config --quiet
           TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 \
-            TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=/tmp/tailpath-smoke-authkey \
+            TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=/tmp/tailpath-exporter-dogfood-secret.ci/authkey \
             docker compose -f compose.exporter-dogfood.yaml config --quiet
           mixed="$(TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 TAILPATH_SMOKE_ORDINARY_COLLECTOR_VERSION=0.2.0 docker compose -f compose.smoke.yaml config --format json)"
           jq -e '.services.server.image == "ghcr.io/ghostflying/tailpath:edge-0123456789abcdef0123456789abcdef01234567"' <<<"$mixed"
@@ -164,6 +167,25 @@ jobs:
           set -e
           test "$example_status" -eq 1
           grep -F 'Usage of tsnet-multi' <<<"$example_help"
+          secret_value="$(docker run --rm --user 65532:65532 \
+            -v /tmp/tailpath-exporter-dogfood-secret.ci/authkey:/run/secrets/authkey:ro \
+            --entrypoint /bin/cat busybox:1.37.0 /run/secrets/authkey)"
+          test "$secret_value" = fixture-key
+          state_volume="tailpath-image-state-${GITHUB_RUN_ID}"
+          state_container="tailpath-image-state-${GITHUB_RUN_ID}"
+          cleanup_state_gate() {
+            docker rm -f "$state_container" >/dev/null 2>&1 || true
+            docker volume rm "$state_volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup_state_gate EXIT
+          docker volume create "$state_volume" >/dev/null
+          docker create --name "$state_container" \
+            -v "$state_volume:/var/lib/tailpath" tailpath:test >/dev/null
+          docker run --rm --user 65532:65532 --volumes-from "$state_container" \
+            --entrypoint /bin/sh busybox:1.37.0 \
+            -c 'mkdir -p /var/lib/tailpath/exporter && : > /var/lib/tailpath/exporter/write-probe'
+          cleanup_state_gate
+          trap - EXIT
 
   publish-edge:
     name: Publish immutable edge image

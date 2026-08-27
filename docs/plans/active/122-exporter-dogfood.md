@@ -34,7 +34,11 @@ application traffic.
   satisfy the final gate.
 - Persist server and exporter tsnet state in project-scoped named volumes so
   restart tests reuse identities. The reusable ephemeral key is mounted from a
-  mode-0600 file, then zeroed after all identities enroll.
+  mode-0444 file inside a mode-0700 host directory so the nonroot image can read
+  the single-file bind mount, then zeroed after all identities enroll.
+- Refuse a new qualification when the Compose project already owns containers,
+  volumes, or networks, so a prior candidate cannot contaminate state or
+  History.
 
 ## Scenarios
 
@@ -47,9 +51,10 @@ application traffic.
    workload edge to become DERP, then restore UDP and require Direct again.
 4. Withdraw runtime C, require `2 reporting + 1 stale`, recreate it from the
    same state directory, and require three reporting without traffic catch-up.
-5. Restart the Tailpath server while workload continues; require exporter
-   reconnect, stable canonical A-B edge, and preserved History without a rate
-   spike attributable to offline backlog.
+5. Stop the Tailpath server for 30 seconds while workload continues; require one
+   exporter degraded/recovered transition, stable canonical A-B edge, and
+   preserved History without rate or byte growth attributable to offline
+   backlog.
 6. Restart the exporter process and its dedicated reporter from persisted
    state; require all three runtimes to reappear, stable identities, and no
    catch-up traffic.
@@ -80,8 +85,8 @@ application traffic.
 ## Current state
 
 The workload, image packaging, isolated Compose topology, operator helper,
-continuity/no-catch-up gates, fail-closed sanitizer, tests, and bilingual
-runbook are implemented. Local unit, race, image, Compose, and browser checks
-pass. Final execution and ledger completion remain blocked until the stacked
-v0.4 changes are merged to `main` and the corresponding immutable edge image is
-published.
+deterministic 30-second outage and continuity/no-catch-up gates, fail-closed
+sanitizer, tests, and bilingual runbook are implemented. Local unit, race,
+image, Compose, and browser checks pass. Final execution and ledger completion
+remain blocked until the stacked v0.4 changes are merged to `main` and the
+corresponding immutable edge image is published.

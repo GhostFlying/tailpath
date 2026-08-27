@@ -5,7 +5,7 @@ repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 compose_file="$repository/compose.exporter-dogfood.yaml"
 sanitizer="$repository/scripts/sanitize-exporter-dogfood.sh"
 project=${TAILPATH_EXPORTER_DOGFOOD_PROJECT:-tailpath-exporter-dogfood}
-auth_file=${TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE:-/tmp/tailpath-exporter-dogfood-authkey}
+auth_file=${TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE:-/tmp/tailpath-exporter-dogfood-secret/authkey}
 runtime_file=${TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE:-/tmp/tailpath-exporter-dogfood-runtime.env}
 udp_chain=TAILPATH-EXPORTER-DOGFOOD
 
@@ -23,9 +23,19 @@ compose() {
   docker compose -p "$project" -f "$compose_file" "$@"
 }
 
+require_clean_project() {
+  containers=$(docker ps -aq --filter "label=com.docker.compose.project=$project")
+  volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$project")
+  networks=$(docker network ls -q --filter "label=com.docker.compose.project=$project")
+  test -z "$containers$volumes$networks" \
+    || fail "project already has containers, volumes, or networks; run down and inspect evidence before a new qualification"
+}
+
 zero_key() {
+  validate_secret_file "$auth_file"
   test ! -f "$auth_file" || chmod u+w "$auth_file"
   test ! -f "$auth_file" || : >"$auth_file"
+  test ! -f "$auth_file" || chmod 0444 "$auth_file"
 }
 
 validate_tag() {
@@ -52,9 +62,28 @@ validate_private_path() {
     *) fail "$label must stay under its dedicated /tmp prefix" ;;
   esac
   case "$value" in *[!A-Za-z0-9_./-]*) fail "$label contains unsafe characters" ;; esac
+  suffix=${value#"$prefix"}
+  case "$suffix" in *..*|*/*) fail "$label must not contain traversal components" ;; esac
+}
+
+validate_secret_file() {
+  secret_file=$1
+  secret_parent=${secret_file%/*}
+  test "${secret_file##*/}" = authkey || fail "auth key file must be named authkey"
+  validate_private_path "$secret_parent" /tmp/tailpath-exporter-dogfood-secret "auth key directory"
+  test ! -L "$secret_parent" || fail "auth key directory must not be a symbolic link"
+  test -d "$secret_parent" || fail "auth key directory is missing"
+  directory_permissions=$(stat -c '%a' "$secret_parent" 2>/dev/null || stat -f '%Lp' "$secret_parent")
+  test "$directory_permissions" = 700 || fail "auth key directory mode must be 0700"
+  test ! -L "$secret_file" || fail "auth key file must not be a symbolic link"
+  test -f "$secret_file" || fail "auth key file is missing"
+  file_permissions=$(stat -c '%a' "$secret_file" 2>/dev/null || stat -f '%Lp' "$secret_file")
+  test "$file_permissions" = 444 || fail "auth key file mode must be 0444 inside its mode-0700 directory"
 }
 
 write_runtime() {
+  validate_private_path "$runtime_file" /tmp/tailpath-exporter-dogfood-runtime "runtime state file"
+  test ! -L "$runtime_file" || fail "runtime state file must not be a symbolic link"
   temporary=$(mktemp "${runtime_file}.XXXXXX")
   chmod 0600 "$temporary"
   {
@@ -66,16 +95,34 @@ write_runtime() {
   mv "$temporary" "$runtime_file"
 }
 
+runtime_value() {
+  key=$1
+  awk -F= -v key="$key" '
+    $1 == key { count++; sub(/^[^=]*=/, ""); value=$0 }
+    END { if (count != 1) exit 1; print value }
+  ' "$runtime_file"
+}
+
 load_runtime() {
+  validate_private_path "$runtime_file" /tmp/tailpath-exporter-dogfood-runtime "runtime state file"
+  test ! -L "$runtime_file" || fail "runtime state file must not be a symbolic link"
   test -f "$runtime_file" || fail "run scripts/exporter-dogfood.sh up first"
-  # This file contains only values generated and validated by this script.
-  . "$runtime_file"
+  permissions=$(stat -c '%a' "$runtime_file" 2>/dev/null || stat -f '%Lp' "$runtime_file")
+  test "$permissions" = 600 || fail "runtime state file mode must be 0600"
+  TAILPATH_VERSION=$(runtime_value TAILPATH_VERSION) || fail "runtime state is missing TAILPATH_VERSION"
+  TAILPATH_EXPORTER_DOGFOOD_PREFIX=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_PREFIX) \
+    || fail "runtime state is missing hostname prefix"
+  TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_EVIDENCE) \
+    || fail "runtime state is missing evidence directory"
+  TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=$(runtime_value TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE) \
+    || fail "runtime state is missing auth key file"
   validate_tag "$TAILPATH_VERSION"
   validate_prefix "$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
   validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
     /tmp/tailpath-exporter-dogfood-evidence "runtime evidence directory"
-  validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE" \
-    /tmp/tailpath-exporter-dogfood-authkey "auth key file"
+  validate_secret_file "$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE"
+  test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory became a symbolic link"
+  test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory is missing"
   auth_file=$TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
   export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX
   export TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
@@ -104,6 +151,25 @@ wait_exporter() {
     if test "$attempt" -ge 90; then
       compose logs --no-color exporter >&2 || true
       fail "exporter did not start"
+    fi
+    sleep 2
+  done
+}
+
+exporter_log_count() {
+  pattern=$1
+  compose logs --no-color exporter 2>/dev/null | grep -cF "$pattern" || true
+}
+
+wait_exporter_log_increment() {
+  pattern=$1
+  previous=$2
+  attempt=0
+  while test "$(exporter_log_count "$pattern")" -le "$previous"; do
+    attempt=$((attempt + 1))
+    if test "$attempt" -ge 90; then
+      compose logs --no-color exporter >&2 || true
+      fail "exporter did not log $pattern"
     fi
     sleep 2
   done
@@ -246,17 +312,15 @@ up() {
   validate_tag "$TAILPATH_VERSION"
   TAILPATH_EXPORTER_DOGFOOD_PREFIX=${TAILPATH_EXPORTER_DOGFOOD_PREFIX:-tailpath-exporter-dogfood}
   validate_prefix "$TAILPATH_EXPORTER_DOGFOOD_PREFIX"
-  validate_private_path "$auth_file" /tmp/tailpath-exporter-dogfood-authkey "auth key file"
-  test ! -L "$auth_file" || fail "auth key file must not be a symbolic link"
-  test -s "$auth_file" || fail "a non-empty mode-0600 reusable ephemeral key file is required"
-  permissions=$(stat -c '%a' "$auth_file" 2>/dev/null || stat -f '%Lp' "$auth_file")
-  test "$permissions" = 600 || fail "auth key file mode must be 0600"
+  validate_secret_file "$auth_file"
+  test -s "$auth_file" || fail "a non-empty reusable ephemeral key file is required"
   TAILPATH_EXPORTER_DOGFOOD_EVIDENCE=${TAILPATH_EXPORTER_DOGFOOD_EVIDENCE:-$(mktemp -d /tmp/tailpath-exporter-dogfood-evidence.XXXXXX)}
   validate_private_path "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" \
     /tmp/tailpath-exporter-dogfood-evidence "evidence directory"
   test ! -L "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must not be a symbolic link"
   test -d "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE" || fail "evidence directory must already exist"
   chmod 0700 "$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE"
+  require_clean_project
   export TAILPATH_VERSION TAILPATH_EXPORTER_DOGFOOD_PREFIX TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE
   export TAILPATH_EXPORTER_DOGFOOD_LIFECYCLE=false
   write_runtime
@@ -274,9 +338,35 @@ up() {
 }
 
 restart_server() {
-  compose restart server
+  degraded_before=$(exporter_log_count "exporter transport degraded")
+  recovered_before=$(exporter_log_count "exporter transport recovered")
+  restore_server() {
+    compose start server >/dev/null 2>&1 || true
+  }
+  trap restore_server EXIT HUP INT TERM
+  compose stop server
+  wait_exporter_log_increment "exporter transport degraded" "$degraded_before"
+  sleep 30
+  compose start server
   wait_healthy server
+  wait_exporter_log_increment "exporter transport recovered" "$recovered_before"
   wait_runtime_counts 3 0
+  degraded_after=$(exporter_log_count "exporter transport degraded")
+  recovered_after=$(exporter_log_count "exporter transport recovered")
+  test "$degraded_after" -eq $((degraded_before + 1)) \
+    || fail "server outage produced more than one degraded transition"
+  test "$recovered_after" -eq $((recovered_before + 1)) \
+    || fail "server outage produced more than one recovered transition"
+  trap - EXIT HUP INT TERM
+}
+
+server_outage() {
+  wait_path direct
+  capture before-server-outage >/dev/null
+  restart_server
+  wait_path direct
+  capture after-server-outage >/dev/null
+  assert_continuity before-server-outage after-server-outage
 }
 
 restart_exporter() {
@@ -300,8 +390,11 @@ assert_continuity() {
   after_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-topology.raw.json"
   before_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$before-topology.json"
   after_safe="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-topology.json"
+  before_history_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$before-history.raw.json"
+  after_history_raw="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-history.raw.json"
   after_history="$TAILPATH_EXPORTER_DOGFOOD_EVIDENCE/$after-history.json"
-  for required in "$before_raw" "$after_raw" "$before_safe" "$after_safe" "$after_history"; do
+  for required in "$before_raw" "$after_raw" "$before_safe" "$after_safe" \
+    "$before_history_raw" "$after_history_raw" "$after_history"; do
     test -f "$required" || fail "missing capture file for continuity check"
   done
   host_a="${TAILPATH_EXPORTER_DOGFOOD_PREFIX}-runtime-a"
@@ -318,6 +411,11 @@ assert_continuity() {
   ' "$after_safe" >/dev/null || fail "post-recovery rate violates the no-catch-up bound"
   jq -e '.trafficPoints > 0 and .directionalTraffic.forwardPositive and .directionalTraffic.reversePositive' \
     "$after_history" >/dev/null || fail "History did not survive continuity check"
+  before_bytes=$(jq '[.traffic[]? | (.aToBBytes // 0) + (.bToABytes // 0)] | add // 0' "$before_history_raw")
+  after_bytes=$(jq '[.traffic[]? | (.aToBBytes // 0) + (.bToABytes // 0)] | add // 0' "$after_history_raw")
+  added_bytes=$((after_bytes - before_bytes))
+  test "$added_bytes" -le 67108864 \
+    || fail "History growth violates the 64 MiB no-catch-up bound"
   echo "continuity and no-catch-up checks passed"
 }
 
@@ -367,13 +465,14 @@ case "$command" in
   wait-path) load_for_command; wait_path "${2:-}" ;;
   udp) load_for_command; udp "${2:-}" ;;
   restart-server) load_for_command; restart_server ;;
+  server-outage) load_for_command; server_outage ;;
   restart-exporter) load_for_command; restart_exporter ;;
   lifecycle) load_for_command; lifecycle ;;
   assert-continuity) load_for_command; assert_continuity "${2:-}" "${3:-}" ;;
   purge-raw) load_for_command; purge_raw ;;
   down) load_for_command; down ;;
   *)
-    echo "usage: exporter-dogfood.sh <up|status|topology|capture SCENARIO|wait-path direct|derp|udp derp|restore|status|restart-server|restart-exporter|lifecycle|assert-continuity BEFORE AFTER|purge-raw|down>" >&2
+    echo "usage: exporter-dogfood.sh <up|status|topology|capture SCENARIO|wait-path direct|derp|udp derp|restore|status|restart-server|server-outage|restart-exporter|lifecycle|assert-continuity BEFORE AFTER|purge-raw|down>" >&2
     exit 2
     ;;
 esac
