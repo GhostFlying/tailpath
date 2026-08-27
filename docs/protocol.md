@@ -6,8 +6,8 @@
 
 An embedded v0.4 exporter first reads the authenticated
 `GET /api/v1/capabilities` endpoint. It requires observer protocol version 1,
-`multi-observer`, and, once implemented, `observer-withdrawal` before sending
-any observer state. A missing or malformed capability response is an
+`multi-observer`, and `observer-withdrawal` before sending any observer state.
+A missing or malformed capability response is an
 incompatible server, not a reason to fall back to weaker lifecycle semantics.
 Existing collectors do not require this preflight and remain compatible with a
 v0.4 server.
@@ -23,6 +23,8 @@ v0.4 server.
   local sample interval.
 - `observer_heartbeat`: liveness and inventory hash only; never refreshes edge
   activity.
+- `observer_withdrawal`: one or more observer identities and inventory hashes,
+  without peers. The current owner releases those runtimes immediately.
 - `relay_session_update`: traffic-bearing Peer Relay sessions observed between
   two Tailnet endpoints. Zero-delta session lifecycle messages are not activity.
 
@@ -145,6 +147,16 @@ a non-owner reporter are rejected with a resync request; they cannot refresh
 observer liveness or edge evidence. Normal collectors respond with a fresh
 hello, so process restarts do not cause reporter-state growth without bound
 while persisted observer inventory remains independent of raw report retention.
+
+An observer withdrawal is accepted in the same reporter sequence but changes
+state only when that reporter still owns the canonical observer. An unknown
+observer, repeated withdrawal, or withdrawal from an owner superseded by a
+newer hello is an idempotent no-op. A successful withdrawal makes the observer
+offline immediately and excludes its current provenance from Live rates and
+path reconciliation. The logical edge remains recent until its normal evidence
+deadline, and persisted traffic, path events, inventory, and canonical identity
+remain unchanged. A later complete hello claims the observer and establishes a
+new counter baseline; it cannot reactivate old traffic.
 
 Peer Relay session updates do not use LocalAPI inventory or hello messages. A
 relay update continues to associate its trusted reporter with the relay observer

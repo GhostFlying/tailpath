@@ -131,7 +131,7 @@ export interface components {
             observerProtocolVersions: number[];
             features: string[];
         };
-        /** @description Normal observer messages contain observers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the two forms. */
+        /** @description Normal observer messages contain observers. observer_withdrawal contains observer identities without peers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the forms. */
         ReportEnvelope: {
             /** @constant */
             version: 1;
@@ -148,8 +148,8 @@ export interface components {
             relaySessions?: components["schemas"]["RelaySessionObservation"][];
         };
         /** @enum {string} */
-        ReportKind: "observer_hello" | "inventory_update" | "traffic_sample" | "observer_heartbeat" | "relay_session_update";
-        /** @description For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. */
+        ReportKind: "observer_hello" | "inventory_update" | "traffic_sample" | "observer_heartbeat" | "observer_withdrawal" | "relay_session_update";
+        /** @description For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers. */
         ObserverReport: {
             observer: components["schemas"]["NodeIdentity"];
             inventoryGeneration: string;

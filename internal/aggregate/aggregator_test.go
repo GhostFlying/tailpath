@@ -1014,6 +1014,99 @@ func TestReceiveTimeOwnsExpiryAndClockSkewIsExposed(t *testing.T) {
 	}
 }
 
+func TestObserverWithdrawalIsImmediateIdempotentAndFenced(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "reporter-old", 1, "a", "A", "inventory")
+	applySample(t, aggregator, "reporter-old", 2, "a", "A", "b", "B", "inventory", 200, 100)
+
+	before := aggregator.Snapshot()
+	if len(before.Edges) != 1 || before.Edges[0].State != domain.EdgeActive || !before.Observers[0].Online {
+		t.Fatalf("pre-withdraw topology = %#v", before)
+	}
+
+	now = now.Add(time.Second)
+	withdrawal := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "withdraw", ReporterInstanceID: "reporter-old", Sequence: 3,
+		CollectedAt: now, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{Observer: node("a", "A"), InventoryGeneration: "inventory"}},
+	}
+	result, err := aggregator.ApplyAt(withdrawal, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Receipt.Accepted || !result.CheckpointRequired || len(result.Traffic) != 0 || len(result.PathTransitions) != 0 {
+		t.Fatalf("withdraw result = %#v", result)
+	}
+	after := aggregator.Snapshot()
+	if len(after.Edges) != 1 || after.Edges[0].State != domain.EdgeRecent ||
+		after.Edges[0].AToBBytesPerSecond != 0 || after.Edges[0].BToABytesPerSecond != 0 ||
+		len(after.Edges[0].Observations) != 0 || after.Observers[0].Online {
+		t.Fatalf("post-withdraw topology = %#v", after)
+	}
+	observerID := aggregator.state.Aliases["stable:a"]
+	observer := aggregator.state.Observers[observerID]
+	if observer.OwnerReporterInstanceID != "" || !observer.WithdrawnAt.Equal(now) || len(observer.Membership) != 0 {
+		t.Fatalf("withdrawn observer state = %#v", observer)
+	}
+	edge := aggregator.state.Edges[after.Edges[0].ID]
+	if edge.Observations[observerID].WithdrawnAt.IsZero() {
+		t.Fatalf("withdrawal provenance was not retained: %#v", edge.Observations)
+	}
+
+	unknown := withdrawal
+	unknown.ReportID = "unknown-withdraw"
+	unknown.Sequence = 4
+	unknown.Observers[0].Observer = node("unknown", "Unknown")
+	result, err = aggregator.ApplyAt(unknown, now.Add(time.Second))
+	if err != nil || !result.Receipt.Accepted || result.CheckpointRequired {
+		t.Fatalf("unknown withdrawal result = %#v, err=%v", result, err)
+	}
+	if _, exists := aggregator.state.Aliases["stable:unknown"]; exists {
+		t.Fatal("unknown withdrawal created a canonical node")
+	}
+
+	now = now.Add(2 * time.Second)
+	applyHello(t, aggregator, "reporter-new", 1, "a", "A", "inventory")
+	reclaimed := aggregator.Snapshot()
+	if !reclaimed.Observers[0].Online || reclaimed.Edges[0].State != domain.EdgeRecent {
+		t.Fatalf("reclaimed topology revived traffic or stayed offline: %#v", reclaimed)
+	}
+	stale := withdrawal
+	stale.ReportID = "stale-withdraw"
+	stale.Sequence = 5
+	result, err = aggregator.ApplyAt(stale, now.Add(time.Second))
+	if err != nil || !result.Receipt.Accepted || result.CheckpointRequired {
+		t.Fatalf("stale withdrawal result = %#v, err=%v", result, err)
+	}
+	if owner := aggregator.state.Observers[observerID].OwnerReporterInstanceID; owner != "reporter-new" {
+		t.Fatalf("stale withdrawal changed owner to %q", owner)
+	}
+}
+
+func TestObserverWithdrawalKeepsEdgeActiveWithOtherFreshProvenance(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
+	applyHello(t, aggregator, "reporter-b", 1, "b", "B", "inventory-b")
+	applySample(t, aggregator, "reporter-a", 2, "a", "A", "b", "B", "inventory-a", 200, 100)
+	applySample(t, aggregator, "reporter-b", 2, "b", "B", "a", "A", "inventory-b", 100, 200)
+
+	now = now.Add(time.Second)
+	_, err := aggregator.ApplyAt(domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "withdraw-a", ReporterInstanceID: "reporter-a", Sequence: 3,
+		CollectedAt: now, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{Observer: node("a", "A"), InventoryGeneration: "inventory-a"}},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topology := aggregator.Snapshot()
+	if len(topology.Edges) != 1 || topology.Edges[0].State != domain.EdgeActive || len(topology.Edges[0].Observations) != 1 {
+		t.Fatalf("remaining fresh provenance did not keep edge active: %#v", topology.Edges)
+	}
+}
+
 func TestReporterRestartReclaimsPriorStateForObserver(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })

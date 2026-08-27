@@ -64,6 +64,7 @@ type observerRuntimeState struct {
 	OwnerReporterInstanceID string              `json:"ownerReporterInstanceId,omitempty"`
 	InventoryGeneration     string              `json:"inventoryGeneration,omitempty"`
 	Membership              map[string]struct{} `json:"membership,omitempty"`
+	WithdrawnAt             time.Time           `json:"withdrawnAt,omitempty"`
 }
 
 type nodeState struct {
@@ -114,6 +115,7 @@ type edgeObservation struct {
 	Path           domain.PathObservation         `json:"path"`
 	CollectedAt    time.Time                      `json:"collectedAt"`
 	ReceivedAt     time.Time                      `json:"receivedAt"`
+	WithdrawnAt    time.Time                      `json:"withdrawnAt,omitempty"`
 	ClockSkewed    bool                           `json:"clockSkewed"`
 	RelaySession   *domain.RelaySessionProvenance `json:"relaySession,omitempty"`
 	SourceEndpoint string                         `json:"-"`
@@ -130,6 +132,7 @@ type ApplyResult struct {
 	PathTransitions       []domain.PathTransition
 	Changed               bool
 	CanonicalStateChanged bool
+	CheckpointRequired    bool
 }
 
 func New(options Options) *Aggregator {
@@ -221,7 +224,8 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	if reporter.LastSequence > 0 && report.Sequence != reporter.LastSequence+1 {
 		result.Receipt.ResyncRequired = true
 	}
-	if report.Kind != domain.ReportObserverHello && report.Kind != domain.ReportRelaySessionUpdate &&
+	if report.Kind != domain.ReportObserverHello && report.Kind != domain.ReportObserverWithdrawal &&
+		report.Kind != domain.ReportRelaySessionUpdate &&
 		!a.reporterOwnsObserversLocked(report.ReporterInstanceID, report.Observers, receivedAt) {
 		if newReporter {
 			delete(a.state.Reporters, report.ReporterInstanceID)
@@ -232,7 +236,25 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	}
 
 	touchedEdges := make(map[string]domain.PathObservation)
+	if report.Kind == domain.ReportObserverWithdrawal {
+		for _, observation := range report.Observers {
+			observerID, ok := a.lookupIdentityLocked(observation.Observer, receivedAt)
+			if !ok {
+				continue
+			}
+			observer := a.state.Observers[observerID]
+			if observer == nil || observer.OwnerReporterInstanceID != report.ReporterInstanceID {
+				continue
+			}
+			a.touchObserverLocked(observerID, report.CollectedAt, receivedAt)
+			a.withdrawObserverLocked(report.ReporterInstanceID, reporter, observerID, receivedAt)
+			result.CheckpointRequired = true
+		}
+	}
 	for _, observation := range report.Observers {
+		if report.Kind == domain.ReportObserverWithdrawal {
+			continue
+		}
 		observerID, _ := resolveIdentity(observation.Observer)
 		if report.Kind == domain.ReportObserverHello {
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
@@ -791,7 +813,26 @@ func (a *Aggregator) claimReporterObserverLocked(reporterID string, reporter *re
 		}
 	}
 	observer.OwnerReporterInstanceID = reporterID
+	observer.WithdrawnAt = time.Time{}
 	reporter.ObserverIDs[observerID] = struct{}{}
+}
+
+func (a *Aggregator) withdrawObserverLocked(reporterID string, reporter *reporterState, observerID string, receivedAt time.Time) {
+	observer := a.state.Observers[observerID]
+	if observer == nil || observer.OwnerReporterInstanceID != reporterID {
+		return
+	}
+	observer.OwnerReporterInstanceID = ""
+	observer.WithdrawnAt = receivedAt
+	delete(reporter.ObserverIDs, observerID)
+	for _, edge := range a.state.Edges {
+		observation, ok := edge.Observations[observerID]
+		if !ok {
+			continue
+		}
+		observation.WithdrawnAt = receivedAt
+		edge.Observations[observerID] = observation
+	}
 }
 
 func (a *Aggregator) removeNodeAddressLocked(nodeID, expiredAddress string) {
@@ -894,6 +935,7 @@ func (a *Aggregator) mergeObserverRuntimeStatesLocked(keepID, removeID string, r
 		if removeIsNewer || keep.OwnerReporterInstanceID == "" {
 			keep.OwnerReporterInstanceID = remove.OwnerReporterInstanceID
 			keep.InventoryGeneration = remove.InventoryGeneration
+			keep.WithdrawnAt = remove.WithdrawnAt
 		}
 	}
 	delete(a.state.Observers, removeID)
@@ -1093,7 +1135,7 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 			continue
 		}
 		state := domain.EdgeRecent
-		if age <= activeWindow {
+		if age <= activeWindow && a.edgeHasActiveObservationLocked(edge, now) {
 			state = domain.EdgeActive
 			consider(edge.LastActive.Add(activeWindow))
 		}
@@ -1118,7 +1160,7 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 		if !onEdge && (node.LastEvidence.IsZero() || now.Sub(node.LastEvidence) > a.nodeWindow) {
 			continue
 		}
-		online := node.Observable && now.Sub(node.LastReport) <= a.evidenceWindow
+		online := a.observerOnlineLocked(id, node, now)
 		topology.Nodes = append(topology.Nodes, domain.TopologyNode{
 			NodeIdentity: node.Identity, ID: id, Observable: node.Observable, Online: online,
 			LastEvidenceAt: node.LastEvidence, ClockSkewed: node.ClockSkewed,
@@ -1130,7 +1172,7 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 		if !node.Observable {
 			continue
 		}
-		online := now.Sub(node.LastReport) <= a.evidenceWindow
+		online := a.observerOnlineLocked(id, node, now)
 		topology.Observers = append(topology.Observers, domain.ObserverState{
 			ID: id, Hostname: node.Identity.DisplayName(), Online: online, LastSeen: node.LastReport,
 			LastCollectedAt: node.LastCollected, ClockSkewMS: node.ClockSkewMS, ClockSkewed: node.ClockSkewed,
@@ -1190,6 +1232,9 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 		if now.Sub(observation.ReceivedAt) > a.evidenceWindow {
 			continue
 		}
+		if !observation.WithdrawnAt.IsZero() && !observation.WithdrawnAt.Before(observation.ReceivedAt) {
+			continue
+		}
 		copy := observation
 		if observation.ObserverID == edge.Source {
 			sourceObservation = &copy
@@ -1237,6 +1282,26 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 		return result.Observations[i].ObserverID < result.Observations[j].ObserverID
 	})
 	return result
+}
+
+func (a *Aggregator) edgeHasActiveObservationLocked(edge *edgeState, now time.Time) bool {
+	for _, observation := range edge.Observations {
+		if now.Sub(observation.ReceivedAt) > activeWindow {
+			continue
+		}
+		if observation.WithdrawnAt.IsZero() || observation.WithdrawnAt.Before(observation.ReceivedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Aggregator) observerOnlineLocked(observerID string, node *nodeState, now time.Time) bool {
+	if node == nil || !node.Observable || now.Sub(node.LastReport) > a.evidenceWindow {
+		return false
+	}
+	observer := a.state.Observers[observerID]
+	return observer != nil && observer.OwnerReporterInstanceID != "" && observer.WithdrawnAt.IsZero()
 }
 
 func reconcilePaths(observations []domain.ObservationProvenance) (domain.PathObservation, []domain.PathObservation) {

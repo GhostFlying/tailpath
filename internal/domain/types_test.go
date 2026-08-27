@@ -61,6 +61,24 @@ func TestIdentityDoesNotRequireHostname(t *testing.T) {
 	}
 }
 
+func TestObserverWithdrawalForbidsPeerState(t *testing.T) {
+	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	report := ReportEnvelope{
+		Version: ProtocolVersion, ReportID: "withdraw", ReporterInstanceID: "reporter", Sequence: 2,
+		CollectedAt: at, Kind: ReportObserverWithdrawal,
+		Observers: []ObserverReport{{
+			Observer: NodeIdentity{StableNodeID: "a"}, InventoryGeneration: "inventory",
+		}},
+	}
+	if err := report.Validate(); err != nil {
+		t.Fatalf("valid observer withdrawal rejected: %v", err)
+	}
+	report.Observers[0].Peers = []PeerObservation{{Peer: NodeIdentity{StableNodeID: "b"}}}
+	if err := report.Validate(); err == nil {
+		t.Fatal("observer withdrawal carrying peers was accepted")
+	}
+}
+
 func TestRelaySessionUpdateRequiresThirdPartyTrafficObservation(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	report := ReportEnvelope{

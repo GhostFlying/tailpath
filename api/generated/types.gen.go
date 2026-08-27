@@ -39,6 +39,7 @@ const (
 	InventoryUpdate    ReportKind = "inventory_update"
 	ObserverHeartbeat  ReportKind = "observer_heartbeat"
 	ObserverHello      ReportKind = "observer_hello"
+	ObserverWithdrawal ReportKind = "observer_withdrawal"
 	RelaySessionUpdate ReportKind = "relay_session_update"
 	TrafficSample      ReportKind = "traffic_sample"
 )
@@ -131,7 +132,7 @@ type ObservationProvenance struct {
 	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
 }
 
-// ObserverReport For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas.
+// ObserverReport For hello and inventory_update, peers is the observer's complete current runtime peer view. For traffic_sample it is sparse and contains only peers with business byte deltas. observer_withdrawal forbids peers.
 type ObserverReport struct {
 	InventoryGeneration string `json:"inventoryGeneration"`
 
@@ -234,7 +235,7 @@ type RelaySessionProvenance struct {
 	Vni                  int64          `json:"vni"`
 }
 
-// ReportEnvelope Normal observer messages contain observers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the two forms.
+// ReportEnvelope Normal observer messages contain observers. observer_withdrawal contains observer identities without peers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the forms.
 type ReportEnvelope struct {
 	CollectedAt        time.Time                  `json:"collectedAt"`
 	Kind               ReportKind                 `json:"kind"`

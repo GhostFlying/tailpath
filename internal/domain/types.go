@@ -23,7 +23,7 @@ type ServerCapabilities struct {
 func CurrentServerCapabilities() ServerCapabilities {
 	return ServerCapabilities{
 		ObserverProtocolVersions: []int{ProtocolVersion},
-		Features:                 []string{FeatureMultiObserver},
+		Features:                 []string{FeatureMultiObserver, FeatureObserverWithdrawal},
 	}
 }
 
@@ -52,6 +52,7 @@ const (
 	ReportInventoryUpdate    ReportKind = "inventory_update"
 	ReportTrafficSample      ReportKind = "traffic_sample"
 	ReportObserverHeartbeat  ReportKind = "observer_heartbeat"
+	ReportObserverWithdrawal ReportKind = "observer_withdrawal"
 	ReportRelaySessionUpdate ReportKind = "relay_session_update"
 )
 
@@ -234,7 +235,7 @@ func (r ReportEnvelope) Validate() error {
 	}
 	switch r.Kind {
 	case ReportObserverHello, ReportInventoryUpdate, ReportTrafficSample,
-		ReportObserverHeartbeat, ReportRelaySessionUpdate:
+		ReportObserverHeartbeat, ReportObserverWithdrawal, ReportRelaySessionUpdate:
 	default:
 		return fmt.Errorf("unknown report kind %q", r.Kind)
 	}
@@ -264,6 +265,9 @@ func (r ReportEnvelope) Validate() error {
 		}
 		if observer.InventoryGeneration == "" {
 			return errors.New("inventoryGeneration is required")
+		}
+		if r.Kind == ReportObserverWithdrawal && len(observer.Peers) != 0 {
+			return errors.New("observer withdrawals cannot contain peers")
 		}
 		for _, peer := range observer.Peers {
 			if !peer.Peer.HasIdentity() {
