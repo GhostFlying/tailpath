@@ -15,8 +15,15 @@ Collector 每两秒在本地采样，但只有非控制 peer 的 counter 变化�
 服务端通过 Tailscale WhoIs 认证 reporter 连接。可信 reporter 可以描述另一个
 observer，因此一个 tsbridge reporter 能为多个独立 tsnet 节点上报。
 
-Tailscale 类型只能存在于 `internal/tailscaleadapter`。协议、聚合、存储和 UI
-都使用 Tailpath 自己的 domain 类型，避免 LocalAPI 版本变化污染 wire 和数据库。
+Tailscale 实现类型只存在于 `internal/tailscaleadapter`、
+`internal/tailscalestatus` 和下面明确说明的 public adapter 边界。协议、聚合、存储和
+UI 都使用 Tailpath 自己的 domain 类型，避免 LocalAPI 版本变化污染 wire 和数据库。
+
+`exporter/tsnet` 是有意保留的 public adapter 边界：一个已配置的
+`tsnet.Server` 或现有 `local.Client` 对应一个独立 Source。它只读取 LocalAPI
+status，并与 native collector 共用相同的 identity/path 规范化逻辑。按 Tailscale
+上游语义，从尚未启动的 server 获取 LocalClient 可能启动该 server；登录、ready、
+重启和关闭仍由应用负责。adapter 不调用 `Up`、不探测 peer，也不修改 preferences。
 
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
 telemetry，不做 counter 扣减，也默认不进入用户 activity。该分类仍保留在运行时状态、

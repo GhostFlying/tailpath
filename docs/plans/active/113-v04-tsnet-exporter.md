@@ -80,13 +80,14 @@ Tailscale types. Issue #117 implements the concurrent SnapshotSink with one
 reporter sequence, bounded batching, isolated source/reporter recovery, and
 explicit withdrawal. The native collector now uses the shared SnapshotSink for
 ordinary LocalAPI state, with Peer Relay as an independently sampled optional
-source capability on the same reporter session. The embedded tsnet adapter and
-multi-instance example remain.
+source capability on the same reporter session. Issue #119 now provides a
+passive public tsnet Source backed by the same status normalization as the
+native collector. The runnable multi-instance example remains.
 
 ## Next step
 
-Land the protocol, exporter foundation, and native migration, then implement
-the embedded tsnet adapter in #119.
+Land the protocol, exporter foundation, native migration, and embedded adapter,
+then add the runnable multi-instance example in #120.
 
 ## Verification
 
