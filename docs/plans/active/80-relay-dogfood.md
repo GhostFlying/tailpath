@@ -78,18 +78,24 @@ evidence, but is not a prerequisite for validating the v0.3 telemetry path.
 
 ## Current state
 
-The repeatable harness and immutable-main business-session matrix are complete.
-The reusable credential files were zeroed immediately after enrollment, and no
-production or long-lived node was modified. Issue #109 is merged and restores
-the dedicated-control-identity behavior. The harness now supports a candidate
-server and relay collector with independently pinned older ordinary collectors;
-Compose configuration tests prove that `0.2.0` applies only to A/B while the
-server and relay collector retain the immutable candidate tag.
+The repeatable harness, immutable-main business-session matrix, and focused
+candidate-server/`0.2.0` ordinary-collector compatibility window are complete.
+The candidate passed Direct, Peer Relay, one-observable, relay-only,
+collector/relay/server restart, Direct restoration, History transition, and
+underlay privacy checks on Linux amd64 with Tailscale `1.102.2`. The reusable
+credential files were zeroed immediately after each enrollment. No production
+or long-lived node was modified. Issue #109 is merged and restores the
+dedicated-control-identity behavior.
+
+The graph incremental-layout fix (`a2f7dd6`) and two smoke harness fixes
+(`9809689`, `ce22123`) are included in the dogfood PR. The relay restart gate
+now waits for telemetry recovery and validates Peer Relay only after a new
+workload creates a session; disposable Tailscale hostname suffixes are
+accepted without broadening the observer match.
 
 ## Next step
 
-Wait for main commit `4dedf9d6b76357fad70531e15090eb7e79f02d03` to publish its
-immutable image, then run the focused candidate-server/`0.2.0` ordinary
-collector compatibility window and record only its sanitized result. Re-run
-final repository checks and independent review before marking PR #100 ready.
-Revoke the reusable Tailnet key after the final ephemeral lab is destroyed.
+Attach the sanitized ledger to PR #100, rerun the final repository checks after
+the dogfood-only commits, complete the independent read-only review, then mark
+the PR ready and rebase-merge it. Revoke the reusable Tailnet key after the
+disposable smoke project is destroyed.
