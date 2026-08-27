@@ -208,13 +208,17 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			if err := scenario.RefreshRuntime(application.Aggregator, time.Now().UTC(), 4); err != nil {
 				return fmt.Errorf("refresh scale fixture: %w", err)
 			}
-			runtime := &scaleFixtureRuntime{sequence: 4}
+			runtime := &scaleFixtureRuntime{
+				sequences:    scaleFixtureSequences(scenario.NodeCount(), 4),
+				excludedNode: -1,
+			}
 			serverOptions.FixtureMutation = func(requestContext context.Context) (any, error) {
 				runtime.mu.Lock()
 				defer runtime.mu.Unlock()
 				at := time.Now().UTC()
-				runtime.sequence++
-				sequence := runtime.sequence
+				observer := scenario.EdgeMutationObserver()
+				runtime.sequences[observer]++
+				sequence := runtime.sequences[observer]
 				receipt, err := application.Submit(requestContext, scenario.EdgeMutationReport(at, sequence))
 				if err != nil {
 					return nil, err
@@ -223,6 +227,35 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 					return nil, fmt.Errorf("fixture mutation receipt accepted=%t resyncRequired=%t", receipt.Accepted, receipt.ResyncRequired)
 				}
 				return map[string]any{"sequence": sequence, "triggeredAt": at}, nil
+			}
+			serverOptions.FixtureLifecycle = func(requestContext context.Context) (any, error) {
+				runtime.mu.Lock()
+				defer runtime.mu.Unlock()
+				at := time.Now().UTC()
+				if runtime.excludedNode < 0 {
+					runtime.sequences[0]++
+					report := scenario.ObserverWithdrawalReport(0, at, runtime.sequences[0])
+					receipt, submitErr := application.Submit(requestContext, report)
+					if submitErr != nil {
+						return nil, submitErr
+					}
+					if !receipt.Accepted || receipt.ResyncRequired {
+						return nil, fmt.Errorf("fixture withdrawal receipt accepted=%t resyncRequired=%t", receipt.Accepted, receipt.ResyncRequired)
+					}
+					runtime.excludedNode = 0
+					return map[string]any{"state": "withdrawn", "triggeredAt": at}, nil
+				}
+				runtime.sequences[runtime.excludedNode]++
+				report := scenario.ObserverHelloReport(runtime.excludedNode, at, runtime.sequences[runtime.excludedNode])
+				receipt, submitErr := application.Submit(requestContext, report)
+				if submitErr != nil {
+					return nil, submitErr
+				}
+				if !receipt.Accepted || receipt.ResyncRequired {
+					return nil, fmt.Errorf("fixture reconnect receipt accepted=%t resyncRequired=%t", receipt.Accepted, receipt.ResyncRequired)
+				}
+				runtime.excludedNode = -1
+				return map[string]any{"state": "reporting", "triggeredAt": at}, nil
 			}
 			go runScaleRuntime(ctx, scenario, application.Aggregator, logger, runtime)
 		} else if *relayScaleFixture {
@@ -249,8 +282,17 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 }
 
 type scaleFixtureRuntime struct {
-	mu       sync.Mutex
-	sequence int64
+	mu           sync.Mutex
+	sequences    []int64
+	excludedNode int
+}
+
+func scaleFixtureSequences(count int, initial int64) []int64 {
+	sequences := make([]int64, count)
+	for index := range sequences {
+		sequences[index] = initial
+	}
+	return sequences
 }
 
 func runScaleRuntime(
@@ -268,8 +310,7 @@ func runScaleRuntime(
 			return
 		case at := <-ticker.C:
 			runtime.mu.Lock()
-			runtime.sequence++
-			err := scenario.RefreshRuntime(aggregator, at.UTC(), runtime.sequence)
+			err := scenario.RefreshRuntimeSequences(aggregator, at.UTC(), runtime.sequences, runtime.excludedNode)
 			runtime.mu.Unlock()
 			if err != nil {
 				logger.Error("scale fixture refresh failed", "error", err)

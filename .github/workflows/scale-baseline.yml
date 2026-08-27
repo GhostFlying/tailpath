@@ -1,4 +1,4 @@
-name: V0.3 Peer Relay scale gate
+name: V0.4 multi-runtime exporter scale gate
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: v0.3-relay-scale-gate-${{ github.ref }}
+  group: v0.4-exporter-scale-gate-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +46,14 @@ jobs:
               -count=1 -v -json -timeout=15m \
               > perf-artifacts/restart-smoke.json \
               2> perf-artifacts/restart-smoke-resource.txt
+      - name: Enforce shared-reporter lifecycle and restart gate
+        run: |
+          /usr/bin/time -v \
+            go test ./internal/fixtures \
+              -run TestExporterScalePersistsWithdrawalAndReconnectAcrossRestart \
+              -count=1 -v -json -timeout=15m \
+              > perf-artifacts/exporter-scale.json \
+              2> perf-artifacts/exporter-scale-resource.txt
       - name: Record 1,000-session relay restart and privacy smoke
         run: |
           /usr/bin/time -v \
@@ -77,7 +85,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: v0.3-peer-relay-scale-gate
+          name: v0.4-multi-runtime-exporter-scale-gate
           path: |
             perf-artifacts/
             web/test-results/**/tailpath-scale.png

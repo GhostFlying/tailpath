@@ -204,6 +204,35 @@ func TestScaleScenarioSteadyReportsCoverEveryEdgeBilaterally(t *testing.T) {
 	}
 }
 
+func TestScaleScenarioExporterSnapshotsCoverEveryEdgeBilaterally(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots := scenario.ExporterSnapshots(time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC), 2)
+	if len(snapshots) != DefaultScaleNodeCount {
+		t.Fatalf("snapshots = %d, want %d", len(snapshots), DefaultScaleNodeCount)
+	}
+	edges := map[string]int{}
+	for _, snapshot := range snapshots {
+		if !snapshot.Observer.HasIdentity() || len(snapshot.Peers) != 8 {
+			t.Fatalf("snapshot = %#v", snapshot)
+		}
+		for _, peer := range snapshot.Peers {
+			edgeID, _, _ := domain.EdgeID(snapshot.Observer.StableNodeID, peer.Identity.StableNodeID)
+			edges[edgeID]++
+		}
+	}
+	if len(edges) != DefaultScaleEdgeCount {
+		t.Fatalf("logical edges = %d, want %d", len(edges), DefaultScaleEdgeCount)
+	}
+	for edgeID, count := range edges {
+		if count != 2 {
+			t.Fatalf("edge %s has %d snapshots, want 2", edgeID, count)
+		}
+	}
+}
+
 func TestScaleScenarioEdgeMutationChangesOneEdgeRate(t *testing.T) {
 	scenario, err := NewScaleScenario(DefaultScaleConfig())
 	if err != nil {
@@ -220,6 +249,37 @@ func TestScaleScenarioEdgeMutationChangesOneEdgeRate(t *testing.T) {
 	}
 	if first.Observers[0].Peers[0].TxDelta == second.Observers[0].Peers[0].TxDelta {
 		t.Fatal("successive mutation reports have the same visible rate")
+	}
+}
+
+func TestScaleScenarioKeepsIndependentReporterSequencesAfterEdgeMutation(t *testing.T) {
+	scenario, err := NewScaleScenario(DefaultScaleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	aggregator := aggregate.New(aggregate.Options{Now: func() time.Time { return at }})
+	for _, timed := range scenario.Reports(at) {
+		if _, err := aggregator.ApplyAt(timed.Report, timed.ReceivedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := scenario.RefreshRuntime(aggregator, at, 4); err != nil {
+		t.Fatal(err)
+	}
+	sequences := make([]int64, scenario.NodeCount())
+	for index := range sequences {
+		sequences[index] = 4
+	}
+	observer := scenario.EdgeMutationObserver()
+	sequences[observer]++
+	mutation := scenario.EdgeMutationReport(at.Add(time.Second), sequences[observer])
+	result, err := aggregator.ApplyAt(mutation, at.Add(time.Second))
+	if err != nil || !result.Receipt.Accepted || result.Receipt.ResyncRequired {
+		t.Fatalf("edge mutation result = %#v, err=%v", result.Receipt, err)
+	}
+	if err := scenario.RefreshRuntimeSequences(aggregator, at.Add(2*time.Second), sequences, -1); err != nil {
+		t.Fatal(err)
 	}
 }
 

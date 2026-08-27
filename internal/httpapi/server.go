@@ -31,6 +31,7 @@ type Options struct {
 	Logger                *slog.Logger
 	TopologyEventInterval time.Duration
 	FixtureMutation       func(context.Context) (any, error)
+	FixtureLifecycle      func(context.Context) (any, error)
 }
 
 type Server struct {
@@ -72,6 +73,17 @@ func New(application *app.App, options Options) *Server {
 			if err != nil {
 				server.logger.Error("fixture edge mutation failed", "error", err)
 				writeProblem(response, http.StatusInternalServerError, "fixture mutation failed", "")
+				return
+			}
+			writeJSON(response, http.StatusAccepted, value)
+		})
+	}
+	if options.FixtureLifecycle != nil {
+		server.mux.HandleFunc("POST /api/v1/fixture/observer-lifecycle", func(response http.ResponseWriter, request *http.Request) {
+			value, err := options.FixtureLifecycle(request.Context())
+			if err != nil {
+				server.logger.Error("fixture observer lifecycle failed", "error", err)
+				writeProblem(response, http.StatusInternalServerError, "fixture lifecycle failed", "")
 				return
 			}
 			writeJSON(response, http.StatusAccepted, value)
