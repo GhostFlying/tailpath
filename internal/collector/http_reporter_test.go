@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,20 +11,6 @@ import (
 
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
-
-func TestHTTPReporterDefaultClientBypassesProxy(t *testing.T) {
-	reporter, err := NewHTTPReporter("http://100.64.0.1:8080", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transport, ok := reporter.client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("default transport = %T, want *http.Transport", reporter.client.Transport)
-	}
-	if transport.Proxy != nil {
-		t.Fatal("default reporter transport must connect directly over the Tailnet")
-	}
-}
 
 func TestHTTPReporterReturnsTypedStatusErrors(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError} {
@@ -123,13 +110,76 @@ func TestHTTPReporterHonorsClientTimeout(t *testing.T) {
 	}
 }
 
-func TestHTTPReporterPreservesCustomClient(t *testing.T) {
-	client := &http.Client{}
-	reporter, err := NewHTTPReporter("https://tailpath.example", client)
+func TestExportReportPreservesObserverAndRelayFields(t *testing.T) {
+	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	vni := int64(7)
+	identity := domain.NodeIdentity{StableNodeID: "peer", TailscaleIPs: []string{"100.64.0.2"}}
+	report := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "report", ReporterInstanceID: "reporter", Sequence: 3,
+		CollectedAt: at, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "observer", OS: "linux"}, InventoryGeneration: "generation",
+			Peers: []domain.PeerObservation{{
+				Peer: identity, RxBytes: 10, TxBytes: 20, RxDelta: 1, TxDelta: 2, SampleDurationMS: 2000,
+				Path:       domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni},
+				LastActive: at,
+			}},
+		}},
+		RelaySessions: []domain.RelaySessionObservation{{
+			Relay:  domain.NodeIdentity{StableNodeID: "relay"},
+			Source: domain.RelaySessionClient{SessionClientID: "left", Identity: &identity, DiscoShort: "short", Endpoint: "192.0.2.1:1"},
+			Target: domain.RelaySessionClient{SessionClientID: "right"}, SessionID: "session", VNI: 7,
+			SourceToTargetBytes: 100, TargetToSourceBytes: 50, SourceToTargetDelta: 10, TargetToSourceDelta: 5,
+			SampleDurationMS: 2000, LastActive: at,
+		}},
+	}
+
+	exported := exportReport(report)
+	peer := exported.Observers[0].Peers[0]
+	if exported.ReportID != "report" || exported.Observers[0].Observer.OS != "linux" ||
+		peer.Path.PeerRelayVNI == nil || *peer.Path.PeerRelayVNI != 7 || peer.TxDelta != 2 {
+		t.Fatalf("observer conversion = %#v", exported.Observers)
+	}
+	session := exported.RelaySessions[0]
+	if session.Source.Identity == nil || session.Source.Identity.StableNodeID != "peer" ||
+		session.Source.Endpoint != "192.0.2.1:1" || session.TargetToSourceDelta != 5 {
+		t.Fatalf("relay conversion = %#v", session)
+	}
+	report.Observers[0].Peers[0].Peer.TailscaleIPs[0] = "changed"
+	if peer.Peer.TailscaleIPs[0] != "100.64.0.2" {
+		t.Fatal("exported identity aliases mutable domain storage")
+	}
+}
+
+func TestHTTPReporterPreservesProtocolWireShape(t *testing.T) {
+	var received domain.ReportEnvelope
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		response.WriteHeader(http.StatusAccepted)
+		_, _ = response.Write([]byte(`{"accepted":true,"resyncRequired":false,"controlStableNodeIds":["server"],"heartbeatIntervalMs":60000}`))
+	}))
+	defer server.Close()
+	reporter, err := NewHTTPReporter(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reporter.client != client {
-		t.Fatal("custom client was replaced")
+	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	report := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "withdraw", ReporterInstanceID: "reporter", Sequence: 4,
+		CollectedAt: at, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{
+			Observer:            domain.NodeIdentity{StableNodeID: "runtime", DNSName: "runtime.example.ts.net."},
+			InventoryGeneration: "generation",
+		}},
+	}
+	receipt, err := reporter.Send(context.Background(), report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if received.Kind != domain.ReportObserverWithdrawal || received.Observers[0].Observer.StableNodeID != "runtime" ||
+		receipt.HeartbeatIntervalMS != 60000 || len(receipt.ControlStableNodeIDs) != 1 {
+		t.Fatalf("received=%#v receipt=%#v", received, receipt)
 	}
 }

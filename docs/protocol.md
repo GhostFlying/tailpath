@@ -12,6 +12,11 @@ incompatible server, not a reason to fall back to weaker lifecycle semantics.
 Existing collectors do not require this preflight and remain compatible with a
 v0.4 server.
 
+The public `exporter` package owns the handwritten application contracts for
+snapshots, reports, receipts, capabilities, and HTTP delivery. Generated
+OpenAPI types remain server/client schema artifacts and are not the embedded
+application API. Upstream Tailscale types are confined to source adapters.
+
 ## Messages
 
 - `observer_hello`: identity, complete current peer-view inventory, counter

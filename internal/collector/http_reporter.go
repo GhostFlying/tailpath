@@ -1,155 +1,110 @@
 package collector
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"net/url"
-	"strings"
-	"time"
 
+	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
+type IncompatibleServerError = exporter.IncompatibleServerError
+type HTTPStatusError = exporter.HTTPStatusError
+
 type HTTPReporter struct {
-	endpoint        string
-	capabilitiesURL string
-	client          *http.Client
-}
-
-type IncompatibleServerError struct {
-	Reason string
-}
-
-func (e *IncompatibleServerError) Error() string {
-	return "incompatible Tailpath server: " + e.Reason
-}
-
-type HTTPStatusError struct {
-	StatusCode int
-	Status     string
-	Message    string
-}
-
-func (e *HTTPStatusError) Error() string {
-	if e.Message == "" {
-		return fmt.Sprintf("server returned %s", e.Status)
-	}
-	return fmt.Sprintf("server returned %s: %s", e.Status, e.Message)
+	reporter *exporter.HTTPReporter
 }
 
 func NewHTTPReporter(serverURL string, client *http.Client) (*HTTPReporter, error) {
-	parsed, err := url.Parse(serverURL)
+	reporter, err := exporter.NewHTTPReporter(serverURL, client)
 	if err != nil {
-		return nil, fmt.Errorf("parse server URL: %w", err)
+		return nil, err
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("server URL must use http or https")
-	}
-	if parsed.Host == "" {
-		return nil, fmt.Errorf("server URL requires a host")
-	}
-	if client == nil {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.Proxy = nil
-		client = &http.Client{Transport: transport, Timeout: 15 * time.Second}
-	}
-	return &HTTPReporter{
-		endpoint:        strings.TrimSuffix(serverURL, "/") + "/api/v1/reports",
-		capabilitiesURL: strings.TrimSuffix(serverURL, "/") + "/api/v1/capabilities",
-		client:          client,
-	}, nil
+	return &HTTPReporter{reporter: reporter}, nil
 }
 
 func (r *HTTPReporter) Capabilities(ctx context.Context) (domain.ServerCapabilities, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.capabilitiesURL, nil)
-	if err != nil {
-		return domain.ServerCapabilities{}, err
-	}
-	response, err := r.client.Do(request)
-	if err != nil {
-		return domain.ServerCapabilities{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusNotFound {
-		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "capability endpoint is unavailable"}
-	}
-	if response.StatusCode != http.StatusOK {
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return domain.ServerCapabilities{}, &HTTPStatusError{
-			StatusCode: response.StatusCode,
-			Status:     response.Status,
-			Message:    strings.TrimSpace(string(message)),
-		}
-	}
-	var capabilities domain.ServerCapabilities
-	decoder := json.NewDecoder(io.LimitReader(response.Body, 64<<10))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&capabilities); err != nil {
-		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "invalid capability response: " + err.Error()}
-	}
-	if err := ensureReporterEOF(decoder); err != nil {
-		return domain.ServerCapabilities{}, &IncompatibleServerError{Reason: "invalid capability response: " + err.Error()}
-	}
-	return capabilities, nil
+	capabilities, err := r.reporter.Capabilities(ctx)
+	return domain.ServerCapabilities{
+		ObserverProtocolVersions: capabilities.ObserverProtocolVersions,
+		Features:                 capabilities.Features,
+	}, err
 }
 
 func (r *HTTPReporter) RequireCapabilities(ctx context.Context, features ...string) error {
-	capabilities, err := r.Capabilities(ctx)
-	if err != nil {
-		return err
-	}
-	if !capabilities.SupportsProtocol(domain.ProtocolVersion) {
-		return &IncompatibleServerError{Reason: fmt.Sprintf("observer protocol %d is not supported", domain.ProtocolVersion)}
-	}
-	for _, feature := range features {
-		if !capabilities.SupportsFeature(feature) {
-			return &IncompatibleServerError{Reason: fmt.Sprintf("required feature %q is unavailable", feature)}
-		}
-	}
-	return nil
+	return r.reporter.RequireCapabilities(ctx, features...)
 }
 
 func (r *HTTPReporter) Send(ctx context.Context, report domain.ReportEnvelope) (domain.ReportReceipt, error) {
-	body, err := json.Marshal(report)
-	if err != nil {
-		return domain.ReportReceipt{}, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, r.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return domain.ReportReceipt{}, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err := r.client.Do(request)
-	if err != nil {
-		return domain.ReportReceipt{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusAccepted {
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return domain.ReportReceipt{}, &HTTPStatusError{
-			StatusCode: response.StatusCode,
-			Status:     response.Status,
-			Message:    strings.TrimSpace(string(message)),
-		}
-	}
-	var receipt domain.ReportReceipt
-	if err := json.NewDecoder(response.Body).Decode(&receipt); err != nil {
-		return domain.ReportReceipt{}, fmt.Errorf("decode receipt: %w", err)
-	}
-	return receipt, nil
+	receipt, err := r.reporter.Send(ctx, exportReport(report))
+	return domain.ReportReceipt{
+		Accepted:             receipt.Accepted,
+		ResyncRequired:       receipt.ResyncRequired,
+		ControlStableNodeIDs: receipt.ControlStableNodeIDs,
+		HeartbeatIntervalMS:  receipt.HeartbeatIntervalMS,
+	}, err
 }
 
-func ensureReporterEOF(decoder *json.Decoder) error {
-	var extra any
-	if err := decoder.Decode(&extra); errors.Is(err, io.EOF) {
-		return nil
-	} else if err != nil {
-		return err
+func exportReport(report domain.ReportEnvelope) exporter.ReportEnvelope {
+	result := exporter.ReportEnvelope{
+		Version: report.Version, ReportID: report.ReportID, ReporterInstanceID: report.ReporterInstanceID,
+		Sequence: report.Sequence, CollectedAt: report.CollectedAt, Kind: exporter.ReportKind(report.Kind),
+		Observers:     make([]exporter.ObserverReport, len(report.Observers)),
+		RelaySessions: make([]exporter.RelaySessionObservation, len(report.RelaySessions)),
 	}
-	return errors.New("response contains more than one JSON value")
+	for index, observer := range report.Observers {
+		result.Observers[index] = exporter.ObserverReport{
+			Observer: exportIdentity(observer.Observer), InventoryGeneration: observer.InventoryGeneration,
+			Peers: make([]exporter.PeerObservation, len(observer.Peers)),
+		}
+		for peerIndex, peer := range observer.Peers {
+			result.Observers[index].Peers[peerIndex] = exporter.PeerObservation{
+				Peer: exportIdentity(peer.Peer), RxBytes: peer.RxBytes, TxBytes: peer.TxBytes,
+				RxDelta: peer.RxDelta, TxDelta: peer.TxDelta, SampleDurationMS: peer.SampleDurationMS,
+				Path: exportPath(peer.Path), LastActive: peer.LastActive,
+			}
+		}
+	}
+	for index, session := range report.RelaySessions {
+		result.RelaySessions[index] = exporter.RelaySessionObservation{
+			Relay:  exportIdentity(session.Relay),
+			Source: exportRelayClient(session.Source), Target: exportRelayClient(session.Target),
+			SessionID: session.SessionID, VNI: session.VNI,
+			SourceToTargetBytes: session.SourceToTargetBytes, TargetToSourceBytes: session.TargetToSourceBytes,
+			SourceToTargetDelta: session.SourceToTargetDelta, TargetToSourceDelta: session.TargetToSourceDelta,
+			SampleDurationMS: session.SampleDurationMS, LastActive: session.LastActive,
+		}
+	}
+	return result
+}
+
+func exportIdentity(identity domain.NodeIdentity) exporter.NodeIdentity {
+	return exporter.NodeIdentity{
+		StableNodeID: identity.StableNodeID, NodeID: identity.NodeID, NodeKey: identity.NodeKey,
+		DiscoKey: identity.DiscoKey, Hostname: identity.Hostname, DNSName: identity.DNSName, OS: identity.OS,
+		TailscaleIPs: append([]string(nil), identity.TailscaleIPs...),
+	}
+}
+
+func exportPath(path domain.PathObservation) exporter.Path {
+	result := exporter.Path{
+		Kind: exporter.PathKind(path.Kind), DirectEndpoint: path.DirectEndpoint, DERPRegion: path.DERPRegion,
+		PeerRelayStableNodeID: path.PeerRelayStableNodeID,
+	}
+	if path.PeerRelayVNI != nil {
+		value := *path.PeerRelayVNI
+		result.PeerRelayVNI = &value
+	}
+	return result
+}
+
+func exportRelayClient(client domain.RelaySessionClient) exporter.RelaySessionClient {
+	result := exporter.RelaySessionClient{
+		SessionClientID: client.SessionClientID, DiscoShort: client.DiscoShort, Endpoint: client.Endpoint,
+	}
+	if client.Identity != nil {
+		identity := exportIdentity(*client.Identity)
+		result.Identity = &identity
+	}
+	return result
 }
