@@ -65,7 +65,10 @@ same model required by tsbridge without making an external repository a gate.
 - Existing native collectors, Peer Relay, History, layout, packaging, and the
   250-node/1,000-edge gates do not regress.
 - Real Linux tsnet dogfood covers Direct to DERP to Direct, dynamic lifecycle,
-  reporter/server restart, History, system telemetry, and evidence privacy.
+  reporter/server restart, History, reporter exclusion, and evidence privacy.
+  Cross-layer fixtures and browser gates cover system-telemetry classification
+  and default hiding because the dedicated reporter is intentionally not an
+  application observer.
 
 ## Current state
 

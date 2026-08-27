@@ -95,8 +95,30 @@ mkdir "$fake_bin"
 cat >"$fake_bin/docker" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>"$TAILPATH_FAKE_DOCKER_LOG"
+if test "${TAILPATH_FAKE_PROJECT_DIRTY:-false}" = true && test "${1:-}" = ps; then
+  echo contaminated-resource
+fi
 EOF
 chmod 0755 "$fake_bin/docker"
+
+chmod u+w "$auth_file"
+printf 'fixture-key' >"$auth_file"
+chmod 0444 "$auth_file"
+: >"$fake_log"
+if PATH="$fake_bin:$PATH" TAILPATH_FAKE_DOCKER_LOG="$fake_log" TAILPATH_FAKE_PROJECT_DIRTY=true \
+  TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 \
+  TAILPATH_EXPORTER_DOGFOOD_PROJECT=tailpath-exporter-dogfood-fixture \
+  TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE="$auth_file" \
+  TAILPATH_EXPORTER_DOGFOOD_EVIDENCE="$evidence" "$helper" up >/dev/null 2>&1; then
+  echo "exporter dogfood accepted a contaminated Compose project" >&2
+  exit 1
+fi
+test "$(grep -cF 'ps -aq --filter label=com.docker.compose.project=tailpath-exporter-dogfood-fixture' "$fake_log")" -eq 1
+if grep -E 'compose .* (pull|up)( |$)' "$fake_log" >/dev/null; then
+  echo "exporter dogfood mutated a contaminated Compose project" >&2
+  exit 1
+fi
+: >"$fake_log"
 PATH="$fake_bin:$PATH" TAILPATH_FAKE_DOCKER_LOG="$fake_log" \
   TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" "$helper" status >/dev/null
 test "$(wc -l <"$fake_log")" -eq 2
