@@ -52,15 +52,19 @@ The exporter now retains possibly accepted hello references across ambiguous
 transport failures and withdraws them before registration completion or
 identity replacement. The server now retains empty reporter sequence
 tombstones for two heartbeat intervals and prunes them afterward. Public
-Source and RelaySource cancellation obligations are documented.
+Source and RelaySource cancellation obligations are documented. The final
+manual scale run on `f1774698` passed every functional and performance gate,
+but its second Playwright invocation replaced the first invocation's
+`web/test-results` directory. The uploaded artifact therefore retained the
+Peer Relay browser evidence but not the ordinary 250-node/1,000-edge browser
+evidence.
 
 ## Next step
 
-Run the full repository gate, obtain an independent re-review of the fixes, and
-merge this blocker-fix PR after human approval. Then run the manual scale
-workflow on the resulting `main` SHA and record its run and artifact in a
-separate final closeout PR. Only that PR archives plans #113 through #123 and
-closes #123; #113 and the milestone close after it merges.
+Preserve each Playwright invocation in a distinct output directory and rerun
+the manual scale workflow on the resulting `main` SHA. Record the complete run
+and artifact in a separate final closeout PR. Only that PR archives plans #113
+through #123 and closes #123; #113 and the milestone close after it merges.
 
 ## Verification
 
@@ -70,6 +74,10 @@ closes #123; #113 and the milestone close after it merges.
 - Required PR CI, including `make check`, native platform matrix, archives, and
   image gate.
 - GitHub issue and milestone state audit after merge.
+- Manual scale run
+  [33172201058](https://github.com/GhostFlying/tailpath/actions/runs/33172201058)
+  on `f1774698`: all gates passed, but the artifact exposed a browser evidence
+  retention gap because sequential Playwright runs shared one output directory.
 
 Completed on the blocker-fix branch:
 
