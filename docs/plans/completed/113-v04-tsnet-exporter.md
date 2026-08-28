@@ -72,22 +72,37 @@ same model required by tsbridge without making an external repository a gate.
 
 ## Current state
 
-Issues #114 through #122 are implemented. The public exporter contracts,
+Complete. Issues #114 through #123 are implemented. The public exporter contracts,
 concurrent multi-observer sink, observer withdrawal, native collector migration,
 passive tsnet adapter, runnable multi-runtime example, compatibility/scale
 gates, and immutable Linux dogfood have all completed. The real dogfood passed
 Direct -> DERP -> Direct, reporter exclusion, dynamic lifecycle, server outage,
 exporter restart, History persistence, no-catch-up, and evidence privacy. The
-sanitized ledger is in `docs/evidence/v0.4-exporter-dogfood.md`.
+sanitized ledger is in `docs/evidence/v0.4-exporter-dogfood.md`. Independent
+review found no remaining P0/P1/P2 code blocker after the closeout fixes. The
+final manual scale gate passed on `a54a93e` with complete ordinary and Peer
+Relay desktop/mobile evidence.
 
 ## Next step
 
-Complete the independent review, archive the v0.4 plans, close the umbrella and
-milestone, and record release readiness in #123. Tags and releases remain
-human-only.
+Complete. Archive this plan with the v0.4 child and closeout plans. Close issue
+#113 and the v0.4 milestone after the archival PR merges. Tags and releases
+remain human-only.
 
 ## Verification
 
 - `make check`
 - GitHub issue and milestone links resolve.
 - The active plan, roadmap, ADR, and repository agent boundary agree.
+- Manual scale workflow
+  [33204731661](https://github.com/GhostFlying/tailpath/actions/runs/33204731661)
+  passed on `a54a93e` with the retained artifact
+  `v0.4-multi-runtime-exporter-scale-gate` (ID `9699993602`).
+
+## Completion summary
+
+v0.4 delivers the public multi-runtime exporter, native collector reuse,
+passive tsnet integration, bounded lifecycle and persistence semantics,
+immutable Linux qualification, and final scale evidence. Follow-up issue #58
+remains outside this milestone, and no tag or GitHub Release is created by the
+closeout.
