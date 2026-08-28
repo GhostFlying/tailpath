@@ -87,21 +87,24 @@ application traffic.
 
 ## Current state
 
-The workload, image packaging, isolated Compose topology, operator helper,
-deterministic 30-second outage and continuity/no-catch-up gates, fail-closed
-sanitizer, tests, and bilingual runbook are implemented. Local unit, race,
-image, Compose, and browser checks pass. The first immutable-main execution
-passed enrollment and Direct -> DERP -> Direct, then found a real no-catch-up
-failure during the deterministic server outage. A blocking capability request
-can recover before the sink consumes snapshots queued during the outage, so it
-sends a stale hello and later reports the offline counter growth as traffic.
-The History assertion also compares dynamically aligned API buckets by exact
-start time and can count pre-outage traffic as new growth.
+Complete. The first immutable-main execution passed enrollment and Direct ->
+DERP -> Direct, then found a real no-catch-up failure during the deterministic
+server outage plus an invalid sliding-window History comparison. The fixes were
+merged in #136. A new full-SHA multi-architecture image was published by the
+successful main workflow, pulled by digest, and qualified from a clean Compose
+project in a new private evidence directory.
+
+The repeated execution passed enrollment, Direct -> DERP -> Direct, exact
+reporter exclusion, runtime withdrawal/rejoin, deterministic 30-second server
+outage, exporter restart, canonical identity continuity, History persistence,
+and both no-catch-up bounds. Cleanup restored namespace UDP, removed all
+project containers/volumes/networks, zeroed the key file, and purged every raw
+topology, History, and log artifact. The retained sanitized summaries passed a
+second privacy scan. Public evidence is recorded in
+`docs/evidence/v0.4-exporter-dogfood.md`.
 
 ## Next step
 
-Drain pending source events after capability recovery before constructing the
-fresh hello, cover the blocking recovery path under the race detector, and
-compare History growth over an explicit post-capture interval rather than by
-query-relative bucket identity. Publish a new immutable main image and repeat
-the complete qualification before completing the sanitized ledger.
+Merge the sanitized ledger, close #122, then complete the independent review,
+plan archival, and v0.4 milestone closeout in #123. Revoke the reusable
+ephemeral key after the ledger is accepted.

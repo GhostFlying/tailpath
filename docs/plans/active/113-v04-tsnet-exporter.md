@@ -72,26 +72,19 @@ same model required by tsbridge without making an external repository a gate.
 
 ## Current state
 
-The v0.4 milestone, umbrella issue, and issues #114 through #123 exist. Issue
-#114 adds authenticated capability negotiation. Issue #115 implements explicit
-observer withdrawal and advertises that lifecycle only with its persisted
-server behavior. The server stores ownership per canonical observer and accepts
-multiple observers in one envelope, but the collector engine is still
-single-observer and internal. Issue #116 publishes handwritten snapshot,
-reporter, and HTTP transport contracts without exposing internal, generated, or
-Tailscale types. Issue #117 implements the concurrent SnapshotSink with one
-reporter sequence, bounded batching, isolated source/reporter recovery, and
-explicit withdrawal. The native collector now uses the shared SnapshotSink for
-ordinary LocalAPI state, with Peer Relay as an independently sampled optional
-source capability on the same reporter session. Issue #119 now provides a
-passive public tsnet Source backed by the same status normalization as the
-native collector. Issue #120 adds the runnable three-runtime example with a
-dedicated reporting identity and an opt-in withdrawal/restart demonstration.
+Issues #114 through #122 are implemented. The public exporter contracts,
+concurrent multi-observer sink, observer withdrawal, native collector migration,
+passive tsnet adapter, runnable multi-runtime example, compatibility/scale
+gates, and immutable Linux dogfood have all completed. The real dogfood passed
+Direct -> DERP -> Direct, reporter exclusion, dynamic lifecycle, server outage,
+exporter restart, History persistence, no-catch-up, and evidence privacy. The
+sanitized ledger is in `docs/evidence/v0.4-exporter-dogfood.md`.
 
 ## Next step
 
-Land the exporter implementation and runnable example, then enforce the
-integration, compatibility, UI, and scale gates in #121.
+Complete the independent review, archive the v0.4 plans, close the umbrella and
+milestone, and record release readiness in #123. Tags and releases remain
+human-only.
 
 ## Verification
 
