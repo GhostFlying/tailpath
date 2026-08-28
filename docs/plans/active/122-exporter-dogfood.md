@@ -108,3 +108,20 @@ second privacy scan. Public evidence is recorded in
 Merge the sanitized ledger, close #122, then complete the independent review,
 plan archival, and v0.4 milestone closeout in #123. Revoke the reusable
 ephemeral key after the ledger is accepted.
+
+## Verification
+
+- Main workflow
+  [33149461397](https://github.com/GhostFlying/tailpath/actions/runs/33149461397):
+  repository check, native platform matrix, archives, image gate, immutable
+  multi-architecture publication, and edge promotion passed.
+- The full-SHA image and recorded OCI digest passed isolated-Tailnet enrollment,
+  Direct -> DERP -> Direct, reporter exclusion, runtime withdrawal/rejoin,
+  deterministic server outage, exporter restart, History persistence, and both
+  no-catch-up bounds.
+- `sh -n` passed for the exporter dogfood helper, sanitizer, and their fixtures.
+- `./scripts/tests/exporter-dogfood.sh`: passed.
+- `./scripts/tests/sanitize-exporter-dogfood.sh`: passed.
+- `git diff --check`: passed.
+- Cleanup and the retained sanitized-evidence privacy scan passed with zero
+  project resources, zero raw files, and a zero-byte staged key file.

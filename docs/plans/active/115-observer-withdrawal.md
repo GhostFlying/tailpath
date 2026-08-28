@@ -38,8 +38,8 @@ History, and remain correct across checkpoint and journal replay.
 
 ## Current state
 
-Protocol v1 accepts peer-free withdrawal envelopes and the capability endpoint
-advertises `observer-withdrawal`. The aggregator fences non-owners, records
+Complete. Protocol v1 accepts peer-free withdrawal envelopes and the capability
+endpoint advertises `observer-withdrawal`. The aggregator fences non-owners, records
 withdrawal on the observer and current provenance, excludes that evidence from
 Live rates and path reconciliation, and forces an atomic checkpoint. Tests
 cover immediate active-to-recent behavior, sibling provenance, no-op cases,
@@ -47,10 +47,12 @@ checkpoint restore, journal replay, and preserved History.
 
 ## Next step
 
-Run the full repository gate, open the stacked PR, and require hosted checks.
-Issue #116 can then publish contracts against this complete lifecycle.
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
 
 ## Verification
+
+Passed before merge:
 
 - `go test ./internal/domain ./internal/aggregate ./internal/app ./internal/httpapi`
 - `make generate`

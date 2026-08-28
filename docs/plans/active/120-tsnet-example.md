@@ -40,15 +40,22 @@ system tailscaled.
 
 ## Current state
 
-The runnable example starts three independently persisted runtime identities
-and one dedicated reporter identity, then registers only the runtimes with one
+Complete. The runnable example starts three independently persisted runtime
+identities and one dedicated reporter identity, then registers only the runtimes with one
 SnapshotSink. A tested lifecycle manager orders accepted withdrawal before
 close and reuses a registration key only after withdrawal. The opt-in demo
 removes and recreates the third runtime from its existing state directory.
 Configuration supports environment/flag precedence, reusable `file:` secrets,
 an optional control URL, and deterministic generic hostnames.
 
+## Next step
+
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
+
 ## Verification
+
+Passed before merge:
 
 - `go test -race -count=20 ./examples/tsnet-multi`
 - `go vet ./...`

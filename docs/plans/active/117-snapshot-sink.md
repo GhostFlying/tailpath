@@ -43,8 +43,8 @@ reconstructing traffic across an outage.
 
 ## Current state
 
-SnapshotSink concurrently samples dynamic sources while one event loop owns
-capability negotiation, batching, sequence, receipts, reconnect, identity
+Complete. SnapshotSink concurrently samples dynamic sources while one event
+loop owns capability negotiation, batching, sequence, receipts, reconnect, identity
 replacement, and withdrawal. Production timing and bounds are fixed rather
 than exposed as public options. Tests cover sparse control-aware deltas, source
 timeout/recovery, transport outage without catch-up, resync, dynamic lifecycle,
@@ -53,10 +53,12 @@ observer/JSON limits under repeated race runs.
 
 ## Next step
 
-Run the full repository gate, open the stacked PR, and require hosted checks.
-Issue #118 will migrate the native ordinary collector onto this same engine.
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
 
 ## Verification
+
+Passed before merge:
 
 - `go test -race -count=1 ./exporter`
 - `go vet ./...`
