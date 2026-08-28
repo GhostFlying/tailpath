@@ -111,21 +111,22 @@ type observerReference struct {
 }
 
 type sourceRuntimeState struct {
-	registration *Registration
-	latest       Snapshot
-	baseline     Snapshot
-	hasLatest    bool
-	hasBaseline  bool
-	healthy      bool
-	dirty        bool
-	needsHello   bool
-	serverRef    *observerReference
-	withdrawals  []observerReference
-	withdrawing  bool
-	lastReportAt time.Time
-	sourceFailed bool
-	oversized    bool
-	withdrawErr  error
+	registration  *Registration
+	latest        Snapshot
+	baseline      Snapshot
+	hasLatest     bool
+	hasBaseline   bool
+	healthy       bool
+	dirty         bool
+	needsHello    bool
+	serverRef     *observerReference
+	uncertainRefs []observerReference
+	withdrawals   []observerReference
+	withdrawing   bool
+	lastReportAt  time.Time
+	sourceFailed  bool
+	oversized     bool
+	withdrawErr   error
 
 	relayLatest           RelaySnapshot
 	relayBaseline         RelaySnapshot
@@ -443,6 +444,11 @@ func (s *SnapshotSink) handleEvent(states map[string]*sourceRuntimeState, event 
 		if state.serverRef != nil && state.serverRef.identity.IdentityKey() != event.snapshot.Observer.IdentityKey() {
 			state.withdrawals = appendObserverReference(state.withdrawals, *state.serverRef)
 			state.serverRef = nil
+		}
+		state.uncertainRefs, state.withdrawals = retireObserverReferences(
+			state.uncertainRefs, state.withdrawals, event.snapshot.Observer.IdentityKey(),
+		)
+		if len(state.withdrawals) != 0 {
 			state.needsHello = true
 			state.relayHasBaseline = false
 			state.relayDirty = false
@@ -512,11 +518,35 @@ func (s *SnapshotSink) handleEvent(states map[string]*sourceRuntimeState, event 
 			event.registration.cancel()
 		}
 		event.registration.mu.Unlock()
-		if state.serverRef != nil {
-			state.withdrawals = appendObserverReference(state.withdrawals, *state.serverRef)
-			state.serverRef = nil
-		}
+		state.queueAllObserverReferencesForWithdrawal()
 	}
+}
+
+func (s *sourceRuntimeState) queueAllObserverReferencesForWithdrawal() {
+	if s.serverRef != nil {
+		s.withdrawals = appendObserverReference(s.withdrawals, *s.serverRef)
+		s.serverRef = nil
+	}
+	for _, reference := range s.uncertainRefs {
+		s.withdrawals = appendObserverReference(s.withdrawals, reference)
+	}
+	s.uncertainRefs = nil
+}
+
+func retireObserverReferences(
+	values []observerReference,
+	withdrawals []observerReference,
+	currentIdentityKey string,
+) ([]observerReference, []observerReference) {
+	retained := values[:0]
+	for _, reference := range values {
+		if reference.identity.IdentityKey() == currentIdentityKey {
+			retained = append(retained, reference)
+			continue
+		}
+		withdrawals = appendObserverReference(withdrawals, reference)
+	}
+	return retained, withdrawals
 }
 
 func appendObserverReference(values []observerReference, candidate observerReference) []observerReference {
@@ -766,6 +796,13 @@ func (s *SnapshotSink) sendBatch(
 			s.rejectOperation(operations[0], err)
 			return false, nil
 		}
+		for _, operation := range operations {
+			if operation.kind == ReportObserverHello {
+				operation.state.uncertainRefs = appendObserverReference(
+					operation.state.uncertainRefs, operation.reference,
+				)
+			}
+		}
 		return false, err
 	}
 	if !receipt.Accepted {
@@ -811,6 +848,7 @@ func (s *SnapshotSink) applyOperation(operation observerOperation, now time.Time
 	case ReportObserverHello:
 		reference := operation.reference
 		state.serverRef = &reference
+		state.uncertainRefs = removeObserverReference(state.uncertainRefs, reference)
 		state.needsHello = false
 		state.baseline = operation.snapshot
 		state.hasBaseline = true
@@ -836,6 +874,16 @@ func (s *SnapshotSink) applyOperation(operation observerOperation, now time.Time
 	case ReportObserverHeartbeat:
 		state.lastReportAt = now
 	}
+}
+
+func removeObserverReference(values []observerReference, candidate observerReference) []observerReference {
+	result := values[:0]
+	for _, value := range values {
+		if value.identity.IdentityKey() != candidate.identity.IdentityKey() {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func (s *SnapshotSink) acceptReceipt(receipt ReportReceipt, controlIDs map[string]struct{}, heartbeatInterval *time.Duration) {
