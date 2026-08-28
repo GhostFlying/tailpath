@@ -42,14 +42,25 @@ remaining blocker.
 The v0.4 implementation and immutable Linux dogfood are merged on `main`.
 Issue #122 is closed and the sanitized qualification ledger records Direct ->
 DERP -> Direct, lifecycle, server/exporter restart, History, no-catch-up,
-privacy, and cleanup gates. The independent final review has not started.
+privacy, and cleanup gates. The independent final review of
+`4bb4c07..6c351c0` found no P0 and two P1 blockers: a committed hello whose
+response is lost can be omitted from a later explicit withdrawal, and empty
+reporter sequence tombstones have no bounded retention. It also found two P2
+closeout gaps: public Source cancellation behavior is not documented, and the
+post-v0.4 manual scale workflow has not run against the final implementation.
+The exporter now retains possibly accepted hello references across ambiguous
+transport failures and withdraws them before registration completion or
+identity replacement. The server now retains empty reporter sequence
+tombstones for two heartbeat intervals and prunes them afterward. Public
+Source and RelaySource cancellation obligations are documented.
 
 ## Next step
 
-Run an independent read-only review of `4bb4c07..origin/main`. If it finds a
-blocker, fix and re-review it before closeout. Otherwise record the review,
-archive plans #113 through #123, open the closeout PR, and require all hosted
-checks before closing #113 and the v0.4 milestone.
+Run the full repository gate, obtain an independent re-review of the fixes, and
+merge this blocker-fix PR after human approval. Then run the manual scale
+workflow on the resulting `main` SHA and record its run and artifact in a
+separate final closeout PR. Only that PR archives plans #113 through #123 and
+closes #123; #113 and the milestone close after it merges.
 
 ## Verification
 
@@ -59,3 +70,15 @@ checks before closing #113 and the v0.4 milestone.
 - Required PR CI, including `make check`, native platform matrix, archives, and
   image gate.
 - GitHub issue and milestone state audit after merge.
+
+Completed on the blocker-fix branch:
+
+- Independent read-only review of `4bb4c07..6c351c0`: no P0, two P1 and two P2
+  findings; all code findings are addressed for re-review.
+- `go test -race -count=1 ./exporter`
+- `go test -race -count=1 ./internal/aggregate`
+- `go test -race -count=1 ./exporter ./internal/aggregate ./internal/app`
+- `make check` with Go 1.26.5, pnpm 10.15.0, and the existing Playwright
+  Chromium installation (28 browser tests passed; 12 scale/mode tests skipped
+  by the default gate).
+- `git diff --check`
