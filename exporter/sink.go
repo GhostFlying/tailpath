@@ -536,6 +536,7 @@ func (s *SnapshotSink) flush(
 	heartbeatInterval *time.Duration,
 	sequence *int64,
 ) error {
+	s.drainPendingEvents(states)
 	now := s.now()
 	s.finalizeUnreportedWithdrawals(states)
 	if !transport.nextAttempt.IsZero() && now.Before(transport.nextAttempt) {
@@ -556,6 +557,9 @@ func (s *SnapshotSink) flush(
 		}
 		transport.capabilitiesReady = true
 		transport.nextAttempt = time.Time{}
+		s.drainPendingEvents(states)
+		now = s.now()
+		s.finalizeUnreportedWithdrawals(states)
 	}
 
 	for _, kind := range []ReportKind{
@@ -587,6 +591,17 @@ func (s *SnapshotSink) flush(
 		}
 	}
 	return nil
+}
+
+func (s *SnapshotSink) drainPendingEvents(states map[string]*sourceRuntimeState) {
+	for {
+		select {
+		case event := <-s.events:
+			s.handleEvent(states, event)
+		default:
+			return
+		}
+	}
 }
 
 func (s *SnapshotSink) operationsForKind(

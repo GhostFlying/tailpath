@@ -90,6 +90,18 @@ application traffic.
 The workload, image packaging, isolated Compose topology, operator helper,
 deterministic 30-second outage and continuity/no-catch-up gates, fail-closed
 sanitizer, tests, and bilingual runbook are implemented. Local unit, race,
-image, Compose, and browser checks pass. Final execution and ledger completion
-remain blocked until the stacked v0.4 changes are merged to `main` and the
-corresponding immutable edge image is published.
+image, Compose, and browser checks pass. The first immutable-main execution
+passed enrollment and Direct -> DERP -> Direct, then found a real no-catch-up
+failure during the deterministic server outage. A blocking capability request
+can recover before the sink consumes snapshots queued during the outage, so it
+sends a stale hello and later reports the offline counter growth as traffic.
+The History assertion also compares dynamically aligned API buckets by exact
+start time and can count pre-outage traffic as new growth.
+
+## Next step
+
+Drain pending source events after capability recovery before constructing the
+fresh hello, cover the blocking recovery path under the race detector, and
+compare History growth over an explicit post-capture interval rather than by
+query-relative bucket identity. Publish a new immutable main image and repeat
+the complete qualification before completing the sanitized ledger.

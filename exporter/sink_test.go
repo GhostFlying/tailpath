@@ -77,6 +77,50 @@ type recordingSinkReporter struct {
 	maxPayloadBytes int
 }
 
+type blockingRecoveryReporter struct {
+	mu sync.Mutex
+
+	capabilityCalls   int
+	reportEvents      chan ReportEnvelope
+	capabilityBlocked chan struct{}
+	releaseCapability chan struct{}
+}
+
+func newBlockingRecoveryReporter() *blockingRecoveryReporter {
+	return &blockingRecoveryReporter{
+		reportEvents:      make(chan ReportEnvelope, 16),
+		capabilityBlocked: make(chan struct{}),
+		releaseCapability: make(chan struct{}),
+	}
+}
+
+func (r *blockingRecoveryReporter) Capabilities(ctx context.Context) (Capabilities, error) {
+	r.mu.Lock()
+	r.capabilityCalls++
+	call := r.capabilityCalls
+	r.mu.Unlock()
+	if call == 2 {
+		close(r.capabilityBlocked)
+		select {
+		case <-ctx.Done():
+			return Capabilities{}, ctx.Err()
+		case <-r.releaseCapability:
+		}
+	}
+	return Capabilities{
+		ObserverProtocolVersions: []int{ProtocolVersion},
+		Features:                 []string{FeatureMultiObserver, FeatureObserverWithdrawal},
+	}, nil
+}
+
+func (r *blockingRecoveryReporter) Send(_ context.Context, report ReportEnvelope) (ReportReceipt, error) {
+	r.reportEvents <- report
+	if report.Sequence == 2 {
+		return ReportReceipt{}, errors.New("server unavailable")
+	}
+	return ReportReceipt{Accepted: true, HeartbeatIntervalMS: 60000}, nil
+}
+
 type sequenceValidatingReporter struct {
 	lastSequence      int64
 	invalidObserver   string
@@ -357,6 +401,61 @@ func TestSnapshotSinkReconnectUsesLatestHelloWithoutCatchup(t *testing.T) {
 	stopSink(t, cancel, done)
 	if traffic.Kind != ReportTrafficSample || traffic.Observers[0].Peers[0].RxDelta != 5 {
 		t.Fatalf("post-reconnect delta = %#v", traffic)
+	}
+}
+
+func TestSnapshotSinkCapabilityRecoveryDrainsQueuedSnapshotsBeforeHello(t *testing.T) {
+	reporter := newBlockingRecoveryReporter()
+	sink := newSnapshotSink(reporter, sinkOptions())
+	source := newChannelSource()
+	at := time.Now().UTC()
+	source.push(runtimeSnapshot(at, "runtime", 0, 0))
+	if _, err := sink.Register("runtime", source); err != nil {
+		t.Fatal(err)
+	}
+	cancel, done := startSink(t, sink)
+	wait := func() ReportEnvelope {
+		t.Helper()
+		select {
+		case report := <-reporter.reportEvents:
+			return report
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for exporter report")
+			return ReportEnvelope{}
+		}
+	}
+	if hello := wait(); hello.Kind != ReportObserverHello {
+		t.Fatalf("first report = %q", hello.Kind)
+	}
+	source.push(runtimeSnapshot(at.Add(2*time.Second), "runtime", 10, 0))
+	if failed := wait(); failed.Kind != ReportTrafficSample {
+		t.Fatalf("failed report = %q", failed.Kind)
+	}
+	select {
+	case <-reporter.capabilityBlocked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("capability recovery did not block")
+	}
+	for index, value := range []int64{100, 200} {
+		source.push(runtimeSnapshot(at.Add(time.Duration(index+10)*time.Second), "runtime", value, 0))
+		deadline := time.Now().Add(2 * time.Second)
+		for len(source.results) != 0 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if len(source.results) != 0 {
+			t.Fatal("source snapshot was not consumed while capability request blocked")
+		}
+	}
+	close(reporter.releaseCapability)
+	rehello := wait()
+	if rehello.Kind != ReportObserverHello || rehello.Observers[0].Peers[0].RxBytes != 200 {
+		t.Fatalf("reconnect hello did not use latest queued snapshot: %#v", rehello)
+	}
+	source.push(runtimeSnapshot(at.Add(22*time.Second), "runtime", 205, 0))
+	traffic := wait()
+	stopSink(t, cancel, done)
+	if traffic.Kind != ReportTrafficSample || traffic.Observers[0].Peers[0].RxDelta != 5 {
+		t.Fatalf("post-reconnect traffic = %#v", traffic)
 	}
 }
 
