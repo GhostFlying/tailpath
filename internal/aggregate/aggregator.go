@@ -50,9 +50,10 @@ type runtimeState struct {
 }
 
 type reporterState struct {
-	LastSequence int64               `json:"lastSequence"`
-	ReportIDs    map[string]struct{} `json:"reportIds"`
-	ObserverIDs  map[string]struct{} `json:"observerIds"`
+	LastSequence   int64               `json:"lastSequence"`
+	LastAcceptedAt time.Time           `json:"lastAcceptedAt,omitempty"`
+	ReportIDs      map[string]struct{} `json:"reportIds"`
+	ObserverIDs    map[string]struct{} `json:"observerIds"`
 
 	// These fields are decoded only to migrate runtime state written before
 	// inventory ownership moved to observerRuntimeState.
@@ -377,6 +378,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	}
 
 	reporter.LastSequence = report.Sequence
+	reporter.LastAcceptedAt = receivedAt
 	reporter.ReportIDs[report.ReportID] = struct{}{}
 	if len(reporter.ReportIDs) > reportIDWindowSize {
 		reporter.ReportIDs = map[string]struct{}{report.ReportID: {}}
@@ -727,6 +729,14 @@ func (a *Aggregator) canUseAddressMatch(identity domain.NodeIdentity, alias, nod
 }
 
 func (a *Aggregator) pruneIndexesLocked(now time.Time) {
+	for reporterID, reporter := range a.state.Reporters {
+		if len(reporter.ObserverIDs) != 0 {
+			continue
+		}
+		if reporter.LastAcceptedAt.IsZero() || now.Sub(reporter.LastAcceptedAt) > a.evidenceWindow {
+			delete(a.state.Reporters, reporterID)
+		}
+	}
 	for alias, nodeID := range a.state.Aliases {
 		if !strings.HasPrefix(alias, "ip:") {
 			continue
