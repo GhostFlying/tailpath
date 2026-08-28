@@ -105,9 +105,10 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	source := runtimeState{
 		Reporters: map[string]*reporterState{"reporter": {
-			LastSequence: 4,
-			ReportIDs:    map[string]struct{}{"report": {}},
-			ObserverIDs:  map[string]struct{}{"observer": {}},
+			LastSequence:   4,
+			LastAcceptedAt: now,
+			ReportIDs:      map[string]struct{}{"report": {}},
+			ObserverIDs:    map[string]struct{}{"observer": {}},
 			LegacyInventories: map[string]string{
 				"legacy": "generation",
 			},
@@ -152,7 +153,8 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	clone.RelayScopes["relay:7"].Sessions["session"].Clients["left"] = "other"
 
 	reporter := source.Reporters["reporter"]
-	if reporter.LastSequence != 4 || len(reporter.ReportIDs) != 1 || len(reporter.ObserverIDs) != 1 ||
+	if reporter.LastSequence != 4 || !reporter.LastAcceptedAt.Equal(now) ||
+		len(reporter.ReportIDs) != 1 || len(reporter.ObserverIDs) != 1 ||
 		reporter.LegacyInventories["legacy"] != "generation" || len(reporter.LegacyMemberships["legacy"]) != 1 {
 		t.Fatalf("reporter clone mutated source: %#v", reporter)
 	}
@@ -1081,6 +1083,110 @@ func TestObserverWithdrawalIsImmediateIdempotentAndFenced(t *testing.T) {
 	}
 	if owner := aggregator.state.Observers[observerID].OwnerReporterInstanceID; owner != "reporter-new" {
 		t.Fatalf("stale withdrawal changed owner to %q", owner)
+	}
+}
+
+func TestWithdrawnReporterSequenceFenceExpiresAfterGrace(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	aggregator := newTestAggregator(func() time.Time { return now })
+	applyHello(t, aggregator, "reporter", 1, "a", "A", "inventory")
+
+	now = now.Add(time.Second)
+	withdrawal := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "withdraw", ReporterInstanceID: "reporter", Sequence: 2,
+		CollectedAt: now, Kind: domain.ReportObserverWithdrawal,
+		Observers: []domain.ObserverReport{{Observer: node("a", "A"), InventoryGeneration: "inventory"}},
+	}
+	if _, err := aggregator.ApplyAt(withdrawal, now); err != nil {
+		t.Fatal(err)
+	}
+	if reporter := aggregator.state.Reporters["reporter"]; reporter == nil ||
+		len(reporter.ObserverIDs) != 0 || !reporter.LastAcceptedAt.Equal(now) {
+		t.Fatalf("withdrawn reporter tombstone = %#v", reporter)
+	}
+
+	// A pre-timestamp checkpoint may contain empty reporter state. It is safe to
+	// discard because no observer ownership depends on it.
+	aggregator.state.Reporters["legacy-empty"] = &reporterState{
+		LastSequence: 7, ReportIDs: map[string]struct{}{"legacy": {}}, ObserverIDs: map[string]struct{}{},
+	}
+	payload, err := aggregator.MarshalState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextNodeID := 0
+	restored := New(Options{
+		Now: func() time.Time { return now },
+		NewNodeID: func() string {
+			nextNodeID++
+			return fmt.Sprintf("n_restored_%d", nextNodeID)
+		},
+	})
+	if err := restored.RestoreState(payload); err != nil {
+		t.Fatal(err)
+	}
+
+	staleHello := domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "stale-hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{Observer: node("a", "A"), InventoryGeneration: "inventory"}},
+	}
+	result, err := restored.ApplyAt(staleHello, now.Add(2*time.Minute))
+	if err != nil || result.Receipt.Accepted || result.Changed {
+		t.Fatalf("stale hello inside grace = %#v, err=%v", result, err)
+	}
+	if restored.state.Reporters["legacy-empty"] != nil {
+		t.Fatal("legacy empty reporter tombstone was retained")
+	}
+
+	now = now.Add(2*time.Minute + time.Nanosecond)
+	applyHello(t, restored, "trigger", 1, "trigger", "Trigger", "trigger-inventory")
+	if reporter := restored.state.Reporters["reporter"]; reporter != nil {
+		t.Fatalf("expired reporter tombstone was retained: %#v", reporter)
+	}
+	result, err = restored.ApplyAt(staleHello, now)
+	if err != nil || !result.Receipt.Accepted || !result.Changed {
+		t.Fatalf("hello after tombstone expiry = %#v, err=%v", result, err)
+	}
+}
+
+func TestWithdrawnReporterTombstonesStayBoundedAcrossRestarts(t *testing.T) {
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	nextNodeID := 0
+	aggregator := New(Options{
+		HeartbeatInterval: 10 * time.Second,
+		Now:               func() time.Time { return now },
+		NewNodeID: func() string {
+			nextNodeID++
+			return fmt.Sprintf("n_%03d", nextNodeID)
+		},
+	})
+	for index := range 50 {
+		reporterID := fmt.Sprintf("reporter-%02d", index)
+		observerID := fmt.Sprintf("observer-%02d", index)
+		hello := domain.ReportEnvelope{
+			Version: domain.ProtocolVersion, ReportID: reporterID + "-hello",
+			ReporterInstanceID: reporterID, Sequence: 1, CollectedAt: now, Kind: domain.ReportObserverHello,
+			Observers: []domain.ObserverReport{{
+				Observer: node(observerID, observerID), InventoryGeneration: reporterID + "-inventory",
+			}},
+		}
+		if _, err := aggregator.ApplyAt(hello, now); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(time.Second)
+		withdrawal := domain.ReportEnvelope{
+			Version: domain.ProtocolVersion, ReportID: reporterID + "-withdraw",
+			ReporterInstanceID: reporterID, Sequence: 2, CollectedAt: now, Kind: domain.ReportObserverWithdrawal,
+			Observers: hello.Observers,
+		}
+		if _, err := aggregator.ApplyAt(withdrawal, now); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(aggregator.state.Reporters); got > 1 {
+			t.Fatalf("retained %d reporter tombstones after restart %d", got, index)
+		}
+		now = now.Add(20*time.Second + time.Nanosecond)
 	}
 }
 

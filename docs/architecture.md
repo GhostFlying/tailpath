@@ -100,8 +100,12 @@ generations and memberships, reporter-to-observer ownership, identity aliases,
 nodes, observations, and edge lifecycle from the latest checkpoint, then
 replays only reports with a later rowid and writes a new checkpoint. A new
 reporter process claims an observer with a complete hello; ordinary messages
-from an old session cannot take ownership back. Minute maintenance removes only
-raw reports covered by a committed checkpoint. SQLite also stores ten-second
+from an old session cannot take ownership back. After a graceful full
+withdrawal, the empty reporter sequence tombstone remains for two heartbeat
+intervals so delayed or replayed reports stay fenced. It is then pruned on
+ingest, bounding checkpoint growth from random per-process reporter identities.
+Minute maintenance removes only raw reports covered by a committed checkpoint.
+SQLite also stores ten-second
 per-observer traffic for one hour, deduplicated logical minute traffic for 48
 hours, logical hour traffic for seven days, and aggregated path transitions
 with provenance. Rollup and source-tier deletion share one transaction and only
