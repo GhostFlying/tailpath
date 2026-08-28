@@ -22,8 +22,8 @@ collectors continue to submit protocol-v1 reports without a preflight.
 
 ## Current state
 
-The generated contract, authenticated route, Tailpath-owned capability shape,
-and HTTPReporter preflight are implemented. The server advertises protocol 1
+Complete. The generated contract, authenticated route, Tailpath-owned
+capability shape, and HTTPReporter preflight are implemented. The server advertises protocol 1
 and only the already-supported `multi-observer` feature. Missing endpoints,
 malformed success responses, protocol mismatch, and missing required features
 produce a typed permanent incompatibility; HTTP status failures remain typed
@@ -31,11 +31,12 @@ and retryable by the caller.
 
 ## Next step
 
-Run the full repository gate, open the stacked PR, and require hosted checks
-before marking it ready. Issue #115 will add the withdrawal feature only with
-its server implementation.
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
 
 ## Verification
+
+Passed before merge:
 
 - `go test ./internal/collector ./internal/httpapi`
 - `make generate`

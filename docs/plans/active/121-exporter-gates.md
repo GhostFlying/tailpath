@@ -42,6 +42,8 @@ release gates without adding active probes or a second synthetic topology.
 
 ## Verification
 
+Passed before merge:
+
 - `go test -race -count=20 ./exporter`
 - `go test -race -count=1 ./internal/fixtures ./internal/httpapi ./cmd/tailpath`
 - `go vet ./...`
@@ -51,7 +53,7 @@ release gates without adding active probes or a second synthetic topology.
 
 ## Current state
 
-The fixed-seed topology now projects into 250 public exporter sources sharing
+Complete. The fixed-seed topology now projects into 250 public exporter sources sharing
 one reporter and verifies bounded batches, a global sequence, durable
 withdrawal/re-registration, zero reconnect traffic, and SQLite restart. The
 scale fixture uses per-reporter sequences, so its isolated edge mutation no
@@ -63,3 +65,8 @@ All Go tests, vet, generated-file checks, shell harnesses, 53 Web unit tests,
 production build, 28 default Playwright cases, and the desktop/mobile
 250-node/1,000-edge gate pass. Exporter race tests pass for 20 repetitions; the
 cross-App/SQLite exporter scale path passes under race instrumentation.
+
+## Next step
+
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.

@@ -36,8 +36,8 @@ generated OpenAPI types, or Tailscale implementation types.
 
 ## Current state
 
-The public `exporter` package owns normalized snapshot, identity, path,
-protocol-v1 report, receipt, capability, source, and reporter contracts. Its
+Complete. The public `exporter` package owns normalized snapshot, identity,
+path, protocol-v1 report, receipt, capability, source, and reporter contracts. Its
 HTTPReporter preserves the direct-Tailnet transport policy and typed failures.
 External-package compile tests prove consumers need no internal imports, while
 the native collector uses a temporary typed conversion wrapper with ordinary
@@ -45,10 +45,12 @@ and relay field coverage.
 
 ## Next step
 
-Run the full repository gate, open the stacked PR, and require hosted checks.
-Issue #117 will implement SnapshotSink exclusively against these contracts.
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
 
 ## Verification
+
+Passed before merge:
 
 - `go test -race ./exporter ./internal/collector`
 - `go vet ./...`

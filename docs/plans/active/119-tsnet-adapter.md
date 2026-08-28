@@ -37,14 +37,21 @@ core exporter contract.
 
 ## Current state
 
-`exporter/tsnet` exposes Source constructors for a configured `tsnet.Server`
-and an existing `local.Client`. Snapshot reads only the passive status endpoint
+Complete. `exporter/tsnet` exposes Source constructors for a configured
+`tsnet.Server` and an existing `local.Client`. Snapshot reads only the passive status endpoint
 and returns bounded non-context failures. Native and embedded adapters now use
 one `internal/tailscalestatus` conversion for stable identity, names, OS,
 counters, and Direct/DERP/Peer Relay/Unknown path state. External-package and
 upstream-shaped tests cover the public contract and passive request boundary.
 
+## Next step
+
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
+
 ## Verification
+
+Passed before merge:
 
 - `go test -race -count=20 ./exporter/tsnet ./internal/tailscalestatus ./internal/tailscaleadapter`
 - `go vet ./...`

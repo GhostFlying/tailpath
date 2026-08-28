@@ -41,15 +41,22 @@ installers, passive collection boundary, or Peer Relay behavior.
 
 ## Current state
 
-The native collector now registers its LocalAPI source with the public
-SnapshotSink and uses the public HTTPReporter directly. The duplicate ordinary
+Complete. The native collector now registers its LocalAPI source with the
+public SnapshotSink and uses the public HTTPReporter directly. The duplicate ordinary
 collector engine and transport conversion layer are removed. Optional Peer
 Relay sampling runs independently but submits deltas through the same sink
 event loop, so ordinary and relay reports share capability negotiation,
 sequence, receipts, and reconnect. Focused repeated race tests cover ordinary
 isolation, shared ordering, transport failure, resync, and no catch-up traffic.
 
+## Next step
+
+No implementation work remains. Archive this plan as part of the #123 v0.4
+closeout.
+
 ## Verification
+
+Passed before merge:
 
 - `go test -race -count=20 ./exporter ./internal/collector ./internal/tailscaleadapter`
 - `go vet ./...`
