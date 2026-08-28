@@ -548,6 +548,42 @@ func TestSnapshotSinkRetriesWithdrawalAfterTransportFailure(t *testing.T) {
 	}
 }
 
+func TestSnapshotSinkWithdrawsHelloWhoseResponseWasLost(t *testing.T) {
+	reporter := newRecordingSinkReporter()
+	reporter.errors = []error{errors.New("response lost after commit"), nil}
+	sink := newSnapshotSink(reporter, sinkOptions())
+	source := newChannelSource()
+	source.push(runtimeSnapshot(time.Now().UTC(), "runtime", 0, 0))
+	registration, err := sink.Register("runtime", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel, done := startSink(t, sink)
+	hello := waitReport(t, reporter)
+	if hello.Kind != ReportObserverHello {
+		t.Fatalf("first report = %q, want hello", hello.Kind)
+	}
+
+	withdrawDone := make(chan error, 1)
+	go func() { withdrawDone <- registration.Withdraw(context.Background()) }()
+	withdrawal := waitReport(t, reporter)
+	select {
+	case err := <-withdrawDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("withdrawal of uncertain hello did not complete")
+	}
+	stopSink(t, cancel, done)
+
+	if withdrawal.Kind != ReportObserverWithdrawal ||
+		withdrawal.Observers[0].Observer.StableNodeID != "runtime" ||
+		withdrawal.Observers[0].InventoryGeneration != hello.Observers[0].InventoryGeneration {
+		t.Fatalf("withdrawal after lost hello response = %#v", withdrawal)
+	}
+}
+
 func TestSnapshotSinkSplitsRejectedBatchToProtectSibling(t *testing.T) {
 	reporter := newRecordingSinkReporter()
 	badRequest := &HTTPStatusError{StatusCode: 400, Status: "400 Bad Request", Message: "invalid observer"}

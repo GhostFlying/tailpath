@@ -142,6 +142,10 @@ type PeerSnapshot struct {
 	Path     Path
 }
 
+// Source provides passive snapshots for one Tailscale runtime. Implementations
+// must return promptly when the context is canceled or its deadline expires.
+// SnapshotSink does not overlap Snapshot calls for one source, and Run waits
+// for an in-flight call to return during shutdown.
 type Source interface {
 	Snapshot(context.Context) (Snapshot, error)
 }
@@ -149,7 +153,8 @@ type Source interface {
 // RelaySource is an optional capability implemented by sources that can
 // passively observe Peer Relay sessions in addition to ordinary peer state.
 // SnapshotSink samples this capability independently so relay failures cannot
-// delay ordinary observations.
+// delay ordinary observations. Implementations have the same cancellation and
+// shutdown obligations as Source.
 type RelaySource interface {
 	PeerRelaySnapshot(context.Context) (RelaySnapshot, error)
 }
