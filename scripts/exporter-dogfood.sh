@@ -437,18 +437,19 @@ assert_continuity() {
   jq -e '.trafficPoints > 0 and .directionalTraffic.forwardPositive and .directionalTraffic.reversePositive' \
     "$after_history" >/dev/null || fail "History did not survive continuity check"
   before_to=$(jq -er '.to' "$before_history_raw")
-  jq -e --arg before_to "$before_to" '.to > $before_to' "$after_history_raw" >/dev/null \
+  jq -e --arg before_to "$before_to" '
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    (.to | epoch) > ($before_to | epoch)
+  ' "$after_history_raw" >/dev/null \
     || fail "History capture did not advance across continuity check"
-  added_bytes=$(jq -s '
-    (.[0].traffic // [] | map({
-      key: .bucketStart,
-      value: ((.aToBBytes // 0) + (.bToABytes // 0))
-    }) | from_entries) as $before
-    | [.[1].traffic[]?
-      | (((.aToBBytes // 0) + (.bToABytes // 0)) - ($before[.bucketStart] // 0))
-      | select(. > 0)
+  added_bytes=$(jq --arg before_to "$before_to" '
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    ($before_to | epoch) as $cutoff
+    | [.traffic[]?
+      | select((.bucketStart | epoch) >= $cutoff)
+      | ((.aToBBytes // 0) + (.bToABytes // 0))
     ] | add // 0
-  ' "$before_history_raw" "$after_history_raw")
+  ' "$after_history_raw")
   test "$added_bytes" -le 67108864 \
     || fail "History growth violates the 64 MiB no-catch-up bound"
   echo "continuity and no-catch-up checks passed"
