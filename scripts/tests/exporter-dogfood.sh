@@ -46,10 +46,10 @@ cat >"$evidence/after-history.json" <<'EOF'
 {"trafficPoints":1,"directionalTraffic":{"forwardPositive":true,"reversePositive":true}}
 EOF
 cat >"$evidence/before-history.raw.json" <<'EOF'
-{"to":"2026-08-28T12:00:00Z","traffic":[{"bucketStart":"2026-08-28T11:59:50Z","aToBBytes":1000,"bToABytes":1000}]}
+{"to":"2026-08-28T12:00:00.250Z","traffic":[{"bucketStart":"2026-08-28T11:59:50.250Z","aToBBytes":1000,"bToABytes":1000}]}
 EOF
 cat >"$evidence/after-history.raw.json" <<'EOF'
-{"to":"2026-08-28T12:00:20Z","traffic":[{"bucketStart":"2026-08-28T11:59:50Z","aToBBytes":1000,"bToABytes":1000},{"bucketStart":"2026-08-28T12:00:10Z","aToBBytes":1000,"bToABytes":1000}]}
+{"to":"2026-08-28T12:00:20.750Z","traffic":[{"bucketStart":"2026-08-28T11:59:50.750Z","aToBBytes":70000000,"bToABytes":2000},{"bucketStart":"2026-08-28T12:00:10.750Z","aToBBytes":1000,"bToABytes":1000}]}
 EOF
 TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" \
   "$helper" assert-continuity before after >/dev/null
@@ -66,7 +66,7 @@ cat >"$evidence/after-topology.json" <<'EOF'
 {"businessEdge":{"bytesPerSecond":3000,"forwardPositive":true,"reversePositive":true}}
 EOF
 cat >"$evidence/after-history.raw.json" <<'EOF'
-{"to":"2026-08-28T12:00:20Z","traffic":[{"bucketStart":"2026-08-28T12:00:10Z","aToBBytes":70000000,"bToABytes":2000}]}
+{"to":"2026-08-28T12:00:20.750Z","traffic":[{"bucketStart":"2026-08-28T12:00:10.750Z","aToBBytes":70000000,"bToABytes":2000}]}
 EOF
 if TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" \
   "$helper" assert-continuity before after >/dev/null 2>&1; then
@@ -75,11 +75,11 @@ if TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" \
 fi
 
 cat >"$evidence/after-history.raw.json" <<'EOF'
-{"to":"2026-08-28T12:00:20Z","traffic":[{"bucketStart":"2026-08-28T11:59:50Z","aToBBytes":70000000,"bToABytes":2000}]}
+{"to":"2026-08-28T12:00:20.750Z","traffic":[{"bucketStart":"2026-08-28T12:00:00.750Z","aToBBytes":70000000,"bToABytes":2000}]}
 EOF
 if TAILPATH_EXPORTER_DOGFOOD_RUNTIME_FILE="$runtime_file" \
   "$helper" assert-continuity before after >/dev/null 2>&1; then
-  echo "exporter dogfood accepted a same-bucket History catch-up spike" >&2
+  echo "exporter dogfood accepted a boundary History catch-up spike" >&2
   exit 1
 fi
 
