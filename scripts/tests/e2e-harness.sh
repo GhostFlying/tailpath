@@ -8,6 +8,9 @@ grep -F 'pnpm --dir web build' "$harness" >/dev/null
 grep -F 'http://127.0.0.1:$api_port/' "$harness" >/dev/null
 grep -F 'TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port"' "$harness" >/dev/null
 grep -F 'process.env.TAILPATH_E2E_BASE_URL' "$config" >/dev/null
+grep -F 'process.env.TAILPATH_PLAYWRIGHT_OUTPUT_DIR' "$config" >/dev/null
+grep -F 'TAILPATH_PLAYWRIGHT_OUTPUT_DIR: test-results/scale' .github/workflows/scale-baseline.yml >/dev/null
+grep -F 'TAILPATH_PLAYWRIGHT_OUTPUT_DIR: test-results/relay-scale' .github/workflows/scale-baseline.yml >/dev/null
 
 if grep -F 'vite --host' "$harness" >/dev/null; then
   echo "browser acceptance must not start the Vite development proxy" >&2

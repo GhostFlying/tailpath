@@ -4,6 +4,7 @@ const isScaleGate = process.env.TAILPATH_SCALE_E2E === "1";
 
 export default defineConfig({
   testDir: "./e2e",
+  outputDir: process.env.TAILPATH_PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   fullyParallel: true,
   retries: isScaleGate ? 0 : process.env.CI ? 2 : 0,
   workers: isScaleGate ? 1 : process.env.CI ? 4 : undefined,

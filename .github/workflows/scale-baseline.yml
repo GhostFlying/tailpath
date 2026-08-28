@@ -76,11 +76,13 @@ jobs:
         env:
           TAILPATH_SCALE_E2E: "1"
           TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
+          TAILPATH_PLAYWRIGHT_OUTPUT_DIR: test-results/scale
         run: ./scripts/e2e.sh
       - name: Enforce Peer Relay browser scale gates
         env:
           TAILPATH_RELAY_SCALE_E2E: "1"
           TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
+          TAILPATH_PLAYWRIGHT_OUTPUT_DIR: test-results/relay-scale
         run: ./scripts/e2e.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -88,9 +90,9 @@ jobs:
           name: v0.4-multi-runtime-exporter-scale-gate
           path: |
             perf-artifacts/
-            web/test-results/**/tailpath-scale.png
-            web/test-results/**/scale-browser.json
-            web/test-results/**/tailpath-relay-scale.png
-            web/test-results/**/relay-scale-browser.json
+            web/test-results/scale/**/tailpath-scale.png
+            web/test-results/scale/**/scale-browser.json
+            web/test-results/relay-scale/**/tailpath-relay-scale.png
+            web/test-results/relay-scale/**/relay-scale-browser.json
           if-no-files-found: warn
           retention-days: 30
