@@ -268,38 +268,28 @@ describe("edgeIsVisible", () => {
     expect(edgeIsVisible(active, "derp", true)).toBe(false);
   });
 
-  it("hides system telemetry edges unless explicitly enabled", () => {
+  it("always hides system telemetry edges and their exclusive nodes", () => {
     const fixture = topology();
     fixture.edges[0].systemTelemetry = true;
     fixture.edges[1].path.kind = "direct";
-    const hidden = buildElements(fixture, {
+    const rendered = buildElements(fixture, {
       pathFilter: "all",
       showRecent: true,
-      showControlTraffic: false,
       query: "",
     });
-    expect(hidden.filter((element) => element.group === "edges")).toHaveLength(
-      1,
-    );
     expect(
-      hidden
+      rendered.filter((element) => element.group === "edges"),
+    ).toHaveLength(1);
+    expect(
+      rendered
         .filter((element) => element.group === "nodes")
         .map((element) => element.data?.id),
     ).toEqual(["c", "d"]);
-    expect([...visibleTopologyNodeIDs(fixture, "all", true, false)]).toEqual([
+    expect([...visibleTopologyNodeIDs(fixture, "all", true)]).toEqual([
       "c",
       "d",
     ]);
-
-    const shown = buildElements(fixture, {
-      pathFilter: "all",
-      showRecent: true,
-      showControlTraffic: true,
-      query: "",
-    });
-    expect(shown.filter((element) => element.group === "edges")).toHaveLength(
-      2,
-    );
+    expect(edgeIsVisible(fixture.edges[0], "all", true)).toBe(false);
   });
 });
 
@@ -315,6 +305,13 @@ describe("emptyTrafficReason", () => {
     expect(emptyTrafficReason([recent], "all", false)).toBe("no-active");
     expect(emptyTrafficReason([recent], "derp", true)).toBe("no-match");
     expect(emptyTrafficReason([recent], "direct", true)).toBeNull();
+  });
+
+  it("excludes system telemetry from empty-state decisions", () => {
+    const control = edge("control", "a", "b", "direct");
+    control.systemTelemetry = true;
+    expect(emptyTrafficReason([control], "derp", false)).toBe("no-active");
+    expect(emptyTrafficReason([control], "derp", true)).toBe("no-recent");
   });
 });
 

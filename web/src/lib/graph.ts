@@ -23,7 +23,6 @@ export type EmptyTrafficReason = "no-active" | "no-recent" | "no-match";
 interface BuildOptions {
   pathFilter: PathFilter;
   showRecent: boolean;
-  showControlTraffic?: boolean;
   query: string;
 }
 
@@ -32,12 +31,7 @@ export function buildElements(
   options: BuildOptions,
 ): ElementDefinition[] {
   const visibleEdges = topology.edges.filter((edge) =>
-    edgeIsVisible(
-      edge,
-      options.pathFilter,
-      options.showRecent,
-      options.showControlTraffic,
-    ),
+    edgeIsVisible(edge, options.pathFilter, options.showRecent),
   );
   const nodeMap = new Map(topology.nodes.map((node) => [node.id, node]));
   const stableNodeMap = new Map(
@@ -52,7 +46,6 @@ export function buildElements(
     topology,
     options.pathFilter,
     options.showRecent,
-    options.showControlTraffic,
   );
   const peerRelayNodeIDs = new Set(
     [...intermediates.values()]
@@ -103,10 +96,9 @@ export function visibleTopologyNodeIDs(
   topology: Topology,
   pathFilter: PathFilter,
   showRecent: boolean,
-  showControlTraffic = true,
 ): Set<string> {
   const visibleEdges = topology.edges.filter((edge) =>
-    edgeIsVisible(edge, pathFilter, showRecent, showControlTraffic),
+    edgeIsVisible(edge, pathFilter, showRecent),
   );
   const result = new Set(
     visibleEdges.flatMap((edge) => [edge.source, edge.target]),
@@ -308,12 +300,11 @@ export function edgeIsVisible(
   edge: TopologyEdge,
   pathFilter: PathFilter,
   showRecent: boolean,
-  showControlTraffic = true,
 ): boolean {
   return (
+    !edge.systemTelemetry &&
     (pathFilter === "all" || edge.path.kind === pathFilter) &&
-    (showRecent || edge.state === "active") &&
-    (showControlTraffic || !edge.systemTelemetry)
+    (showRecent || edge.state === "active")
   );
 }
 
@@ -321,19 +312,17 @@ export function emptyTrafficReason(
   edges: TopologyEdge[],
   pathFilter: PathFilter,
   showRecent: boolean,
-  showControlTraffic = true,
 ): EmptyTrafficReason | null {
+  const userTrafficEdges = edges.filter((edge) => !edge.systemTelemetry);
   if (
-    edges.some((edge) =>
-      edgeIsVisible(edge, pathFilter, showRecent, showControlTraffic),
-    )
+    userTrafficEdges.some((edge) => edgeIsVisible(edge, pathFilter, showRecent))
   ) {
     return null;
   }
   if (
-    edges.length > 0 &&
+    userTrafficEdges.length > 0 &&
     pathFilter !== "all" &&
-    !edges.some((edge) => edge.path.kind === pathFilter)
+    !userTrafficEdges.some((edge) => edge.path.kind === pathFilter)
   ) {
     return "no-match";
   }
