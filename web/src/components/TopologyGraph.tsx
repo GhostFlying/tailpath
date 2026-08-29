@@ -25,7 +25,6 @@ interface Props {
   topology: Topology;
   pathFilter: PathFilter;
   showRecent: boolean;
-  showControlTraffic: boolean;
   query: string;
   selectedEdgeId: string | null;
   onSelectEdge: (edgeId: string | null) => void;
@@ -241,16 +240,9 @@ export function TopologyGraph(props: Props) {
       buildElements(props.topology, {
         pathFilter: props.pathFilter,
         showRecent: props.showRecent,
-        showControlTraffic: props.showControlTraffic,
         query: props.query,
       }),
-    [
-      props.topology,
-      props.pathFilter,
-      props.showRecent,
-      props.showControlTraffic,
-      props.query,
-    ],
+    [props.topology, props.pathFilter, props.showRecent, props.query],
   );
 
   useEffect(() => {
@@ -311,7 +303,7 @@ export function TopologyGraph(props: Props) {
     const topologyChanged =
       renderedTopologyAt.current !== props.topology.generatedAt;
     renderedTopologyAt.current = props.topology.generatedAt;
-    const visibility = `${props.pathFilter}:${props.showRecent}:${props.showControlTraffic}`;
+    const visibility = `${props.pathFilter}:${props.showRecent}`;
     const visibilityChanged = renderedVisibility.current !== visibility;
     renderedVisibility.current = visibility;
     const viewport = { zoom: cy.zoom(), pan: cy.pan() };

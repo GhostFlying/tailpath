@@ -54,9 +54,9 @@ reporting session remains online.
 
 The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from
-peer counters, and hidden from user activity by default. The classification is
-retained in runtime state, SQLite traffic/history, and provenance; Live exposes
-a `Show Tailpath control traffic` option for operators who need to inspect it.
+peer counters, and excluded from the Live graph and edge activity counts. The
+classification remains available through the topology API and is retained in
+runtime state, SQLite traffic/history, and provenance for diagnostics.
 Unresolved relay clients are never guessed to be this identity. Sharing a
 tailscaled identity is a degraded opt-in mode because its counters cannot
 separate control traffic from unrelated applications.

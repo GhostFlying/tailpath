@@ -104,9 +104,15 @@ test("reports known runtime freshness without implying expected coverage", async
   });
 });
 
-test("hides control traffic by default and persists the explicit option", async ({
-  page,
-}, testInfo) => {
+test("always hides control traffic from Live", async ({ page }, testInfo) => {
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      browserErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
   const generatedAt = "2026-08-27T00:00:00Z";
   await page.route("**/api/v1/topology", async (route) => {
     await route.fulfill({
@@ -133,33 +139,30 @@ test("hides control traffic by default and persists the explicit option", async 
     });
   });
 
+  await page.addInitScript(() => {
+    localStorage.setItem("tailpath.ui.v1.showControlTraffic", "true");
+  });
   await page.goto("/");
   const graph = page.getByLabel("Live Tailnet topology");
-  const controlSwitch = page.getByRole("switch", {
-    name: "Show Tailpath control traffic",
-  });
-  await expect(controlSwitch).toHaveAttribute("aria-checked", "false");
+  await expect(
+    page.getByRole("switch", { name: "Show Tailpath control traffic" }),
+  ).toHaveCount(0);
   await expect(graph).toHaveAttribute("data-edge-count", "1");
   await expect(graph).toHaveAttribute("data-node-count", "2");
-
-  await controlSwitch.click();
-  await expect(controlSwitch).toHaveAttribute("aria-checked", "true");
-  await expect(graph).toHaveAttribute("data-edge-count", "2");
-  await expect(graph).toHaveAttribute("data-node-count", "4");
+  await expect(page.getByText("Control traffic", { exact: true })).toHaveCount(
+    0,
+  );
   await page.screenshot({
-    path: testInfo.outputPath("tailpath-control-traffic.png"),
+    path: testInfo.outputPath(
+      `tailpath-control-traffic-hidden-${testInfo.project.name}.png`,
+    ),
     fullPage: true,
   });
 
   await page.reload();
-  await expect(
-    page.getByRole("switch", { name: "Show Tailpath control traffic" }),
-  ).toHaveAttribute("aria-checked", "true");
-  await expect(graph).toHaveAttribute("data-edge-count", "2");
-  await page
-    .getByRole("switch", { name: "Show Tailpath control traffic" })
-    .click();
   await expect(graph).toHaveAttribute("data-edge-count", "1");
+  await expect(graph).toHaveAttribute("data-node-count", "2");
+  expect(browserErrors).toEqual([]);
 });
 
 test("centers a readable sparse component when traffic enters an empty graph", async ({
