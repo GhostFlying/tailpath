@@ -1,10 +1,12 @@
 import type {
   EdgeHistory,
+  DeviceDirectory,
   HistoryEdgePage,
   HistoryNodes,
   HistoryWindow,
   PathKind,
   Topology,
+  ServerCapabilities,
 } from "./types";
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -20,6 +22,18 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function getTopology(signal?: AbortSignal): Promise<Topology> {
   return getJSON<Topology>("/api/v1/topology", signal);
+}
+
+export function getCapabilities(
+  signal?: AbortSignal,
+): Promise<ServerCapabilities> {
+  return getJSON<ServerCapabilities>("/api/v1/capabilities", signal);
+}
+
+export function getDevices(signal?: AbortSignal): Promise<DeviceDirectory> {
+  return getJSON<DeviceDirectory>("/api/v1/devices", signal).then(
+    (directory) => ({ ...directory, devices: directory.devices ?? [] }),
+  );
 }
 
 export function getEdgeHistory(

@@ -32,17 +32,20 @@ if test "${TAILPATH_SCALE_E2E:-0}" = "1" && test "${TAILPATH_RELAY_SCALE_E2E:-0}
 elif test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
   run_fixture fixture-server \
     --scale \
+    --devices \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
 elif test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
   run_fixture fixture-server \
     --relay-scale \
+    --devices \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
 else
   run_fixture fixture-server \
+    --devices \
     --listen="127.0.0.1:$api_port" \
     --admin-listen="127.0.0.1:$admin_port" \
     --web-dir=web/dist > /tmp/tailpath-fixture.log 2>&1 &
