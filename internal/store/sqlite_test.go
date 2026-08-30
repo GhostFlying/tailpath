@@ -797,6 +797,45 @@ func TestCheckpointCursorRestoresOnlyLaterReports(t *testing.T) {
 	}
 }
 
+func TestCheckpointWithMetadataRollsBackAtomically(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	at := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	if err := database.SaveCheckpoint(ctx, []byte(`{"version":"before"}`), 0, at); err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.RestoreCheckpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.Exec(`
+		CREATE TRIGGER fail_directory_metadata BEFORE INSERT ON nodes
+		BEGIN SELECT RAISE(ABORT, 'metadata failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{{
+		ID: "n_directory", NodeIdentity: domain.NodeIdentity{StableNodeID: "stable-directory"},
+	}}}
+	if err := database.SaveCheckpointWithMetadata(
+		ctx, []byte(`{"version":"after"}`), metadata, at.Add(time.Minute),
+	); err == nil {
+		t.Fatal("checkpoint succeeded after metadata trigger failure")
+	}
+	after, err := database.RestoreCheckpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after.Payload, before.Payload) || after.LastReportRowID != before.LastReportRowID ||
+		!after.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatalf("checkpoint advanced after metadata rollback: before=%#v after=%#v", before, after)
+	}
+	assertTableCount(t, database, "nodes", 0)
+}
+
 func TestMaintainDeletesOnlyCheckpointCoveredReports(t *testing.T) {
 	database, err := Open(":memory:", time.Hour)
 	if err != nil {

@@ -42,11 +42,13 @@ A failed commit could publish partial directory state or regenerate node IDs.
 
 ## Current state
 
-Not started.
+Implemented on `issue/156-directory-checkpoint`. App directory updates now use
+the same clone, durable commit, and in-memory replacement boundary as reports.
 
 ## Next step
 
-Begin after aggregator reconciliation.
+Open the Draft PR after the full repository gate passes, then connect the
+optional synchronizer in #154.
 
 ## Verification
 
@@ -54,4 +56,9 @@ Store/app race tests, restart fixtures, `git diff --check`, and `make check`.
 
 ## Completion summary
 
-Pending.
+Added one SQLite transaction for the sanitized runtime checkpoint and History
+metadata, while preserving the latest committed report cursor. App apply,
+stale-state, and clear operations publish only after that transaction commits.
+Last-good directory state and canonical IDs survive restart; disabled clearing
+removes only the current directory layer and retains canonical nodes and
+History metadata.

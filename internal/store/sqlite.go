@@ -437,6 +437,40 @@ func (s *SQLite) SaveCheckpoint(ctx context.Context, payload []byte, lastReportR
 	return err
 }
 
+func (s *SQLite) SaveCheckpointWithMetadata(
+	ctx context.Context,
+	payload []byte,
+	metadata domain.HistoryMetadata,
+	updatedAt time.Time,
+) error {
+	sanitized, err := checkpointWithoutRelayHints(payload)
+	if err != nil {
+		return fmt.Errorf("sanitize runtime checkpoint: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var lastReportRowID int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(rowid), 0) FROM reports`).Scan(&lastReportRowID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+        INSERT INTO runtime_state(singleton, payload, updated_at, last_report_rowid) VALUES (1, ?, ?, ?)
+        ON CONFLICT(singleton) DO UPDATE SET
+          payload = excluded.payload,
+          updated_at = excluded.updated_at,
+          last_report_rowid = excluded.last_report_rowid`,
+		sanitized, formatTime(updatedAt), lastReportRowID); err != nil {
+		return err
+	}
+	if err := recordHistoryMetadata(ctx, tx, metadata, updatedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *SQLite) RestoreReports(ctx context.Context) ([]StoredReport, error) {
 	return s.RestoreReportsAfter(ctx, 0)
 }
