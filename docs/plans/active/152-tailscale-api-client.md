@@ -42,11 +42,13 @@ Default client timeouts or fields can silently expand retention and privilege.
 
 ## Current state
 
-Not started.
+Complete on the implementation branch. The official client is pinned at
+v2.10.1 behind `internal/devicesapi`, which exposes only the approved default
+device fields and fixed sanitized request errors.
 
 ## Next step
 
-Begin after #157 establishes the accepted boundary.
+Open the stacked Draft PR and wait for hosted CI.
 
 ## Verification
 
@@ -54,4 +56,8 @@ Dependency diff audit, focused Go tests, and `make check`.
 
 ## Completion summary
 
-Pending.
+The adapter uses OAuth client credentials with only `devices:core:read`, a
+fixed 15-second HTTP timeout, automatic token renewal, the `-` default Tailnet,
+and no API-key construction path. Local OAuth/API fixtures cover approved field
+projection, cancellation, renewal, and upstream error-message removal. Focused
+race tests and the full repository gate pass.
