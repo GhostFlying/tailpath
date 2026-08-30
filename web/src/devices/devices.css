@@ -430,6 +430,38 @@
   user-select: text;
 }
 
+.copy-value {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-value > span,
+.copy-value code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.copy-value button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #637078;
+  cursor: pointer;
+}
+
+.copy-value button:hover,
+.copy-value button:focus-visible {
+  background: #edf2f2;
+  color: var(--devices-teal);
+}
+
 .device-conflicts {
   margin-top: 22px;
 }
@@ -482,6 +514,28 @@
 .device-directory-note svg {
   flex: none;
   margin-top: 1px;
+}
+
+.view-live-button {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #aeb8bd;
+  margin-top: 18px;
+  background: #ffffff;
+  color: #1d655d;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.view-live-button:hover,
+.view-live-button:focus-visible {
+  border-color: var(--devices-teal);
+  background: #edf7f5;
 }
 
 .devices-workspace-state {

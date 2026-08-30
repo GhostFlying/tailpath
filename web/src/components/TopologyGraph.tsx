@@ -27,6 +27,8 @@ interface Props {
   showRecent: boolean;
   query: string;
   selectedEdgeId: string | null;
+  selectedNodeId: string | null;
+  focusNodeId: string | null;
   onSelectEdge: (edgeId: string | null) => void;
   onSelectNode: (nodeId: string | null) => void;
 }
@@ -436,6 +438,32 @@ export function TopologyGraph(props: Props) {
     }
   }, [props.selectedEdgeId]);
 
+  useEffect(() => {
+    const cy = graph.current;
+    if (!cy) return;
+    cy.nodes().unselect();
+    if (props.selectedNodeId) {
+      cy.getElementById(props.selectedNodeId).select();
+    }
+  }, [props.selectedNodeId]);
+
+  useEffect(() => {
+    const cy = graph.current;
+    if (!cy || !props.focusNodeId) return;
+    const node = cy.getElementById(props.focusNodeId);
+    if (!node.length) return;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (cy.destroyed() || !node.inside()) return;
+        cy.animate({
+          center: { eles: node },
+          zoom: Math.max(cy.zoom(), 1),
+          duration: 180,
+        });
+      }),
+    );
+  }, [props.focusNodeId]);
+
   function persistPositionsNow(cy: Core) {
     captureCurrentPositions(cy, cachedPositions.current);
     writeLayoutCache(
@@ -499,6 +527,7 @@ export function TopologyGraph(props: Props) {
         data-node-count={
           elements.filter((element) => element.group === "nodes").length
         }
+        data-selected-node-id={props.selectedNodeId ?? ""}
       />
       <div className="graph-controls" aria-label="Graph layout controls">
         <button

@@ -2,11 +2,13 @@ import {
   ArrowLeft,
   ChevronRight,
   CircleAlert,
+  Copy,
   Info,
   Monitor,
   RefreshCw,
   Search,
   TriangleAlert,
+  Waypoints,
   X,
 } from "lucide-react";
 import {
@@ -17,16 +19,14 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import type {
-  DirectoryDevice,
-  DirectorySyncState,
-  MetadataConflict,
-} from "../api/types";
+import type { DirectoryDevice, DirectorySyncState } from "../api/types";
+import { MetadataConflictList } from "../components/MetadataConflictList";
 import {
   WorkspaceTopbar,
   type WorkspaceConnection,
 } from "../components/WorkspaceTopbar";
 import { useCapabilities } from "../hooks/useCapabilities";
+import { copyText } from "../lib/clipboard";
 import { platformPresentation } from "../lib/platform";
 import {
   controlStatus,
@@ -46,6 +46,7 @@ export default function DevicesWorkspace() {
   const capabilities = useCapabilities();
   const enabled = capabilities.deviceDirectoryEnabled;
   const devices = useDevices(enabled);
+  const [copyAnnouncement, setCopyAnnouncement] = useState("");
   const isMobile = useMediaQuery("(max-width: 620px)");
   const query = searchParams.get("q") ?? "";
   const platform = searchParams.get("platform") ?? "all";
@@ -127,6 +128,18 @@ export default function DevicesWorkspace() {
     navigate(`/devices${search ? `?${search}` : ""}`);
   }
 
+  async function copyValue(label: string, value: string) {
+    const copied = await copyText(value);
+    setCopyAnnouncement("");
+    window.setTimeout(
+      () =>
+        setCopyAnnouncement(
+          copied ? `${label} copied` : `Could not copy ${label}`,
+        ),
+      0,
+    );
+  }
+
   const ready =
     !capabilities.loading &&
     (!enabled || devices.directory !== null || devices.error !== null);
@@ -199,11 +212,28 @@ export default function DevicesWorkspace() {
             <DeviceInspector
               device={selectedDevice}
               unknownID={nodeId && !selectedDevice ? nodeId : null}
+              liveVisible={Boolean(
+                selectedDevice &&
+                  devices.liveVisibleNodeIDs.has(selectedDevice.id),
+              )}
+              onCopy={copyValue}
+              onViewInLive={() => {
+                if (selectedDevice) {
+                  navigate(`/?nodeId=${encodeURIComponent(selectedDevice.id)}`);
+                }
+              }}
               onBack={backToList}
               onClose={backToList}
             />
           </>
         )}
+      </div>
+      <div
+        className="copy-announcement sr-only"
+        aria-live="polite"
+        role="status"
+      >
+        {copyAnnouncement}
       </div>
     </main>
   );
@@ -417,11 +447,17 @@ function DeviceRow({
 function DeviceInspector({
   device,
   unknownID,
+  liveVisible,
+  onCopy,
+  onViewInLive,
   onBack,
   onClose,
 }: {
   device: DirectoryDevice | null;
   unknownID: string | null;
+  liveVisible: boolean;
+  onCopy: (label: string, value: string) => Promise<void>;
+  onViewInLive: () => void;
   onBack: () => void;
   onClose: () => void;
 }) {
@@ -468,7 +504,15 @@ function DeviceInspector({
           <span className="selectable-value">{device.stableNodeId}</span>
         </DeviceDetail>
         <DeviceDetail label="MagicDNS / hostname">
-          <span>{device.dnsName?.replace(/\.$/, "") || "—"}</span>
+          {device.dnsName ? (
+            <CopyValue
+              value={device.dnsName.replace(/\.$/, "")}
+              label="MagicDNS"
+              onCopy={onCopy}
+            />
+          ) : (
+            <span>—</span>
+          )}
           {device.hostname && device.hostname !== deviceLabel(device) ? (
             <small>{device.hostname}</small>
           ) : null}
@@ -477,7 +521,13 @@ function DeviceInspector({
         <DeviceDetail label="Tailscale IPs">
           {device.tailscaleIps.length
             ? device.tailscaleIps.map((address) => (
-                <code key={address}>{address}</code>
+                <CopyValue
+                  key={address}
+                  value={address}
+                  label={`IP ${address}`}
+                  code
+                  onCopy={onCopy}
+                />
               ))
             : "—"}
         </DeviceDetail>
@@ -505,13 +555,15 @@ function DeviceInspector({
           ) : null}
         </DeviceDetail>
       </dl>
-      {device.conflicts.length ? (
-        <section className="device-conflicts" aria-label="Metadata conflicts">
-          <h2>Metadata conflicts</h2>
-          {device.conflicts.map((conflict) => (
-            <ConflictRow key={conflict.field} conflict={conflict} />
-          ))}
-        </section>
+      <MetadataConflictList conflicts={device.conflicts} />
+      {liveVisible ? (
+        <button
+          className="view-live-button"
+          type="button"
+          onClick={onViewInLive}
+        >
+          <Waypoints size={16} /> View in Live
+        </button>
       ) : null}
       <p className="device-directory-note">
         <Info size={15} />
@@ -547,17 +599,29 @@ function DeviceDetail({
   );
 }
 
-function ConflictRow({ conflict }: { conflict: MetadataConflict }) {
+function CopyValue({
+  value,
+  label,
+  code = false,
+  onCopy,
+}: {
+  value: string;
+  label: string;
+  code?: boolean;
+  onCopy: (label: string, value: string) => Promise<void>;
+}) {
   return (
-    <div className="device-conflict-row">
-      <strong>{metadataFieldLabel(conflict.field)}</strong>
-      <span>
-        Directory <b>{conflict.directoryValues.join(", ")}</b>
-      </span>
-      <span>
-        Runtime <b>{conflict.runtimeValues.join(", ")}</b>
-      </span>
-    </div>
+    <span className="copy-value">
+      {code ? <code>{value}</code> : <span>{value}</span>}
+      <button
+        type="button"
+        onClick={() => void onCopy(label, value)}
+        title={`Copy ${label}`}
+        aria-label={`Copy ${label}`}
+      >
+        <Copy size={14} />
+      </button>
+    </span>
   );
 }
 
@@ -662,19 +726,6 @@ function syncErrorLabel(value?: string): string {
       return "invalid response";
     default:
       return "service unavailable";
-  }
-}
-
-function metadataFieldLabel(field: MetadataConflict["field"]): string {
-  switch (field) {
-    case "dnsName":
-      return "MagicDNS";
-    case "tailscaleIps":
-      return "Tailscale IPs";
-    case "os":
-      return "Platform";
-    default:
-      return "Hostname";
   }
 }
 

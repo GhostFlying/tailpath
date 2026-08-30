@@ -797,6 +797,57 @@ button {
   font-size: 10px;
   line-height: 1.5;
 }
+
+.metadata-conflicts {
+  margin-top: 22px;
+}
+
+.metadata-conflicts h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 9px;
+  color: #765900;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.metadata-conflicts h3 svg {
+  flex: none;
+  color: #bd7b00;
+}
+
+.metadata-conflict-row {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid #bd7b00;
+  border-bottom: 1px solid #edf0f1;
+  padding: 9px 0 9px 10px;
+  font-size: 9px;
+}
+
+.metadata-conflict-row > strong {
+  color: #765900;
+}
+
+.metadata-conflict-row > div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 52px;
+  gap: 6px;
+  color: #758188;
+}
+
+.metadata-conflict-row b {
+  color: #344149;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.metadata-conflict-row time {
+  color: #7a858b;
+  text-align: right;
+  white-space: nowrap;
+}
 .history-row {
   min-height: 36px;
   display: grid;

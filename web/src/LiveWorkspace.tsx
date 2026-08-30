@@ -1,5 +1,6 @@
 import { CircleAlert, Waypoints } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { PathKind } from "./api/types";
 import { GraphLegend } from "./components/GraphLegend";
 import { Inspector } from "./components/Inspector";
@@ -24,6 +25,7 @@ import {
 
 export default function LiveWorkspace() {
   const { topology, connection, error, refresh } = useTopology();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pathFilter, setPathFilter] = useState<PathFilter>("all");
   const [showRecent, setShowRecent] = useState(() =>
     readShowRecentPreference(
@@ -33,6 +35,7 @@ export default function LiveWorkspace() {
   const [query, setQuery] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const selectedEdge =
     topology?.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
   const selectedNode =
@@ -74,6 +77,20 @@ export default function LiveWorkspace() {
       setSelectedNodeId(null);
     }
   }, [selectedNodeId, visibleNodeIDs]);
+
+  useEffect(() => {
+    if (!topology) return;
+    const requestedNodeID = searchParams.get("nodeId");
+    if (!requestedNodeID) return;
+    if (visibleNodeIDs.has(requestedNodeID)) {
+      setSelectedEdgeId(null);
+      setSelectedNodeId(requestedNodeID);
+      setFocusNodeId(requestedNodeID);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("nodeId");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, topology, visibleNodeIDs]);
 
   function updateShowRecent(next: boolean) {
     setShowRecent(next);
@@ -128,8 +145,13 @@ export default function LiveWorkspace() {
               showRecent={showRecent}
               query={query}
               selectedEdgeId={selectedEdgeId}
+              selectedNodeId={selectedNodeId}
+              focusNodeId={focusNodeId}
               onSelectEdge={setSelectedEdgeId}
-              onSelectNode={setSelectedNodeId}
+              onSelectNode={(nodeID) => {
+                setFocusNodeId(null);
+                setSelectedNodeId(nodeID);
+              }}
             />
           ) : null}
           {topology ? <GraphLegend /> : null}
