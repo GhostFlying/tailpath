@@ -6,6 +6,7 @@ require (
 	github.com/oapi-codegen/runtime v1.1.2
 	modernc.org/sqlite v1.39.1
 	tailscale.com v1.102.2
+	tailscale.com/client/tailscale/v2 v2.10.1
 )
 
 require (
