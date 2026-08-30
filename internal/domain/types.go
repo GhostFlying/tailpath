@@ -344,12 +344,13 @@ type ReportReceipt struct {
 
 type TopologyNode struct {
 	NodeIdentity
-	ID             string         `json:"id"`
-	Observable     bool           `json:"observable"`
-	Online         bool           `json:"online"`
-	LastEvidenceAt time.Time      `json:"lastEvidenceAt"`
-	ClockSkewed    bool           `json:"clockSkewed"`
-	IdentityStatus IdentityStatus `json:"identityStatus,omitempty"`
+	ID             string               `json:"id"`
+	Observable     bool                 `json:"observable"`
+	Online         bool                 `json:"online"`
+	LastEvidenceAt time.Time            `json:"lastEvidenceAt"`
+	ClockSkewed    bool                 `json:"clockSkewed"`
+	IdentityStatus IdentityStatus       `json:"identityStatus,omitempty"`
+	Directory      *DirectoryEnrichment `json:"directory,omitempty"`
 }
 
 type RelaySessionProvenance struct {

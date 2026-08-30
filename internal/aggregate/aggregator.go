@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,14 @@ type runtimeState struct {
 	Redirects     map[string]string                `json:"redirects,omitempty"`
 	Edges         map[string]*edgeState            `json:"edges"`
 	RelayScopes   map[string]*relayScopeState      `json:"relayScopes,omitempty"`
+	Directory     *directoryRuntimeState           `json:"directory,omitempty"`
+}
+
+type directoryRuntimeState struct {
+	Snapshot          *domain.DirectorySnapshot `json:"snapshot,omitempty"`
+	Sync              domain.DirectorySyncState `json:"sync"`
+	CanonicalIDs      map[string]string         `json:"canonicalIds,omitempty"`
+	IdentityConflicts map[string][]string       `json:"identityConflicts,omitempty"`
 }
 
 type reporterState struct {
@@ -69,14 +78,15 @@ type observerRuntimeState struct {
 }
 
 type nodeState struct {
-	Identity       domain.NodeIdentity   `json:"identity"`
-	IdentityStatus domain.IdentityStatus `json:"identityStatus,omitempty"`
-	Observable     bool                  `json:"observable"`
-	LastEvidence   time.Time             `json:"lastEvidence"`
-	LastReport     time.Time             `json:"lastReport"`
-	LastCollected  time.Time             `json:"lastCollected"`
-	ClockSkewMS    int64                 `json:"clockSkewMs"`
-	ClockSkewed    bool                  `json:"clockSkewed"`
+	Identity            domain.NodeIdentity   `json:"identity"`
+	IdentityStatus      domain.IdentityStatus `json:"identityStatus,omitempty"`
+	Observable          bool                  `json:"observable"`
+	LastEvidence        time.Time             `json:"lastEvidence"`
+	LastReport          time.Time             `json:"lastReport"`
+	LastCollected       time.Time             `json:"lastCollected"`
+	IdentityCollectedAt time.Time             `json:"identityCollectedAt,omitempty"`
+	ClockSkewMS         int64                 `json:"clockSkewMs"`
+	ClockSkewed         bool                  `json:"clockSkewed"`
 }
 
 type relayScopeState struct {
@@ -136,6 +146,12 @@ type ApplyResult struct {
 	CheckpointRequired    bool
 }
 
+type DirectoryApplyResult struct {
+	Changed               bool
+	CanonicalStateChanged bool
+	Normalization         domain.DirectoryNormalization
+}
+
 func New(options Options) *Aggregator {
 	if options.HeartbeatInterval == 0 {
 		options.HeartbeatInterval = time.Minute
@@ -174,6 +190,111 @@ func newRuntimeState() runtimeState {
 func (a *Aggregator) Apply(report domain.ReportEnvelope) (domain.ReportReceipt, error) {
 	result, err := a.ApplyAt(report, a.now())
 	return result.Receipt, err
+}
+
+func (a *Aggregator) ApplyDirectorySnapshot(snapshot domain.DirectorySnapshot, syncState domain.DirectorySyncState) (DirectoryApplyResult, error) {
+	normalized, normalization, err := domain.NormalizeDirectorySnapshot(snapshot)
+	if err != nil {
+		return DirectoryApplyResult{}, err
+	}
+	syncState.InvalidAddressCount = normalization.InvalidAddressCount
+	if err := syncState.Validate(); err != nil {
+		return DirectoryApplyResult{}, err
+	}
+	if syncState.Status != domain.DirectorySyncHealthy {
+		return DirectoryApplyResult{}, errors.New("directory snapshot requires healthy sync state")
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	result := a.applyDirectorySnapshotLocked(normalized, syncState)
+	result.Normalization = normalization
+	if result.Changed {
+		a.notifyLocked()
+	}
+	return result, nil
+}
+
+func (a *Aggregator) applyDirectorySnapshotLocked(snapshot domain.DirectorySnapshot, syncState domain.DirectorySyncState) DirectoryApplyResult {
+	state := &directoryRuntimeState{
+		Snapshot:          pointerTo(snapshot.Clone()),
+		Sync:              syncState.Clone(),
+		CanonicalIDs:      make(map[string]string, len(snapshot.Devices)),
+		IdentityConflicts: make(map[string][]string),
+	}
+	result := DirectoryApplyResult{Changed: true}
+	nodeKeyConflicts := snapshot.ConflictingNodeKeys()
+
+	for _, device := range snapshot.Devices {
+		identity := domain.NodeIdentity{StableNodeID: device.StableNodeID}
+		var conflictingNodeID string
+		if device.NodeKey != "" {
+			if _, conflicted := nodeKeyConflicts[device.NodeKey]; !conflicted {
+				identity.NodeKey = device.NodeKey
+				conflictingNodeID = a.conflictingStableAliasLocked(device.StableNodeID, "node-key:"+device.NodeKey)
+			}
+		}
+		nodeID, created, canonicalChanged := a.resolveIdentityLocked(identity, snapshot.CollectedAt)
+		if created {
+			node := a.state.Nodes[nodeID]
+			node.LastEvidence = time.Time{}
+			node.IdentityCollectedAt = time.Time{}
+		}
+		result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
+		state.CanonicalIDs[device.StableNodeID] = nodeID
+		if conflictingNodeID != "" && conflictingNodeID != nodeID {
+			otherStableID := a.state.Nodes[conflictingNodeID].Identity.StableNodeID
+			state.IdentityConflicts[nodeID] = appendUniqueSorted(state.IdentityConflicts[nodeID], otherStableID)
+			state.IdentityConflicts[conflictingNodeID] = appendUniqueSorted(state.IdentityConflicts[conflictingNodeID], device.StableNodeID)
+		}
+	}
+	for _, stableIDs := range nodeKeyConflicts {
+		for _, stableID := range stableIDs {
+			nodeID := state.CanonicalIDs[stableID]
+			for _, otherStableID := range stableIDs {
+				if stableID != otherStableID {
+					state.IdentityConflicts[nodeID] = appendUniqueSorted(state.IdentityConflicts[nodeID], otherStableID)
+				}
+			}
+		}
+	}
+	a.state.Directory = state
+	return result
+}
+
+func (a *Aggregator) UpdateDirectorySyncState(syncState domain.DirectorySyncState) error {
+	if err := syncState.Validate(); err != nil {
+		return err
+	}
+	if syncState.Status == domain.DirectorySyncHealthy {
+		return errors.New("healthy directory state requires a snapshot")
+	}
+	a.mu.Lock()
+	if a.state.Directory == nil {
+		a.state.Directory = &directoryRuntimeState{
+			CanonicalIDs:      make(map[string]string),
+			IdentityConflicts: make(map[string][]string),
+		}
+	}
+	a.state.Directory.Sync = syncState.Clone()
+	a.notifyLocked()
+	a.mu.Unlock()
+	return nil
+}
+
+func (a *Aggregator) ClearDirectory() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.state.Directory == nil {
+		return false
+	}
+	a.state.Directory = nil
+	a.notifyLocked()
+	return true
+}
+
+func pointerTo[T any](value T) *T {
+	return &value
 }
 
 func (a *Aggregator) ApplyAt(report domain.ReportEnvelope, receivedAt time.Time) (ApplyResult, error) {
@@ -259,6 +380,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 		}
 		observerID, _ := resolveIdentity(observation.Observer)
 		collectedAt := observation.CollectionTime(report.CollectedAt)
+		a.touchIdentityCollectedLocked(observerID, collectedAt)
 		if report.Kind == domain.ReportObserverHello {
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, observerID)
 		}
@@ -270,6 +392,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			members := make(map[string]struct{}, len(observation.Peers))
 			for _, peer := range observation.Peers {
 				peerID, created := resolveIdentity(peer.Peer)
+				a.touchIdentityCollectedLocked(peerID, collectedAt)
 				if created {
 					a.state.Nodes[peerID].LastEvidence = receivedAt
 				}
@@ -285,6 +408,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 					continue
 				}
 				peerID, _ := resolveIdentity(peer.Peer)
+				a.touchIdentityCollectedLocked(peerID, collectedAt)
 				a.touchPeerLocked(peerID, receivedAt)
 				edgeID, source, target := domain.EdgeID(observerID, peerID)
 				if _, seen := touchedEdges[edgeID]; !seen {
@@ -299,6 +423,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 					relayID, _, canonicalChanged := a.resolveIdentityLocked(domain.NodeIdentity{
 						StableNodeID: peer.Path.PeerRelayStableNodeID,
 					}, receivedAt)
+					a.touchIdentityCollectedLocked(relayID, collectedAt)
 					result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
 					if a.recordRelayPairLocked(relayID, *peer.Path.PeerRelayVNI, observerID, peerID, receivedAt) {
 						result.CanonicalStateChanged = true
@@ -324,10 +449,13 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	if report.Kind == domain.ReportRelaySessionUpdate {
 		for _, session := range report.RelaySessions {
 			relayID, _ := resolveIdentity(session.Relay)
+			a.touchIdentityCollectedLocked(relayID, report.CollectedAt)
 			a.touchObserverLocked(relayID, report.CollectedAt, receivedAt)
 			a.claimReporterObserverLocked(report.ReporterInstanceID, reporter, relayID)
 			sourceID, targetID, sourceStatus, targetStatus, canonicalChanged :=
 				a.resolveRelaySessionLocked(relayID, session, receivedAt)
+			a.touchIdentityCollectedLocked(sourceID, report.CollectedAt)
+			a.touchIdentityCollectedLocked(targetID, report.CollectedAt)
 			result.CanonicalStateChanged = result.CanonicalStateChanged || canonicalChanged
 			if sourceID == targetID {
 				continue
@@ -658,6 +786,7 @@ func (a *Aggregator) relayClientStatusLocked(
 }
 
 func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt time.Time) (string, bool, bool) {
+	identity = a.withoutConflictingStableAliasesLocked(identity)
 	strong, addresses := identityAliases(identity)
 	matches := make(map[string]struct{})
 	for _, alias := range strong {
@@ -711,6 +840,48 @@ func (a *Aggregator) resolveIdentityLocked(identity domain.NodeIdentity, seenAt 
 		a.state.AliasLastSeen[alias] = seenAt
 	}
 	return nodeID, created, created || merged
+}
+
+func (a *Aggregator) withoutConflictingStableAliasesLocked(identity domain.NodeIdentity) domain.NodeIdentity {
+	stableID := strings.TrimSpace(identity.StableNodeID)
+	nodeKey := strings.TrimSpace(identity.NodeKey)
+	if stableID == "" || nodeKey == "" {
+		return identity
+	}
+	if a.conflictingStableAliasLocked(stableID, "node-key:"+nodeKey) != "" {
+		identity.NodeKey = ""
+	}
+	return identity
+}
+
+func (a *Aggregator) conflictingStableAliasLocked(stableID, alias string) string {
+	nodeID := a.state.Aliases[alias]
+	if nodeID == "" {
+		return ""
+	}
+	node := a.state.Nodes[nodeID]
+	if node == nil {
+		return ""
+	}
+	existingStableID := strings.TrimSpace(node.Identity.StableNodeID)
+	if existingStableID != "" && existingStableID != strings.TrimSpace(stableID) {
+		return nodeID
+	}
+	return ""
+}
+
+func appendUniqueSorted(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	values = append(values, value)
+	sort.Strings(values)
+	return values
 }
 
 func (a *Aggregator) canUseAddressMatch(identity domain.NodeIdentity, alias, nodeID string, seenAt time.Time) bool {
@@ -916,6 +1087,25 @@ func (a *Aggregator) mergeNodesLocked(keepID, removeID string) {
 	a.mergeObserverRuntimeStatesLocked(keepID, removeID, removeObserverIsNewer)
 	a.rebuildEdgesLocked(keepID, removeID)
 	a.replaceRelayNodeReferencesLocked(keepID, removeID)
+	a.replaceDirectoryNodeReferencesLocked(keepID, removeID)
+}
+
+func (a *Aggregator) replaceDirectoryNodeReferencesLocked(keepID, removeID string) {
+	directory := a.state.Directory
+	if directory == nil {
+		return
+	}
+	for stableID, nodeID := range directory.CanonicalIDs {
+		if nodeID == removeID {
+			directory.CanonicalIDs[stableID] = keepID
+		}
+	}
+	if conflicts := directory.IdentityConflicts[removeID]; len(conflicts) > 0 {
+		for _, conflict := range conflicts {
+			directory.IdentityConflicts[keepID] = appendUniqueSorted(directory.IdentityConflicts[keepID], conflict)
+		}
+		delete(directory.IdentityConflicts, removeID)
+	}
 }
 
 func mergeIdentityStatus(left, right domain.IdentityStatus) domain.IdentityStatus {
@@ -1112,6 +1302,12 @@ func (a *Aggregator) touchPeerLocked(nodeID string, receivedAt time.Time) {
 	}
 }
 
+func (a *Aggregator) touchIdentityCollectedLocked(nodeID string, collectedAt time.Time) {
+	if node := a.state.Nodes[nodeID]; node != nil && collectedAt.After(node.IdentityCollectedAt) {
+		node.IdentityCollectedAt = collectedAt
+	}
+}
+
 func (a *Aggregator) isClockSkewed(collectedAt, receivedAt time.Time) bool {
 	skew := collectedAt.Sub(receivedAt)
 	if skew < 0 {
@@ -1173,10 +1369,12 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 			continue
 		}
 		online := a.observerOnlineLocked(id, node, now)
+		identity, directory := a.effectiveNodeIdentityLocked(id, node)
 		topology.Nodes = append(topology.Nodes, domain.TopologyNode{
-			NodeIdentity: node.Identity, ID: id, Observable: node.Observable, Online: online,
+			NodeIdentity: identity, ID: id, Observable: node.Observable, Online: online,
 			LastEvidenceAt: node.LastEvidence, ClockSkewed: node.ClockSkewed,
 			IdentityStatus: a.nodeIdentityStatusLocked(id, node, now),
+			Directory:      directory,
 		})
 		consider(node.LastEvidence.Add(a.nodeWindow))
 	}
@@ -1185,8 +1383,9 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 			continue
 		}
 		online := a.observerOnlineLocked(id, node, now)
+		identity, _ := a.effectiveNodeIdentityLocked(id, node)
 		topology.Observers = append(topology.Observers, domain.ObserverState{
-			ID: id, Hostname: node.Identity.DisplayName(), Online: online, LastSeen: node.LastReport,
+			ID: id, Hostname: identity.DisplayName(), Online: online, LastSeen: node.LastReport,
 			LastCollectedAt: node.LastCollected, ClockSkewMS: node.ClockSkewMS, ClockSkewed: node.ClockSkewed,
 		})
 		if online {
@@ -1204,6 +1403,9 @@ func (a *Aggregator) snapshotLocked(now time.Time) domain.Topology {
 }
 
 func (a *Aggregator) nodeIdentityStatusLocked(id string, node *nodeState, now time.Time) domain.IdentityStatus {
+	if a.state.Directory != nil && len(a.state.Directory.IdentityConflicts[id]) > 0 {
+		return domain.IdentityConflict
+	}
 	if node.IdentityStatus == domain.IdentityResolved {
 		return domain.IdentityResolved
 	}
@@ -1218,6 +1420,88 @@ func (a *Aggregator) nodeIdentityStatusLocked(id string, node *nodeState, now ti
 		}
 	}
 	return node.IdentityStatus
+}
+
+func (a *Aggregator) effectiveNodeIdentityLocked(nodeID string, node *nodeState) (domain.NodeIdentity, *domain.DirectoryEnrichment) {
+	identity := node.Identity
+	identity.TailscaleIPs = append([]string{}, node.Identity.TailscaleIPs...)
+	device, collectedAt, ok := a.directoryDeviceForNodeLocked(nodeID)
+	if !ok {
+		return identity, nil
+	}
+	runtimeAt := node.IdentityCollectedAt
+	if runtimeAt.IsZero() {
+		runtimeAt = node.LastEvidence
+	}
+	conflicts := domain.DirectoryMetadataConflicts(device, node.Identity, collectedAt, runtimeAt)
+	identity.DNSName = device.DNSName
+	identity.Hostname = device.Hostname
+	identity.OS = device.OS
+	identity.TailscaleIPs = append([]string{}, device.TailscaleIPs...)
+	return identity, &domain.DirectoryEnrichment{
+		DirectoryDevice: device.Clone(),
+		CollectedAt:     collectedAt,
+		Conflicts:       append([]domain.MetadataConflict{}, conflicts...),
+	}
+}
+
+func (a *Aggregator) directoryDeviceForNodeLocked(nodeID string) (domain.DirectoryDevice, time.Time, bool) {
+	directory := a.state.Directory
+	if directory == nil || directory.Snapshot == nil {
+		return domain.DirectoryDevice{}, time.Time{}, false
+	}
+	for _, device := range directory.Snapshot.Devices {
+		if directory.CanonicalIDs[device.StableNodeID] == nodeID {
+			return device, directory.Snapshot.CollectedAt, true
+		}
+	}
+	return domain.DirectoryDevice{}, time.Time{}, false
+}
+
+func (a *Aggregator) DeviceDirectory() domain.DeviceDirectory {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	result := domain.DeviceDirectory{
+		Sync:    domain.DirectorySyncState{Status: domain.DirectorySyncDisabled},
+		Devices: []domain.DirectoryNode{},
+	}
+	directory := a.state.Directory
+	if directory == nil {
+		return result
+	}
+	result.Sync = directory.Sync.Clone()
+	if directory.Snapshot == nil {
+		return result
+	}
+	now := a.now().UTC()
+	for _, device := range directory.Snapshot.Devices {
+		nodeID := directory.CanonicalIDs[device.StableNodeID]
+		node := a.state.Nodes[nodeID]
+		if node == nil {
+			continue
+		}
+		runtimeAt := node.IdentityCollectedAt
+		if runtimeAt.IsZero() {
+			runtimeAt = node.LastEvidence
+		}
+		conflicts := domain.DirectoryMetadataConflicts(device, node.Identity, directory.Snapshot.CollectedAt, runtimeAt)
+		entry := domain.DirectoryNode{
+			ID: nodeID, Device: device.Clone(), CollectedAt: directory.Snapshot.CollectedAt,
+			IdentityStatus: a.nodeIdentityStatusLocked(nodeID, node, now),
+			Conflicts:      append([]domain.MetadataConflict{}, conflicts...),
+		}
+		if !node.LastEvidence.IsZero() || !node.IdentityCollectedAt.IsZero() || node.Observable {
+			identity := node.Identity
+			identity.TailscaleIPs = append([]string{}, node.Identity.TailscaleIPs...)
+			entry.Runtime = &domain.DirectoryRuntimeEvidence{
+				Identity: identity, Observable: node.Observable,
+				Online: a.observerOnlineLocked(nodeID, node, now), LastEvidenceAt: node.LastEvidence,
+				CollectedAt: runtimeAt,
+			}
+		}
+		result.Devices = append(result.Devices, entry)
+	}
+	return result
 }
 
 func (a *Aggregator) markPeerRelayNodesVisibleLocked(visibleNodes map[string]struct{}, path domain.PathObservation) {
@@ -1427,12 +1711,14 @@ func (a *Aggregator) HistoryMetadata() domain.HistoryMetadata {
 	}
 	now := a.now().UTC()
 	for id, node := range a.state.Nodes {
+		identity, directory := a.effectiveNodeIdentityLocked(id, node)
 		metadata.Nodes = append(metadata.Nodes, domain.TopologyNode{
-			NodeIdentity:   node.Identity,
+			NodeIdentity:   identity,
 			ID:             id,
 			Observable:     node.Observable,
 			LastEvidenceAt: node.LastEvidence,
 			IdentityStatus: a.nodeIdentityStatusLocked(id, node, now),
+			Directory:      directory,
 		})
 	}
 	sort.Slice(metadata.Nodes, func(i, j int) bool { return metadata.Nodes[i].ID < metadata.Nodes[j].ID })
@@ -1451,6 +1737,9 @@ func (a *Aggregator) RestoreState(payload []byte) error {
 		return err
 	}
 	normalizeState(&state)
+	if err := normalizeDirectoryState(&state); err != nil {
+		return err
+	}
 	a.mu.Lock()
 	a.state = state
 	a.mu.Unlock()
@@ -1542,6 +1831,20 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 			copy.Sessions[sessionID] = &sessionCopy
 		}
 		clone.RelayScopes[key] = &copy
+	}
+	if source.Directory != nil {
+		copy := *source.Directory
+		copy.Sync = source.Directory.Sync.Clone()
+		if source.Directory.Snapshot != nil {
+			snapshot := source.Directory.Snapshot.Clone()
+			copy.Snapshot = &snapshot
+		}
+		copy.CanonicalIDs = cloneStringMap(source.Directory.CanonicalIDs)
+		copy.IdentityConflicts = make(map[string][]string, len(source.Directory.IdentityConflicts))
+		for nodeID, conflicts := range source.Directory.IdentityConflicts {
+			copy.IdentityConflicts[nodeID] = append([]string{}, conflicts...)
+		}
+		clone.Directory = &copy
 	}
 	return clone
 }
@@ -1672,6 +1975,59 @@ func normalizeState(state *runtimeState) {
 			}
 		}
 	}
+}
+
+func normalizeDirectoryState(state *runtimeState) error {
+	directory := state.Directory
+	if directory == nil {
+		return nil
+	}
+	if err := directory.Sync.Validate(); err != nil {
+		return err
+	}
+	if directory.Sync.Status == domain.DirectorySyncHealthy && directory.Snapshot == nil {
+		return errors.New("healthy directory checkpoint requires a snapshot")
+	}
+	if directory.CanonicalIDs == nil {
+		directory.CanonicalIDs = make(map[string]string)
+	}
+	if directory.IdentityConflicts == nil {
+		directory.IdentityConflicts = make(map[string][]string)
+	}
+	if directory.Snapshot == nil {
+		return nil
+	}
+	normalized, _, err := domain.NormalizeDirectorySnapshot(*directory.Snapshot)
+	if err != nil {
+		return err
+	}
+	directory.Snapshot = pointerTo(normalized)
+	for _, device := range normalized.Devices {
+		nodeID := directory.CanonicalIDs[device.StableNodeID]
+		if nodeID == "" {
+			nodeID = state.Aliases["stable:"+device.StableNodeID]
+			directory.CanonicalIDs[device.StableNodeID] = nodeID
+		}
+		if nodeID == "" || state.Nodes[nodeID] == nil {
+			return errors.New("directory checkpoint references an unknown canonical node")
+		}
+	}
+	for nodeID, conflicts := range directory.IdentityConflicts {
+		if state.Nodes[nodeID] == nil {
+			delete(directory.IdentityConflicts, nodeID)
+			continue
+		}
+		directory.IdentityConflicts[nodeID] = normalizedStringsForState(conflicts)
+	}
+	return nil
+}
+
+func normalizedStringsForState(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = appendUniqueSorted(result, strings.TrimSpace(value))
+	}
+	return result
 }
 
 func randomNodeID() string {

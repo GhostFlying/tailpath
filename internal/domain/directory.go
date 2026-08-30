@@ -37,6 +37,14 @@ type DirectorySyncState struct {
 	InvalidAddressCount int                 `json:"invalidAddressCount,omitempty"`
 }
 
+func (state DirectorySyncState) Clone() DirectorySyncState {
+	result := state
+	result.LastAttemptAt = cloneTime(state.LastAttemptAt)
+	result.LastSuccessAt = cloneTime(state.LastSuccessAt)
+	result.NextRetryAt = cloneTime(state.NextRetryAt)
+	return result
+}
+
 func (state DirectorySyncState) Validate() error {
 	for _, value := range []*time.Time{state.LastAttemptAt, state.LastSuccessAt, state.NextRetryAt} {
 		if value != nil && value.IsZero() {
@@ -106,6 +114,14 @@ type DirectoryDevice struct {
 	Tags               []string   `json:"tags"`
 	ConnectedToControl bool       `json:"connectedToControl"`
 	LastSeen           *time.Time `json:"lastSeen,omitempty"`
+}
+
+func (device DirectoryDevice) Clone() DirectoryDevice {
+	result := device
+	result.TailscaleIPs = append([]string{}, device.TailscaleIPs...)
+	result.Tags = append([]string{}, device.Tags...)
+	result.LastSeen = cloneTime(device.LastSeen)
+	return result
 }
 
 func (device DirectoryDevice) DisplayName() string {
@@ -233,15 +249,17 @@ func normalizedAddresses(values []string) ([]string, int) {
 func (snapshot DirectorySnapshot) Clone() DirectorySnapshot {
 	result := DirectorySnapshot{CollectedAt: snapshot.CollectedAt, Devices: make([]DirectoryDevice, len(snapshot.Devices))}
 	for index, device := range snapshot.Devices {
-		result.Devices[index] = device
-		result.Devices[index].TailscaleIPs = append([]string{}, device.TailscaleIPs...)
-		result.Devices[index].Tags = append([]string{}, device.Tags...)
-		if device.LastSeen != nil {
-			value := *device.LastSeen
-			result.Devices[index].LastSeen = &value
-		}
+		result.Devices[index] = device.Clone()
 	}
 	return result
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
 }
 
 func (snapshot DirectorySnapshot) ConflictingNodeKeys() map[string][]string {
@@ -278,6 +296,34 @@ type MetadataConflict struct {
 	RuntimeValues        []string      `json:"runtimeValues"`
 	DirectoryCollectedAt time.Time     `json:"directoryCollectedAt"`
 	RuntimeCollectedAt   time.Time     `json:"runtimeCollectedAt"`
+}
+
+type DirectoryEnrichment struct {
+	DirectoryDevice
+	CollectedAt time.Time          `json:"collectedAt"`
+	Conflicts   []MetadataConflict `json:"conflicts"`
+}
+
+type DirectoryRuntimeEvidence struct {
+	Identity       NodeIdentity `json:"identity"`
+	Observable     bool         `json:"observable"`
+	Online         bool         `json:"online"`
+	LastEvidenceAt time.Time    `json:"lastEvidenceAt"`
+	CollectedAt    time.Time    `json:"collectedAt"`
+}
+
+type DirectoryNode struct {
+	ID             string                    `json:"id"`
+	Device         DirectoryDevice           `json:"device"`
+	CollectedAt    time.Time                 `json:"collectedAt"`
+	Runtime        *DirectoryRuntimeEvidence `json:"runtime,omitempty"`
+	IdentityStatus IdentityStatus            `json:"identityStatus"`
+	Conflicts      []MetadataConflict        `json:"conflicts"`
+}
+
+type DeviceDirectory struct {
+	Sync    DirectorySyncState `json:"sync"`
+	Devices []DirectoryNode    `json:"devices"`
 }
 
 func DirectoryMetadataConflicts(directory DirectoryDevice, runtime NodeIdentity, directoryAt, runtimeAt time.Time) []MetadataConflict {
