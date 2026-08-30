@@ -42,5 +42,15 @@ Container deployments should pass reusable auth keys through
 environment and Compose model contain only the file path, not the credential.
 
 Runtime code cannot actively probe peers, capture packets, alter policy, or
-change Tailscale preferences. Devices API enrichment is optional, read-only,
-and uses a separately scoped credential.
+change Tailscale preferences.
+
+Devices API enrichment is optional, read-only, and uses a separate OAuth client
+with exactly `devices:core:read`. Tailpath does not accept an API key and does
+not request device posture, ACL, user, or write scopes. The client secret is
+read from a file and must never enter the environment, SQLite, runtime
+checkpoint, logs, API errors, or dogfood evidence. Only normalized device
+identity and presentation fields are retained; raw API responses, user data,
+route state, posture attributes, and administrative metadata are discarded.
+Remote failures are exposed only as fixed categories such as unauthorized,
+forbidden, rate-limited, unavailable, timeout, or invalid-response. Response
+bodies and credential details are never forwarded to the UI or logs.

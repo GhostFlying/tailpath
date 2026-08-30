@@ -7,7 +7,14 @@ tailscaled collector --\
 tsnet exporter --------+--> Tailnet HTTP ingest --> aggregator --> SQLite
 Peer Relay exporter ---/                              |           |
                                                       +--> SSE --> Web graph
+Tailscale Devices API ----> directory synchronizer --/            |
+                                                                    +--> Devices
 ```
+
+Devices API 路径是可选只读能力，不是 observer，也不使用 observer protocol。一次成功
+的完整快照只代表该 OAuth credential 当前可见的目录。它不能创建 traffic edge、不能
+把节点标记为 observable/online，也不能改变 runtime freshness。因此纯目录设备的出现
+或消失不会改变 Live graph 和 Live node count。
 
 Collector 每两秒在本地采样，但只有非控制 peer 的 counter 变化时才发送 traffic
 消息。Inventory 变化和稀疏空闲心跳使用独立消息。
@@ -42,6 +49,12 @@ topology API 获取，并保留在运行时状态、SQLite traffic/history 和 p
 后，ingest 才转移 candidate ownership 并通知 SSE。存储失败不会推进内存中的
 sequence 或 inventory。每个 client 的 invalidation 会合并到 250ms window；browser
 把 refresh burst 合并为一个 in-flight request 和最多一个 follow-up。
+
+Directory refresh 使用相同的 candidate-state 规则。Application clone aggregator，
+应用一个已验证的完整快照，并原子保存 runtime checkpoint 与 directory History
+metadata；只有全部成功后才替换内存并发布合并后的 SSE invalidation。请求或存储失败
+会保留 last-good directory layer 并标记 stale。未配置目录启动时清除当前 directory
+layer，但保留 canonical redirect 和既有 History。
 
 路径变更按逻辑路径身份比较。Observer-local Direct endpoint 只属于 provenance
 属性；相反两侧 observer 报告同一条 Direct 连接的不同端点时不会产生新 transition。

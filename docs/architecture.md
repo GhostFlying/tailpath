@@ -7,7 +7,16 @@ tailscaled collector --\
 tsnet exporter --------+--> Tailnet HTTP ingest --> aggregator --> SQLite
 Peer Relay exporter ---/                              |           |
                                                       +--> SSE --> Web graph
+Tailscale Devices API ----> directory synchronizer --/            |
+                                                                    +--> Devices
 ```
+
+The Devices API path is optional and read-only. It is not an observer and does
+not use the observer protocol. A successful full snapshot supplies current
+directory presentation for the devices visible to its OAuth credential. It
+cannot create traffic edges, mark nodes observable or online, or change runtime
+freshness. The Live graph therefore remains unchanged when directory-only
+devices appear or disappear.
 
 Collectors sample locally every two seconds but send traffic messages only
 when a non-control peer counter changes. Inventory changes and sparse idle
@@ -72,6 +81,14 @@ ownership and publish an SSE invalidation. Per-client invalidations are
 coalesced into 250-millisecond windows, and the browser merges a refresh burst
 into one in-flight request plus one follow-up. Storage failure therefore cannot
 advance in-memory sequence, inventory, or canonical identity state.
+
+Directory refresh uses the same candidate-state rule. The application clones
+the aggregator, applies one validated full snapshot, saves the runtime
+checkpoint and directory History metadata atomically, and only then replaces
+memory and publishes a coalesced SSE invalidation. A failed request or storage
+commit retains the last successful directory layer and reports it as stale.
+Starting without directory configuration removes the current directory layer
+from runtime state while preserving canonical redirects and existing History.
 
 Peer Relay session clients are reconciled inside a checkpointed
 `relay canonical ID + VNI` scope. A stable endpoint observation can provide a
