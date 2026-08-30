@@ -41,11 +41,13 @@ An ambiguous identity hint could merge distinct stable nodes.
 
 ## Current state
 
-Not started.
+Complete on the implementation branch. Typed snapshot, device, synchronization,
+error, normalization, cloning, NodeKey-collision, and metadata-conflict
+contracts are implemented without changing observer protocol v1.
 
 ## Next step
 
-Implement after the dependency boundary is available.
+Open the stacked Draft PR and wait for hosted CI.
 
 ## Verification
 
@@ -53,4 +55,9 @@ Focused domain tests, race tests for consumers, and `make check`.
 
 ## Completion summary
 
-Pending.
+Full snapshots reject zero/duplicate StableNodeIDs, discard and count invalid
+IP fields, normalize known platforms, preserve unknown platforms, sort
+deterministically, and clear lastSeen for control-connected devices. NodeKey
+collisions remain explicit and never invalidate or merge stable identities.
+Conflict comparison and deep-copy behavior pass focused race tests and the full
+repository gate.
