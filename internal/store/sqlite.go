@@ -385,6 +385,9 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return history, err
 		}
+		if event.Observations == nil {
+			event.Observations = []domain.ObservationProvenance{}
+		}
 		history.PathEvents = append(history.PathEvents, event)
 	}
 	return history, rows.Err()

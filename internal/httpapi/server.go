@@ -176,7 +176,25 @@ func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Requ
 		writeProblem(response, http.StatusNotFound, "edge history not found", "")
 		return
 	}
+	normalizeHistoryCollections(&history)
 	writeJSON(response, http.StatusOK, history)
+}
+
+func normalizeHistoryCollections(history *domain.EdgeHistory) {
+	if history.Traffic == nil {
+		history.Traffic = []domain.TrafficBucket{}
+	}
+	if history.PathEvents == nil {
+		history.PathEvents = []domain.PathEvent{}
+	}
+	if history.PathAnchor != nil && history.PathAnchor.Observations == nil {
+		history.PathAnchor.Observations = []domain.ObservationProvenance{}
+	}
+	for index := range history.PathEvents {
+		if history.PathEvents[index].Observations == nil {
+			history.PathEvents[index].Observations = []domain.ObservationProvenance{}
+		}
+	}
 }
 
 func (s *Server) getHistoryNodes(response http.ResponseWriter, request *http.Request) {

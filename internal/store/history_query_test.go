@@ -93,6 +93,16 @@ func TestEdgeHistoryWindowReturnsAnchorBoundsAndKnownEmpty(t *testing.T) {
 	if empty.LastTrafficAt != nil {
 		t.Fatalf("known empty last traffic = %s, want nil", empty.LastTrafficAt)
 	}
+	anchorOnly, found, err := database.EdgeHistoryWindow(ctx, "n_a--n_b", domain.History1Hour, now.Add(2*time.Hour))
+	if err != nil || !found {
+		t.Fatalf("anchor-only found=%v err=%v", found, err)
+	}
+	if anchorOnly.Traffic == nil || anchorOnly.PathEvents == nil {
+		t.Fatalf("anchor-only collections must be non-nil: %#v", anchorOnly)
+	}
+	if anchorOnly.PathAnchor == nil || anchorOnly.PathAnchor.Observations == nil {
+		t.Fatalf("anchor-only provenance must be non-nil: %#v", anchorOnly.PathAnchor)
+	}
 	if _, found, err := database.EdgeHistoryWindow(ctx, "missing", domain.History1Hour, now); err != nil || found {
 		t.Fatalf("unknown edge found=%v err=%v", found, err)
 	}
