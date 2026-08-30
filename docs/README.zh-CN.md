@@ -16,6 +16,8 @@
 - [v0.3 Peer Relay dogfood 结果](evidence/v0.3-peer-relay-dogfood.md)
 - [v0.4 嵌入式 exporter dogfood](runbooks/v0.4-exporter-dogfood.zh-CN.md)
 - [v0.4 嵌入式 exporter dogfood 结果](evidence/v0.4-exporter-dogfood.md)
+- [v0.5 Devices API dogfood](runbooks/v0.5-devices-dogfood.zh-CN.md)
+- [v0.5 Devices API dogfood 结果](evidence/v0.5-devices-dogfood.md)
 - [UI 风格指南](styleguide.md)
 - [路线图](roadmap.md)
 - [架构决策](adr/README.md)

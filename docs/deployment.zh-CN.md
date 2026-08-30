@@ -56,6 +56,41 @@ observation：Devices workspace 保留 last-good snapshot 并标记 stale，Live
 collector 和 History 继续工作。移除配置并重启会清除当前 directory presentation，
 但不会删除 canonical identity 或 traffic History。
 
+为可续期 OAuth secret 创建独立文件，不要复用一次性的 tsnet enrollment key：
+
+```sh
+install -d -m 0700 secrets
+install -m 0600 /dev/null secrets/tailscale-devices-oauth-client-secret
+read -r -s -p 'Devices OAuth client secret: ' tailpath_devices_secret
+printf '\n'
+printf '%s\n' "$tailpath_devices_secret" > secrets/tailscale-devices-oauth-client-secret
+unset tailpath_devices_secret
+chmod 0444 secrets/tailscale-devices-oauth-client-secret
+```
+
+在 `.env` 中只配置 client ID、宿主 secret 路径和可选 Tailnet selector，绝不能放
+secret value：
+
+```dotenv
+TAILPATH_DEVICES_OAUTH_CLIENT_ID=your-oauth-client-id
+TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE=./secrets/tailscale-devices-oauth-client-secret
+TAILPATH_DEVICES_TAILNET=-
+```
+
+使用两个 Compose 文件启动或更新 server：
+
+```sh
+docker compose -f compose.yaml -f compose.devices.yaml up -d server
+```
+
+下一次 recreate 时移除 `compose.devices.yaml` 即可禁用目录。启用 enrichment 期间
+必须保留 OAuth secret 文件，初次同步后的 token renewal 仍会读取它。
+
+将 v0.5 candidate 标记为 qualified 前，必须执行
+[Devices API dogfood](runbooks/v0.5-devices-dogfood.zh-CN.md)。API 结果只包含配置的
+credential 可见的设备；shared device 可能因为
+[上游可见性行为](https://github.com/tailscale/tailscale/issues/16911)缺失。
+
 ## Image channels
 
 SemVer tags 和 `latest` 属于稳定 release artifacts。每次 `main` CI 全部成功后，

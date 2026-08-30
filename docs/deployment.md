@@ -66,6 +66,42 @@ History continue normally. Disabling the configuration removes the current
 directory presentation on restart but does not delete canonical identity or
 traffic History.
 
+Create the renewable secret separately from the one-use tsnet enrollment key:
+
+```sh
+install -d -m 0700 secrets
+install -m 0600 /dev/null secrets/tailscale-devices-oauth-client-secret
+read -r -s -p 'Devices OAuth client secret: ' tailpath_devices_secret
+printf '\n'
+printf '%s\n' "$tailpath_devices_secret" > secrets/tailscale-devices-oauth-client-secret
+unset tailpath_devices_secret
+chmod 0444 secrets/tailscale-devices-oauth-client-secret
+```
+
+Set the client ID, host secret path, and optional Tailnet selector in `.env`;
+never put the secret value there:
+
+```dotenv
+TAILPATH_DEVICES_OAUTH_CLIENT_ID=your-oauth-client-id
+TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE=./secrets/tailscale-devices-oauth-client-secret
+TAILPATH_DEVICES_TAILNET=-
+```
+
+Start or update only the server with both Compose files:
+
+```sh
+docker compose -f compose.yaml -f compose.devices.yaml up -d server
+```
+
+Removing `compose.devices.yaml` on the next server recreation disables the
+directory. Keep the OAuth secret file while enrichment is enabled; token
+renewal continues to use it after the initial synchronization.
+
+Before declaring a v0.5 candidate qualified, follow the
+[Devices API dogfood runbook](runbooks/v0.5-devices-dogfood.md). The API result
+is limited to devices visible to the configured credential; shared devices may
+be absent due to [upstream visibility behavior](https://github.com/tailscale/tailscale/issues/16911).
+
 ## Image channels
 
 Semantic-version tags and `latest` are stable release artifacts. Every fully

@@ -48,12 +48,17 @@ visibility can be mistaken for completeness.
 
 ## Current state
 
-Not started. Real OAuth dogfood requires a user-created client with only
-`devices:core:read` after the full implementation is on main.
+Compose packaging, nonroot secret-read CI coverage, the privacy sanitizer and
+fixtures, bilingual dogfood runbook, and pending ledger are implemented on the
+issue branch. The existing synthetic 250-device and 250-node / 1,000-edge
+browser gates pass locally. Real OAuth dogfood remains blocked on the full
+stack reaching main and a user-created client with only `devices:core:read`.
 
 ## Next step
 
-Begin packaging after API and web behavior merge.
+Run the complete repository check, open the Draft PR, and merge the stack in
+order. Then select main's successful full-SHA image and request the OAuth
+credential for the more-than-65-minute qualification run.
 
 ## Verification
 
@@ -62,4 +67,6 @@ independent read-only blocker review, and issue/milestone audit.
 
 ## Completion summary
 
-Pending.
+Implementation-side packaging and qualification tooling are complete. Real
+OAuth evidence, hosted scale, independent review, plan archival, milestone
+closeout, and the human tag remain pending.
