@@ -191,7 +191,7 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 	}
 	if pathSet := paths[canonicalID]; pathSet != nil {
 		history.PathAnchor = pathSet.anchor
-		history.PathEvents = pathSet.events
+		history.PathEvents = append(history.PathEvents, pathSet.events...)
 		if len(history.PathEvents) > 500 {
 			history.PathEventsTruncated = true
 			history.PathEvents = history.PathEvents[len(history.PathEvents)-500:]
@@ -608,6 +608,9 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		}
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return nil, err
+		}
+		if event.Observations == nil {
+			event.Observations = []domain.ObservationProvenance{}
 		}
 		for observationIndex := range event.Observations {
 			event.Observations[observationIndex].ObserverID = resolveNodeID(index.redirects, event.Observations[observationIndex].ObserverID)

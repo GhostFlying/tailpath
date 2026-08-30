@@ -218,6 +218,7 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	recordHistoryTraffic(t, server, "recent", "n_a--n_b", "n_a", "n_b", now.Add(-time.Minute))
+	recordHistoryTraffic(t, server, "anchor-only", "n_a--n_c", "n_a", "n_c", now.Add(-2*time.Hour))
 	recordHistoryTraffic(t, server, "old", "n_b--n_c", "n_b", "n_c", now.Add(-8*24*time.Hour))
 
 	for _, requestPath := range []string{
@@ -267,6 +268,27 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	var history domain.EdgeHistory
 	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || history.EdgeID != "n_a--n_b" || len(history.Traffic) != 1 || history.LastTrafficAt == nil || !history.LastTrafficAt.Equal(now.Add(-time.Minute)) {
 		t.Fatalf("recent history = %#v, err=%v", history, err)
+	}
+	if history.PathEvents == nil || len(history.PathEvents) != 1 || history.PathEvents[0].Observations == nil {
+		t.Fatalf("recent history collections = %#v", history)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_c?window=1h", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("anchor-only status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var rawHistory map[string]any
+	if err := json.NewDecoder(recorder.Body).Decode(&rawHistory); err != nil {
+		t.Fatal(err)
+	}
+	pathEvents, pathEventsOK := rawHistory["pathEvents"].([]any)
+	traffic, trafficOK := rawHistory["traffic"].([]any)
+	pathAnchor, anchorOK := rawHistory["pathAnchor"].(map[string]any)
+	observations, observationsOK := pathAnchor["observations"].([]any)
+	if !pathEventsOK || len(pathEvents) != 0 || !trafficOK || len(traffic) != 0 || !anchorOK || !observationsOK || len(observations) != 0 {
+		t.Fatalf("anchor-only JSON collections = %#v", rawHistory)
 	}
 
 	recorder = httptest.NewRecorder()

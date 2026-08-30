@@ -27,10 +27,44 @@ export function getEdgeHistory(
   signal?: AbortSignal,
   window: HistoryWindow = "1h",
 ): Promise<EdgeHistory> {
-  return getJSON<EdgeHistory>(
+  return getJSON<NullableEdgeHistory>(
     `/api/v1/history/edges/${encodeURIComponent(edgeId)}?window=${window}`,
     signal,
-  );
+  ).then(normalizeEdgeHistory);
+}
+
+type NullablePathEvent = Omit<
+  EdgeHistory["pathEvents"][number],
+  "observations"
+> & {
+  observations: EdgeHistory["pathEvents"][number]["observations"] | null;
+};
+
+type NullableEdgeHistory = Omit<
+  EdgeHistory,
+  "traffic" | "pathAnchor" | "pathEvents"
+> & {
+  traffic: EdgeHistory["traffic"] | null;
+  pathAnchor?: NullablePathEvent | null;
+  pathEvents: NullablePathEvent[] | null;
+};
+
+function normalizePathEvent(event: NullablePathEvent) {
+  return {
+    ...event,
+    observations: event.observations ?? [],
+  };
+}
+
+function normalizeEdgeHistory(history: NullableEdgeHistory): EdgeHistory {
+  return {
+    ...history,
+    traffic: history.traffic ?? [],
+    pathAnchor: history.pathAnchor
+      ? normalizePathEvent(history.pathAnchor)
+      : undefined,
+    pathEvents: (history.pathEvents ?? []).map(normalizePathEvent),
+  };
 }
 
 export function getHistoryNodes(

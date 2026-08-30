@@ -310,6 +310,66 @@ test("shows a bounded empty detail when desktop History changes to 15m", async (
   });
 });
 
+test("renders a direct empty-window link with legacy null collections", async ({
+  page,
+}, testInfo) => {
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") {
+      browserErrors.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  await page.route("**/api/v1/history/edges/*?**", async (route) => {
+    const summary = edgeSummaries[0];
+    await route.fulfill({
+      json: {
+        ...historyFor(summary),
+        traffic: null,
+        pathAnchor: {
+          observedAt: "2026-08-23T01:59:00Z",
+          path: { kind: "direct" },
+          observations: null,
+        },
+        pathEvents: null,
+      },
+    });
+  });
+
+  await page.goto("/history/edges/node-mac--node-dev?window=15m");
+
+  await expect(page).toHaveTitle("Tailpath");
+  await expect(page).toHaveURL(
+    /history\/edges\/node-mac--node-dev\?window=15m/,
+  );
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  await expect(
+    page.getByRole("heading", { name: /MacBook.*DevBox/ }),
+  ).toBeVisible();
+  await expect(page.locator(".history-detail-empty")).toContainText(
+    "No traffic in this window",
+  );
+  await expect(page.locator("body")).not.toBeEmpty();
+  await page
+    .getByRole("button", { name: "1h", exact: true })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/window=1h/);
+  await expect(page.locator(".history-detail-empty")).toContainText(
+    "No traffic in this window",
+  );
+  expect(browserErrors).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `history-null-collections-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
+});
+
 test("keeps sparse traffic at real times and leaves gaps inert", async ({
   page,
 }, testInfo) => {
