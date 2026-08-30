@@ -132,8 +132,12 @@ jobs:
       - name: Validate Compose delivery
         env:
           TAILPATH_AUTHKEY_FILE: /tmp/tailpath-production-authkey
+          TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE: /tmp/tailpath-devices-oauth-secret.ci/secret
         run: |
           install -m 444 /dev/null "$TAILPATH_AUTHKEY_FILE"
+          install -d -m 700 /tmp/tailpath-devices-oauth-secret.ci
+          printf 'fixture-devices-secret' > "$TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE"
+          chmod 444 "$TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE"
           install -d -m 700 /tmp/tailpath-exporter-dogfood-secret.ci
           install -m 600 /dev/null /tmp/tailpath-exporter-dogfood-secret.ci/authkey
           printf 'fixture-key' > /tmp/tailpath-exporter-dogfood-secret.ci/authkey
@@ -142,6 +146,10 @@ jobs:
           jq -e '.services.server.environment.TS_AUTHKEY == "file:/run/secrets/tailscale-authkey"' <<<"$production"
           jq -e '.services.server.volumes as $volumes | ($volumes | length) == 1 and $volumes[0].type == "volume" and $volumes[0].source == "tailpath-data" and $volumes[0].target == "/var/lib/tailpath"' <<<"$production"
           jq -e '.services.server.secrets as $secrets | ($secrets | length) == 1 and $secrets[0].source == "tailscale-authkey" and $secrets[0].target == "/run/secrets/tailscale-authkey"' <<<"$production"
+          devices="$(TAILPATH_DEVICES_OAUTH_CLIENT_ID=fixture-client TAILPATH_DEVICES_TAILNET=example.test docker compose -f compose.yaml -f compose.devices.yaml config --format json)"
+          jq -e '.services.server.environment.TAILPATH_DEVICES_OAUTH_CLIENT_ID == "fixture-client" and .services.server.environment.TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE == "/run/secrets/tailscale-devices-oauth-client-secret" and .services.server.environment.TAILPATH_DEVICES_TAILNET == "example.test"' <<<"$devices"
+          jq -e '.services.server.secrets | any(.source == "tailscale-devices-oauth-client-secret" and .target == "/run/secrets/tailscale-devices-oauth-client-secret")' <<<"$devices"
+          ! grep -F 'fixture-devices-secret' <<<"$devices"
           docker compose -f compose.smoke.yaml config --quiet
           TAILPATH_VERSION=edge-0123456789abcdef0123456789abcdef01234567 \
             TAILPATH_EXPORTER_DOGFOOD_AUTHKEY_FILE=/tmp/tailpath-exporter-dogfood-secret.ci/authkey \
@@ -173,6 +181,10 @@ jobs:
             -v /tmp/tailpath-exporter-dogfood-secret.ci/authkey:/run/secrets/authkey:ro \
             --entrypoint /bin/cat busybox:1.37.0 /run/secrets/authkey)"
           test "$secret_value" = fixture-key
+          devices_secret_value="$(docker run --rm --user 65532:65532 \
+            -v /tmp/tailpath-devices-oauth-secret.ci/secret:/run/secrets/devices-oauth:ro \
+            --entrypoint /bin/cat busybox:1.37.0 /run/secrets/devices-oauth)"
+          test "$devices_secret_value" = fixture-devices-secret
           state_volume="tailpath-image-state-${GITHUB_RUN_ID}"
           state_container="tailpath-image-state-${GITHUB_RUN_ID}"
           cleanup_state_gate() {
