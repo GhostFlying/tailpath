@@ -119,6 +119,99 @@ func (a *App) SubmitAt(ctx context.Context, report domain.ReportEnvelope, receiv
 	return result.Receipt, nil
 }
 
+func (a *App) ApplyDirectorySnapshot(
+	ctx context.Context,
+	snapshot domain.DirectorySnapshot,
+	syncState domain.DirectorySyncState,
+) (aggregate.DirectoryApplyResult, error) {
+	return a.ApplyDirectorySnapshotAt(ctx, snapshot, syncState, time.Now().UTC())
+}
+
+func (a *App) ApplyDirectorySnapshotAt(
+	ctx context.Context,
+	snapshot domain.DirectorySnapshot,
+	syncState domain.DirectorySyncState,
+	updatedAt time.Time,
+) (aggregate.DirectoryApplyResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	candidate, err := a.Aggregator.Clone()
+	if err != nil {
+		return aggregate.DirectoryApplyResult{}, fmt.Errorf("clone runtime state: %w", err)
+	}
+	result, err := candidate.ApplyDirectorySnapshot(snapshot, syncState)
+	if err != nil {
+		return result, err
+	}
+	if err := a.commitDirectoryCandidate(ctx, candidate, updatedAt); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (a *App) UpdateDirectorySyncState(ctx context.Context, syncState domain.DirectorySyncState) error {
+	return a.UpdateDirectorySyncStateAt(ctx, syncState, time.Now().UTC())
+}
+
+func (a *App) UpdateDirectorySyncStateAt(
+	ctx context.Context,
+	syncState domain.DirectorySyncState,
+	updatedAt time.Time,
+) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	candidate, err := a.Aggregator.Clone()
+	if err != nil {
+		return fmt.Errorf("clone runtime state: %w", err)
+	}
+	if err := candidate.UpdateDirectorySyncState(syncState); err != nil {
+		return err
+	}
+	return a.commitDirectoryCandidate(ctx, candidate, updatedAt)
+}
+
+func (a *App) ClearDirectory(ctx context.Context) (bool, error) {
+	return a.ClearDirectoryAt(ctx, time.Now().UTC())
+}
+
+func (a *App) ClearDirectoryAt(ctx context.Context, updatedAt time.Time) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	candidate, err := a.Aggregator.Clone()
+	if err != nil {
+		return false, fmt.Errorf("clone runtime state: %w", err)
+	}
+	if !candidate.ClearDirectory() {
+		return false, nil
+	}
+	if err := a.commitDirectoryCandidate(ctx, candidate, updatedAt); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (a *App) DeviceDirectory() domain.DeviceDirectory {
+	return a.Aggregator.DeviceDirectory()
+}
+
+func (a *App) commitDirectoryCandidate(ctx context.Context, candidate *aggregate.Aggregator, updatedAt time.Time) error {
+	payload, err := candidate.MarshalState()
+	if err != nil {
+		return fmt.Errorf("encode runtime state: %w", err)
+	}
+	if err := a.Store.SaveCheckpointWithMetadata(ctx, payload, candidate.HistoryMetadata(), updatedAt.UTC()); err != nil {
+		return fmt.Errorf("persist directory state: %w", err)
+	}
+	if err := a.Aggregator.ReplaceWith(candidate); err != nil {
+		return fmt.Errorf("commit runtime state: %w", err)
+	}
+	a.lastCheckpoint = updatedAt.UTC()
+	return nil
+}
+
 func (a *App) shouldCheckpoint(receivedAt time.Time) bool {
 	receivedAt = receivedAt.UTC()
 	if a.lastCheckpoint.IsZero() || receivedAt.Before(a.lastCheckpoint) {

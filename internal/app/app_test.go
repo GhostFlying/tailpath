@@ -728,6 +728,167 @@ func TestStoreFailureDoesNotPublishOrAdvanceMemory(t *testing.T) {
 	}
 }
 
+func TestDirectoryCheckpointSurvivesRestartStaleAndDisabledClear(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailpath.db")
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	database, err := store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	directoryAt := now.Add(time.Minute)
+	snapshot := domain.DirectorySnapshot{
+		CollectedAt: directoryAt,
+		Devices: []domain.DirectoryDevice{
+			{StableNodeID: "b", DNSName: "directory-peer.example.ts.net", Hostname: "directory-peer"},
+			{StableNodeID: "directory-only", DNSName: "catalog-only.example.ts.net", Hostname: "catalog-only"},
+		},
+	}
+	if _, err := application.ApplyDirectorySnapshotAt(
+		context.Background(), snapshot, healthyDirectoryState(directoryAt), directoryAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	beforeRestart := directoryIDsByStableNodeID(application.DeviceDirectory())
+	if len(beforeRestart) != 2 || len(application.Aggregator.Snapshot().Nodes) != 2 {
+		t.Fatalf("directory or Live state = %#v / %#v", application.DeviceDirectory(), application.Aggregator.Snapshot())
+	}
+	attempt := directoryAt.Add(5 * time.Minute)
+	retry := attempt.Add(30 * time.Second)
+	if err := application.UpdateDirectorySyncStateAt(context.Background(), domain.DirectorySyncState{
+		Status: domain.DirectorySyncStale, LastAttemptAt: &attempt, LastSuccessAt: &directoryAt,
+		NextRetryAt: &retry, ErrorCode: domain.DirectoryErrorUnavailable,
+	}, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application, err = New(database, testOptions(func() time.Time { return attempt }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterRestart := application.DeviceDirectory()
+	if afterRestart.Sync.Status != domain.DirectorySyncStale ||
+		!mapsEqual(directoryIDsByStableNodeID(afterRestart), beforeRestart) {
+		t.Fatalf("restarted directory = %#v, ids before = %#v", afterRestart, beforeRestart)
+	}
+	if got := topologyIDsByStableNodeID(application.Aggregator.Snapshot()); got["directory-only"] != "" {
+		t.Fatalf("directory-only node entered Live after restart: %#v", got)
+	}
+	clearedAt := attempt.Add(time.Minute)
+	cleared, err := application.ClearDirectoryAt(context.Background(), clearedAt)
+	if err != nil || !cleared {
+		t.Fatalf("clear directory = %v, %v", cleared, err)
+	}
+	if application.DeviceDirectory().Sync.Status != domain.DirectorySyncDisabled {
+		t.Fatalf("directory remained enabled: %#v", application.DeviceDirectory())
+	}
+	metadataIDs := topologyIDsByStableNodeID(domain.Topology{Nodes: application.Aggregator.HistoryMetadata().Nodes})
+	if metadataIDs["directory-only"] != beforeRestart["directory-only"] {
+		t.Fatalf("clear discarded canonical directory identity: %#v", metadataIDs)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = store.Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	application, err = New(database, testOptions(func() time.Time { return clearedAt }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if application.DeviceDirectory().Sync.Status != domain.DirectorySyncDisabled {
+		t.Fatalf("cleared directory returned after restart: %#v", application.DeviceDirectory())
+	}
+}
+
+func TestDirectoryStoreFailureDoesNotPublishOrNotify(t *testing.T) {
+	database, err := store.Open(":memory:", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	application, err := New(database, testOptions(func() time.Time { return now }), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SubmitAt(context.Background(), helloReport(now), now); err != nil {
+		t.Fatal(err)
+	}
+	events, unsubscribe := application.Aggregator.Subscribe()
+	defer unsubscribe()
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := domain.DirectorySnapshot{
+		CollectedAt: now,
+		Devices:     []domain.DirectoryDevice{{StableNodeID: "b", Hostname: "directory-peer"}},
+	}
+	if _, err := application.ApplyDirectorySnapshotAt(
+		context.Background(), snapshot, healthyDirectoryState(now), now,
+	); err == nil {
+		t.Fatal("directory apply succeeded after storage was closed")
+	}
+	if got := application.DeviceDirectory(); got.Sync.Status != domain.DirectorySyncDisabled || len(got.Devices) != 0 {
+		t.Fatalf("failed directory transaction published state: %#v", got)
+	}
+	if node := topologyNodeByStableNodeID(application.Aggregator.Snapshot(), "b"); node.Hostname != "B" || node.Directory != nil {
+		t.Fatalf("failed directory transaction changed Live presentation: %#v", node)
+	}
+	select {
+	case <-events:
+		t.Fatal("failed directory transaction notified SSE subscribers")
+	default:
+	}
+}
+
+func healthyDirectoryState(at time.Time) domain.DirectorySyncState {
+	return domain.DirectorySyncState{Status: domain.DirectorySyncHealthy, LastAttemptAt: &at, LastSuccessAt: &at}
+}
+
+func directoryIDsByStableNodeID(directory domain.DeviceDirectory) map[string]string {
+	result := make(map[string]string, len(directory.Devices))
+	for _, device := range directory.Devices {
+		result[device.Device.StableNodeID] = device.ID
+	}
+	return result
+}
+
+func mapsEqual(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func topologyNodeByStableNodeID(topology domain.Topology, stableID string) domain.TopologyNode {
+	for _, node := range topology.Nodes {
+		if node.StableNodeID == stableID {
+			return node
+		}
+	}
+	return domain.TopologyNode{}
+}
+
 func testOptions(now func() time.Time) aggregate.Options {
 	next := 0
 	return aggregate.Options{
