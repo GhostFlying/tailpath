@@ -1,0 +1,13 @@
+services:
+  server:
+    environment:
+      TAILPATH_DEVICES_OAUTH_CLIENT_ID: ${TAILPATH_DEVICES_OAUTH_CLIENT_ID:?set TAILPATH_DEVICES_OAUTH_CLIENT_ID}
+      TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE: /run/secrets/tailscale-devices-oauth-client-secret
+      TAILPATH_DEVICES_TAILNET: ${TAILPATH_DEVICES_TAILNET:--}
+    secrets:
+      - source: tailscale-devices-oauth-client-secret
+        target: /run/secrets/tailscale-devices-oauth-client-secret
+
+secrets:
+  tailscale-devices-oauth-client-secret:
+    file: ${TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE:?set TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE}
