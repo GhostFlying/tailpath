@@ -43,11 +43,13 @@ Raw errors can leak secrets; partial responses can erase last-good data.
 
 ## Current state
 
-Not started.
+Implemented on `issue/154-directory-sync`. Server configuration is optional and
+strict, and the cancellable synchronizer is connected to the atomic App sink.
 
 ## Next step
 
-Begin after client, domain, aggregator, and checkpoint contracts.
+Open the Draft PR after the full repository gate passes, then expose the
+directory and capability through #148.
 
 ## Verification
 
@@ -55,4 +57,8 @@ Focused server tests with local OAuth/API servers, race tests, and `make check`.
 
 ## Completion summary
 
-Pending.
+Added flags and environment precedence, file-only secret loading, immediate
+startup synchronization, five-minute healthy refresh, bounded jittered retry,
+sanitized error classes, full-snapshot replacement, and cancellation. Upstream
+and validation failures retain the last-good snapshot as stale; disabled
+startup durably clears only the current directory layer.

@@ -26,6 +26,8 @@ import (
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/collector"
+	"github.com/GhostFlying/tailpath/internal/devicesapi"
+	"github.com/GhostFlying/tailpath/internal/devicesync"
 	"github.com/GhostFlying/tailpath/internal/fixtures"
 	"github.com/GhostFlying/tailpath/internal/httpapi"
 	"github.com/GhostFlying/tailpath/internal/store"
@@ -87,6 +89,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	scaleFixture := flags.Bool("scale", false, "load the 250-node/1,000-edge test fixture")
 	relayScaleFixture := flags.Bool("relay-scale", false, "load the 250-node/1,000-relay-session test fixture")
 	emptyFixture := flags.Bool("empty", false, "start without generated reports (fixture-server only)")
+	devicesFlags := bindDevicesConfigFlags(flags, os.Getenv)
 	if fixture {
 		*networkMode = "plain"
 		*databasePath = ":memory:"
@@ -117,6 +120,10 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	}
 	if *heartbeat < 10*time.Second || *heartbeat > 10*time.Minute {
 		return errors.New("heartbeat interval must be between 10s and 10m")
+	}
+	devicesConfig, err := resolveDevicesServerConfig(devicesFlags, os.ReadFile)
+	if err != nil {
+		return err
 	}
 	if err := ensureDatabaseDirectory(*databasePath); err != nil {
 		return err
@@ -194,6 +201,17 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	}, logger)
 	if err != nil {
 		return err
+	}
+	if !devicesConfig.enabled {
+		if _, err := application.ClearDirectory(ctx); err != nil {
+			return fmt.Errorf("clear disabled device directory: %w", err)
+		}
+	} else {
+		client := devicesapi.New(devicesapi.Config{
+			Tailnet: devicesConfig.tailnet, ClientID: devicesConfig.clientID, ClientSecret: devicesConfig.clientSecret,
+		})
+		synchronizer := devicesync.New(client, application, devicesync.Options{Logger: logger})
+		go synchronizer.Run(ctx)
 	}
 	serverOptions := httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger}
 	if fixture {
@@ -279,6 +297,84 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	server := httpapi.New(application, serverOptions)
 	logger.Info("server listening", "network", *networkMode, "address", listener.Addr())
 	return serve(ctx, listener, server.Handler(), *adminListen, logger)
+}
+
+type devicesServerConfig struct {
+	enabled      bool
+	clientID     string
+	clientSecret string
+	tailnet      string
+}
+
+type devicesConfigFlags struct {
+	clientID         *string
+	clientSecretFile *string
+	tailnet          *string
+}
+
+func bindDevicesConfigFlags(flags *flag.FlagSet, getenv func(string) string) devicesConfigFlags {
+	tailnetDefault := strings.TrimSpace(getenv("TAILPATH_DEVICES_TAILNET"))
+	if tailnetDefault == "" {
+		tailnetDefault = "-"
+	}
+	return devicesConfigFlags{
+		clientID: flags.String(
+			"devices-oauth-client-id", strings.TrimSpace(getenv("TAILPATH_DEVICES_OAUTH_CLIENT_ID")),
+			"OAuth client ID for optional device directory enrichment",
+		),
+		clientSecretFile: flags.String(
+			"devices-oauth-client-secret-file", strings.TrimSpace(getenv("TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE")),
+			"file containing the OAuth client secret for optional device directory enrichment",
+		),
+		tailnet: flags.String(
+			"devices-tailnet", tailnetDefault, "tailnet name for optional device directory enrichment",
+		),
+	}
+}
+
+func resolveDevicesServerConfig(
+	values devicesConfigFlags,
+	readFile func(string) ([]byte, error),
+) (devicesServerConfig, error) {
+	clientID := strings.TrimSpace(*values.clientID)
+	secretFile := strings.TrimSpace(*values.clientSecretFile)
+	if clientID == "" && secretFile == "" {
+		return devicesServerConfig{tailnet: "-"}, nil
+	}
+	if clientID == "" || secretFile == "" {
+		return devicesServerConfig{}, errors.New("devices OAuth client ID and secret file must be configured together")
+	}
+	contents, err := readFile(secretFile)
+	if err != nil {
+		return devicesServerConfig{}, fmt.Errorf("read devices OAuth client secret file: %w", err)
+	}
+	clientSecret := strings.TrimSpace(string(contents))
+	if clientSecret == "" {
+		return devicesServerConfig{}, errors.New("devices OAuth client secret file is empty")
+	}
+	tailnet := strings.TrimSpace(*values.tailnet)
+	if tailnet == "" {
+		tailnet = "-"
+	}
+	return devicesServerConfig{
+		enabled: true, clientID: clientID, clientSecret: clientSecret, tailnet: tailnet,
+	}, nil
+}
+
+func parseDevicesServerConfig(
+	arguments []string,
+	getenv func(string) string,
+	readFile func(string) ([]byte, error),
+) (devicesServerConfig, error) {
+	flags := flag.NewFlagSet("devices-config", flag.ContinueOnError)
+	values := bindDevicesConfigFlags(flags, getenv)
+	if err := flags.Parse(arguments); err != nil {
+		return devicesServerConfig{}, err
+	}
+	if flags.NArg() != 0 {
+		return devicesServerConfig{}, errors.New("devices config does not accept positional arguments")
+	}
+	return resolveDevicesServerConfig(values, readFile)
 }
 
 type scaleFixtureRuntime struct {
