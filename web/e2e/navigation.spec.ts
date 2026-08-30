@@ -27,16 +27,28 @@ test("keeps mobile workspace tab geometry stable across routes", async ({
   const historyBoxes = await tabBoxes(page.locator(".workspace-tabs"));
   expectBoxesClose(historyBoxes.live, liveBoxes.live);
   expectBoxesClose(historyBoxes.history, liveBoxes.history);
+  expectBoxesClose(historyBoxes.devices, liveBoxes.devices);
   await page.screenshot({
     path: testInfo.outputPath("mobile-tabs-history.png"),
     fullPage: true,
   });
+
+  await page.getByRole("link", { name: "Devices" }).click();
+  await expect(page.locator(".devices-shell")).toHaveAttribute(
+    "data-devices-ready",
+    "true",
+  );
+  const deviceBoxes = await tabBoxes(page.locator(".workspace-tabs"));
+  expectBoxesClose(deviceBoxes.live, liveBoxes.live);
+  expectBoxesClose(deviceBoxes.history, liveBoxes.history);
+  expectBoxesClose(deviceBoxes.devices, liveBoxes.devices);
 
   await page.getByRole("link", { name: "Live", exact: true }).click();
   await expect(page.locator(".workspace-tabs")).toBeVisible();
   const restoredBoxes = await tabBoxes(page.locator(".workspace-tabs"));
   expectBoxesClose(restoredBoxes.live, liveBoxes.live);
   expectBoxesClose(restoredBoxes.history, liveBoxes.history);
+  expectBoxesClose(restoredBoxes.devices, liveBoxes.devices);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -45,8 +57,12 @@ async function tabBoxes(tabs: Locator) {
   const history = await tabs
     .getByRole("link", { name: "History" })
     .boundingBox();
-  if (!live || !history) throw new Error("workspace tabs have no bounds");
-  return { live, history };
+  const devices = await tabs
+    .getByRole("link", { name: "Devices" })
+    .boundingBox();
+  if (!live || !history || !devices)
+    throw new Error("workspace tabs have no bounds");
+  return { live, history, devices };
 }
 
 function expectBoxesClose(

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getEdgeHistory } from "./client";
+import { getDevices, getEdgeHistory } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -35,6 +35,22 @@ describe("getEdgeHistory", () => {
 
     expect(history.pathEvents).toHaveLength(1);
     expect(history.pathEvents[0].observations).toEqual([]);
+  });
+});
+
+describe("getDevices", () => {
+  it("normalizes a legacy null directory collection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ sync: { status: "healthy" }, devices: null }),
+      ),
+    );
+
+    await expect(getDevices()).resolves.toEqual({
+      sync: { status: "healthy" },
+      devices: [],
+    });
   });
 });
 

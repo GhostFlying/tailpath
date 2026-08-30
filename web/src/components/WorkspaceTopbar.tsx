@@ -1,6 +1,7 @@
 import { Waypoints } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { useCapabilities } from "../hooks/useCapabilities";
 
 interface Props {
   connection: WorkspaceConnection;
@@ -19,8 +20,11 @@ export function WorkspaceTopbar({
   metrics,
   className = "",
 }: Props) {
+  const { deviceDirectoryEnabled } = useCapabilities();
   return (
-    <header className={`topbar ${className}`.trim()}>
+    <header
+      className={`topbar ${deviceDirectoryEnabled ? "has-devices" : ""} ${className}`.trim()}
+    >
       <NavLink className="brand" to="/" aria-label="Tailpath Live">
         <Waypoints size={22} />
         <strong>Tailpath</strong>
@@ -30,6 +34,9 @@ export function WorkspaceTopbar({
           Live
         </NavLink>
         <NavLink to="/history">History</NavLink>
+        {deviceDirectoryEnabled ? (
+          <NavLink to="/devices">Devices</NavLink>
+        ) : null}
       </nav>
       {metrics ? <div className="headline-metrics">{metrics}</div> : null}
       <div

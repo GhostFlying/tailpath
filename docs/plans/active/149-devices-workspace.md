@@ -44,17 +44,26 @@ A large catalog can block Live startup or collapse on narrow screens.
 
 ## Current state
 
-Accepted concepts exist with synthetic device names; implementation not started.
+The lazy Devices workspace is implemented against the generated v0.5 API. The
+real fixture exposes 250 synthetic directory devices while preserving the
+existing Live topology. Desktop, 390px, and 320px browser coverage is green.
 
 ## Next step
 
-Begin after generated API contracts.
+Open the Draft PR on top of the device API branch.
 
 ## Verification
 
 Playwright Chromium fallback, screenshots compared with accepted concepts via
-`view_image`, bundle audit, and `make check`.
+`view_image`, bundle audit, and `make check`. The ordinary browser suite passes
+38 tests with 14 manual-gate skips. The device-enabled 250-node/1,000-edge scale
+gate passes on desktop and mobile without changing topology cardinality.
 
 ## Completion summary
 
-Pending.
+Implemented capability-gated navigation, full-response loading with SSE
+invalidation, deferred client-side search, URL-backed platform/control filters,
+desktop table/inspector, mobile list/full-screen detail, and explicit disabled,
+stale, empty, and request-error states. The Devices chunk remains lazy and does
+not increase the Live workspace chunk. Copy controls, conflict presentation in
+Live, and View in Live are intentionally completed by issue #151.

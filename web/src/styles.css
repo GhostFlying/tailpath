@@ -35,6 +35,18 @@ button {
   color: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-shell {
   height: 100%;
   background: #f6f7f8;
@@ -840,6 +852,10 @@ button {
     grid-template-columns: 34px 48px;
     gap: 17px;
     margin-right: 14px;
+  }
+  .topbar.has-devices .workspace-tabs {
+    grid-template-columns: 34px 48px 48px;
+    gap: 13px;
   }
   .workspace-tabs a {
     justify-content: center;
