@@ -39,6 +39,33 @@ identity directory. `docker compose down` followed by `docker compose up` must
 therefore retain the same enrolled identity. Do not use `down -v` unless the
 database and Tailnet identity are intentionally being destroyed together.
 
+## Optional Devices API
+
+The base Compose model requires no control-plane credential. To enable the
+device directory, use the provided Devices override and set only the OAuth
+client ID, Tailnet selector, and host secret-file path in the environment. The
+secret value belongs in a separate file under a mode-0700 host directory. The
+distroless nonroot container needs that file to be mode 0444 inside the private
+parent, matching the auth-key file boundary above.
+
+The server accepts `--devices-oauth-client-id`,
+`--devices-oauth-client-secret-file`, and `--devices-tailnet`, with matching
+`TAILPATH_DEVICES_OAUTH_CLIENT_ID`,
+`TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE`, and
+`TAILPATH_DEVICES_TAILNET` environment values. Flags take precedence over the
+environment. The Tailnet defaults to `-`. Client ID and secret file must be
+configured together; a partial configuration, empty file, or unreadable file
+is a startup error. The secret is a renewable OAuth credential, so unlike the
+one-use tsnet enrollment key it must not be cleared while synchronization is
+enabled.
+
+The OAuth client must have only `devices:core:read`. Runtime observation stays
+available when directory refresh fails: the Devices workspace retains the last
+successful snapshot and marks it stale, while Live traffic, collectors, and
+History continue normally. Disabling the configuration removes the current
+directory presentation on restart but does not delete canonical identity or
+traffic History.
+
 ## Image channels
 
 Semantic-version tags and `latest` are stable release artifacts. Every fully

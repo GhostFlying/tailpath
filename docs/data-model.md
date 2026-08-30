@@ -5,6 +5,15 @@ the current Tailnet and include StableNodeID, NodeID, node key, disco key, and
 time-valid Tailscale IP. MagicDNS, hostname, and reported operating system are
 display/search metadata and never identity aliases.
 
+Runtime presentation and optional directory presentation are stored as
+separate layers. A directory record's API `nodeId` is its StableNodeID and is
+the only directory identifier that may establish the stable node identity. The
+legacy numeric Devices API `id` is ignored. A directory NodeKey may attach an
+otherwise unresolved runtime placeholder to that stable node, but it can never
+merge two different StableNodeIDs. Such a collision is retained as a metadata
+conflict. Directory addresses are display values and never enter the global IP
+alias index.
+
 Resolution prefers StableNodeID, then NodeID/node key, disco key, time-valid
 Tailscale IP, and scoped relay session correlation. A relay session client ID,
 short disco hint, or underlay endpoint is never inserted into the global alias
@@ -21,6 +30,23 @@ MagicDNS short name is the preferred UI label and remains display metadata, so
 renaming it updates presentation without changing canonical identity. A
 non-empty OS value from the latest trusted report similarly refreshes the
 existing node's device presentation; older collectors may omit it.
+
+While a directory record is present, its MagicDNS name, hostname, OS, and
+display IPs are authoritative for presentation. Runtime identity, edges,
+traffic, freshness, observable state, and online state remain authoritative
+runtime evidence. When both layers have comparable non-empty DNS name,
+hostname, OS, or IP values and they disagree after case, trailing-dot, and
+address-order normalization, the effective node retains the directory value
+and exposes both values and collection times as an amber metadata conflict.
+Tags and connected-to-control state remain directory-only dimensions.
+
+A successful full directory snapshot immediately removes records absent from
+that response. Their canonical IDs and redirects remain durable, while
+presentation falls back to current runtime values. A refresh failure retains
+the last successful directory snapshot as stale. A directory-only canonical
+node may exist in the Devices workspace, but it never appears in Live topology
+or Live node counts until runtime evidence places it on a visible active or
+recent edge.
 
 Each observable canonical node owns its current inventory generation and peer
 membership. A reporter instance owns only its process-local message sequence,

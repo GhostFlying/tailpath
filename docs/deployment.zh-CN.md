@@ -34,6 +34,28 @@ chmod 0444 secrets/tailscale-authkey
 所以 `docker compose down` 后再 `docker compose up` 必须继续使用同一个已注册身份。
 除非明确要一起删除数据库和 Tailnet identity，否则不要执行 `down -v`。
 
+## 可选 Devices API
+
+基础 Compose 不需要任何控制面 credential。启用设备目录时，使用提供的 Devices
+override，并且只在 environment 中设置 OAuth client ID、Tailnet selector 和宿主机
+secret 文件路径。Secret value 必须放在 mode-0700 的独立宿主目录中；distroless
+nonroot container 需要该文件在私有父目录内为 mode-0444，与上面的 auth-key 文件
+边界一致。
+
+Server 支持 `--devices-oauth-client-id`、
+`--devices-oauth-client-secret-file`、`--devices-tailnet`，以及对应的
+`TAILPATH_DEVICES_OAUTH_CLIENT_ID`、
+`TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE`、
+`TAILPATH_DEVICES_TAILNET`。Flag 优先于 environment，Tailnet 默认 `-`。Client ID
+与 secret file 必须同时配置；部分配置、空文件或不可读文件都会导致启动失败。该
+secret 是可续期的 OAuth credential，与一次性 tsnet enrollment key 不同，启用同步
+期间不能清零。
+
+OAuth client 只能拥有 `devices:core:read`。Directory refresh 失败不会影响 runtime
+observation：Devices workspace 保留 last-good snapshot 并标记 stale，Live traffic、
+collector 和 History 继续工作。移除配置并重启会清除当前 directory presentation，
+但不会删除 canonical identity 或 traffic History。
+
 ## Image channels
 
 SemVer tags 和 `latest` 属于稳定 release artifacts。每次 `main` CI 全部成功后，

@@ -24,5 +24,12 @@ Container 部署应通过 `TS_AUTHKEY=file:/run/secrets/...` 传递 reusable aut
 enrollment 后清零 secret。Environment 和 Compose model 中只保存文件路径，不保存
 credential 值。
 
-Runtime 不能主动探测、抓包、修改策略或 Tailscale preferences。Devices API
-enrichment 是可选只读能力，使用独立最小权限 credential。
+Runtime 不能主动探测、抓包、修改策略或 Tailscale preferences。
+
+Devices API enrichment 是可选只读能力，使用独立 OAuth client，scope 固定为
+`devices:core:read`。Tailpath 不接受 API key，也不请求 device posture、ACL、user
+或任何 write scope。Client secret 只从文件读取，不得进入 environment、SQLite、
+runtime checkpoint、日志、API error 或 dogfood evidence。只保留规范化的设备 identity
+和展示字段；raw API response、用户数据、route、posture 和管理字段立即丢弃。远端错误
+只向 UI 暴露 unauthorized、forbidden、rate-limited、unavailable、timeout 或
+invalid-response 等固定分类，不转发 response body 或 credential 细节。

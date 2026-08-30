@@ -37,7 +37,15 @@ HTTPReporter, native collector reuse, and a runnable multi-instance example.
 v0.4 exits after isolated Linux dogfood proves independent runtime identity,
 traffic, withdrawal, restart, History, and existing scale behavior.
 
+## v0.5: Optional device directory
+
+Optional read-only Tailscale Devices API enrichment, a separate Devices
+workspace, deterministic StableNodeID reconciliation, and explicit metadata
+conflicts. Directory data enriches presentation and search only; it never
+creates Live nodes, edges, traffic, or online state. v0.5 exits after real
+least-privilege OAuth dogfood, scale gates, and an independent blocker review.
+
 ## v1.0: Stable
 
-Optional Devices API enrichment, stable `/api/v1`, migration compatibility,
-cross-platform validation, and security/documentation review.
+Stable `/api/v1`, migration compatibility, cross-platform validation, and
+security/documentation review.

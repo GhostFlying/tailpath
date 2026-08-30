@@ -51,5 +51,21 @@ repeated inspection rather than marketing presentation.
 - Mobile History rows reserve separate identity and traffic-metadata columns;
   recency and directional totals use explicit grid spacing rather than visual
   transforms, while long connection names truncate before metadata moves.
+- Devices is a separate catalog workspace. Desktop uses an open table and one
+  inspector rather than a grid of cards; mobile uses flat rows and a full-screen
+  detail route. Directory control status and Tailpath runtime observation are
+  always labeled as independent dimensions. Do not reuse Live active/recent
+  language for control-plane connection state.
+- Device search and filters must preserve URL state. Long MagicDNS names,
+  StableNodeIDs, IPv4, IPv6, and tags must remain selectable and wrap or
+  truncate inside stable columns without resizing workspace navigation.
+- Use one familiar copy icon for each MagicDNS name and each individual IP.
+  StableNodeID remains selectable without a copy affordance. Clipboard actions
+  must work on insecure Tailnet HTTP pages through a controlled textarea
+  fallback and announce the result through `aria-live`; native long-press text
+  selection must remain available.
+- Directory/runtime metadata conflicts use the same amber warning in the
+  Devices list, device detail, and Live inspector, with both normalized values
+  and collection times. Color is never the only conflict signal.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
