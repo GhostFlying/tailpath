@@ -34,6 +34,9 @@ repeated inspection rather than marketing presentation.
   observed, not on the process that reports it. One reporter may export several
   runtime views. Label peer-only nodes separately and retain collector clock
   warnings.
+- Keep the path-specific color and shape for a resolved canonical Peer Relay,
+  while rendering its reported platform icon inside that anatomy. Virtual or
+  unresolved relay markers must not invent a platform icon.
 - Runtime status reports known views as `N runtimes reporting`, adding
   `N reporting · M stale` only when previously known views expire. Do not use
   an `N of M` ratio without an explicit expected-runtime inventory.
