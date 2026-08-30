@@ -43,11 +43,12 @@ Fallback copy can steal focus or break native long-press selection.
 
 ## Current state
 
-Not started.
+Copy controls, HTTP fallback, conflict provenance, conditional Live navigation,
+and one-shot graph focus are implemented with desktop/mobile browser coverage.
 
 ## Next step
 
-Begin after the Devices workspace is reviewable.
+Run the final gate and open a Draft PR on top of the Devices workspace.
 
 ## Verification
 
@@ -56,4 +57,10 @@ Playwright interaction tests, accessibility inspection, screenshots, and
 
 ## Completion summary
 
-Pending.
+MagicDNS and each Tailscale IP have independent copy controls while StableNodeID
+remains selectable without a copy action. Clipboard API failure falls back to a
+temporary off-screen textarea and restores focus. A shared amber conflict view
+shows both authorities and collection times in Devices and the Live Inspector.
+Only nodes in the current Live visible set receive View in Live; the deep link
+selects and centers that canonical node without relayout and preserves browser
+back navigation.

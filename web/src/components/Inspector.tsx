@@ -16,6 +16,7 @@ import type {
   TopologyEdge,
   TopologyNode,
 } from "../api/types";
+import { MetadataConflictList } from "./MetadataConflictList";
 import { formatAgo, formatRate, nodeLabel, pathLabel } from "../lib/format";
 import { platformPresentation } from "../lib/platform";
 import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
@@ -245,6 +246,7 @@ function NodeDetails({
           />
         ) : null}
       </dl>
+      <MetadataConflictList conflicts={node.directory?.conflicts ?? []} />
     </>
   );
 }
