@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -110,6 +111,81 @@ func TestCollectorCheckOffSkipsRelayLocalAPI(t *testing.T) {
 func TestCollectorConfigRejectsUnknownRelayMode(t *testing.T) {
 	if _, err := parseCollectorConfig([]string{"--relay-telemetry=on"}, func(string) string { return "" }); err == nil {
 		t.Fatal("unknown relay telemetry mode was accepted")
+	}
+}
+
+func TestDevicesServerConfigPrecedenceAndSecretFile(t *testing.T) {
+	directory := t.TempDir()
+	environmentSecret := filepath.Join(directory, "environment-secret")
+	flagSecret := filepath.Join(directory, "flag-secret")
+	if err := os.WriteFile(environmentSecret, []byte(" environment-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flagSecret, []byte("flag-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{
+		"TAILPATH_DEVICES_OAUTH_CLIENT_ID":          "environment-client",
+		"TAILPATH_DEVICES_OAUTH_CLIENT_SECRET_FILE": environmentSecret,
+		"TAILPATH_DEVICES_TAILNET":                  "environment.example",
+	}
+	getenv := func(key string) string { return environment[key] }
+
+	disabled, err := parseDevicesServerConfig(nil, func(string) string { return "" }, os.ReadFile)
+	if err != nil || disabled.enabled || disabled.tailnet != "-" || disabled.clientSecret != "" {
+		t.Fatalf("disabled config = %#v, err=%v", disabled, err)
+	}
+	fromEnvironment, err := parseDevicesServerConfig(nil, getenv, os.ReadFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fromEnvironment.enabled || fromEnvironment.clientID != "environment-client" ||
+		fromEnvironment.clientSecret != "environment-value" || fromEnvironment.tailnet != "environment.example" {
+		t.Fatalf("environment config = %#v", fromEnvironment)
+	}
+	fromFlags, err := parseDevicesServerConfig([]string{
+		"--devices-oauth-client-id=flag-client",
+		"--devices-oauth-client-secret-file=" + flagSecret,
+		"--devices-tailnet=flag.example",
+	}, getenv, os.ReadFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fromFlags.enabled || fromFlags.clientID != "flag-client" || fromFlags.clientSecret != "flag-value" ||
+		fromFlags.tailnet != "flag.example" {
+		t.Fatalf("flag config = %#v", fromFlags)
+	}
+}
+
+func TestDevicesServerConfigRejectsPartialAndInvalidSecrets(t *testing.T) {
+	directory := t.TempDir()
+	emptySecret := filepath.Join(directory, "empty")
+	if err := os.WriteFile(emptySecret, []byte(" \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		arguments []string
+		readFile  func(string) ([]byte, error)
+	}{
+		{name: "client only", arguments: []string{"--devices-oauth-client-id=client"}},
+		{name: "secret only", arguments: []string{"--devices-oauth-client-secret-file=" + emptySecret}},
+		{name: "empty secret", arguments: []string{"--devices-oauth-client-id=client", "--devices-oauth-client-secret-file=" + emptySecret}},
+		{
+			name: "unreadable secret", arguments: []string{"--devices-oauth-client-id=client", "--devices-oauth-client-secret-file=/private/secret"},
+			readFile: func(string) ([]byte, error) { return nil, errors.New("permission denied") },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			readFile := test.readFile
+			if readFile == nil {
+				readFile = os.ReadFile
+			}
+			if config, err := parseDevicesServerConfig(test.arguments, func(string) string { return "" }, readFile); err == nil {
+				t.Fatalf("invalid config accepted: %#v", config)
+			}
+		})
 	}
 }
 

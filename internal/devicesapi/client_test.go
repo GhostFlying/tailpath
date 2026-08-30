@@ -205,6 +205,26 @@ func TestClientSanitizesAPIError(t *testing.T) {
 	}
 }
 
+func TestKindForStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status int
+		want   ErrorKind
+	}{
+		{status: http.StatusUnauthorized, want: ErrorUnauthorized},
+		{status: http.StatusForbidden, want: ErrorForbidden},
+		{status: http.StatusTooManyRequests, want: ErrorRateLimited},
+		{status: http.StatusInternalServerError, want: ErrorUnavailable},
+		{status: http.StatusBadRequest, want: ErrorInvalidResponse},
+	}
+	for _, test := range tests {
+		if got := kindForStatus(test.status); got != test.want {
+			t.Errorf("status %d = %q, want %q", test.status, got, test.want)
+		}
+	}
+}
+
 func mustParseURL(t *testing.T, value string) *url.URL {
 	t.Helper()
 	parsed, err := url.Parse(value)
