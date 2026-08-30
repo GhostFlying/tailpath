@@ -61,6 +61,13 @@ test("presents scoped relay clients and live provenance", async ({
   await expect(graph).toHaveAttribute("data-ready", "true");
   await expect(graph).toHaveAttribute("data-edge-count", "1");
   await expect(graph).toHaveAttribute("data-node-count", "3");
+  await expect(graph).toHaveAttribute("data-relay-platform-icon-count", "1");
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `relay-platform-icon-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
   await clickGraphElement(page, graph, "client-a");
   const inspector = page.getByLabel("Topology details");
   await expect(inspector).toContainText("Unresolved client");
@@ -215,6 +222,7 @@ function topologyNode(
     hostname,
     observable: id === "relay-node",
     online: id === "relay-node",
+    os: id === "relay-node" ? "linux" : undefined,
     lastEvidenceAt: observedAt,
     clockSkewed: false,
     identityStatus,

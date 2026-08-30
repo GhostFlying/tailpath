@@ -171,16 +171,14 @@ function nodeIconLayers(
     positionsY.push(y);
   };
   const identity = identityPresentation(node.identityStatus);
-  if (!isPeerRelay) {
-    add(
-      node.identityStatus && node.identityStatus !== "resolved" && identity
-        ? identity.asset
-        : platformIcon,
-      "24px",
-      "50%",
-      "46%",
-    );
-  }
+  add(
+    node.identityStatus && node.identityStatus !== "resolved" && identity
+      ? identity.asset
+      : platformIcon,
+    isPeerRelay ? "20px" : "24px",
+    "50%",
+    isPeerRelay ? "50%" : "46%",
+  );
   if (node.observable) {
     add(
       "/runtime-telemetry.svg",

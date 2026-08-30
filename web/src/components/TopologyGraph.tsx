@@ -789,10 +789,17 @@ function updateGraphDiagnostics(
 ) {
   if (!element) return;
   const deviceNodes = cy.nodes(".device-node");
+  const relayNodes = cy.nodes(".peer-relay");
   let deviceNodesSquare = true;
+  let relayPlatformIconCount = 0;
   deviceNodes.forEach((node) => {
     if (!node.isNode() || node.width() !== 52 || node.height() !== 52) {
       deviceNodesSquare = false;
+    }
+  });
+  relayNodes.forEach((node) => {
+    if (String(node.data("backgroundImages")).includes("/device-")) {
+      relayPlatformIconCount += 1;
     }
   });
   const positions: string[] = [];
@@ -813,6 +820,7 @@ function updateGraphDiagnostics(
   const pan = cy.pan();
   element.dataset.deviceNodeCount = String(deviceNodes.length);
   element.dataset.deviceNodesSquare = String(deviceNodesSquare);
+  element.dataset.relayPlatformIconCount = String(relayPlatformIconCount);
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));

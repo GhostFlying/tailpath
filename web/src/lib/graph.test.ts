@@ -171,8 +171,9 @@ describe("buildElements", () => {
     expect(String(rendered?.classes)).toContain("clock-skewed");
   });
 
-  it("uses path-specific peer relay anatomy without a platform glyph", () => {
+  it("shows platform metadata inside resolved peer relay anatomy", () => {
     const fixture = topology();
+    fixture.nodes[2].os = "linux";
     fixture.edges = [
       {
         ...edge("relay", "a", "b", "peer_relay"),
@@ -185,9 +186,31 @@ describe("buildElements", () => {
       query: "",
     }).find((item) => item.data?.id === "c");
     expect(rendered?.data?.kind).toBe("peer-relay");
-    expect(rendered?.data?.backgroundImages).toBeUndefined();
+    expect(rendered?.data?.backgroundImages).toEqual(["/device-linux.svg"]);
+    expect(rendered?.data?.backgroundWidths).toEqual(["20px"]);
     expect(String(rendered?.classes)).toContain("relay-node peer-relay");
     expect(String(rendered?.classes)).not.toContain("device-node");
+  });
+
+  it("does not invent a platform icon for a virtual peer relay marker", () => {
+    const fixture = topology();
+    fixture.edges = [
+      {
+        ...edge("relay", "a", "b", "peer_relay"),
+        path: {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "missing-relay",
+        },
+      },
+    ];
+    const rendered = buildElements(fixture, {
+      pathFilter: "peer_relay",
+      showRecent: true,
+      query: "",
+    }).find((item) => item.data?.id === "peer-relay:missing-relay");
+    expect(rendered?.data?.kind).toBe("peer-relay");
+    expect(rendered?.data?.backgroundImages).toBeUndefined();
+    expect(rendered?.data?.persistable).toBeUndefined();
   });
 
   it.each([
