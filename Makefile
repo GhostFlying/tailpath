@@ -36,10 +36,12 @@ build: ## Build the binary and web application.
 
 check: ## Run generated-file, formatting, test, and build checks.
 	./scripts/check-generated.sh
-	sh -n scripts/e2e.sh scripts/exporter-dogfood.sh scripts/select-edge-tag.sh scripts/sanitize-exporter-dogfood.sh scripts/sanitize-relay-dogfood.sh scripts/tests/e2e-harness.sh scripts/tests/exporter-dogfood.sh scripts/tests/select-edge-tag.sh scripts/tests/sanitize-exporter-dogfood.sh scripts/tests/sanitize-relay-dogfood.sh
+	sh -n scripts/e2e.sh scripts/exporter-dogfood.sh scripts/select-edge-tag.sh scripts/sanitize-devices-dogfood.sh scripts/sanitize-exporter-dogfood.sh scripts/sanitize-relay-dogfood.sh scripts/tests/devices-compose.sh scripts/tests/e2e-harness.sh scripts/tests/exporter-dogfood.sh scripts/tests/select-edge-tag.sh scripts/tests/sanitize-devices-dogfood.sh scripts/tests/sanitize-exporter-dogfood.sh scripts/tests/sanitize-relay-dogfood.sh
+	./scripts/tests/devices-compose.sh
 	./scripts/tests/e2e-harness.sh
 	./scripts/tests/exporter-dogfood.sh
 	./scripts/tests/select-edge-tag.sh
+	./scripts/tests/sanitize-devices-dogfood.sh
 	./scripts/tests/sanitize-exporter-dogfood.sh
 	./scripts/tests/sanitize-relay-dogfood.sh
 	test -z "$$(gofmt -l $$(find cmd examples exporter internal -name '*.go' -type f))"

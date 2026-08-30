@@ -59,6 +59,7 @@ visible directory devices and clearly separates control connection state from
 runtime observation state.
 
 The directory is useful but never a completeness promise. Shared or otherwise
-hidden devices may be absent because of upstream visibility behavior. OS
-version is not included in v0.5 because it requires the additional
+hidden devices may be absent because of upstream visibility behavior
+([Tailscale issue #16911](https://github.com/tailscale/tailscale/issues/16911)).
+OS version is not included in v0.5 because it requires the additional
 `devices:posture_attributes:read` scope and per-device requests.

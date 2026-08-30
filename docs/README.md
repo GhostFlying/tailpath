@@ -16,6 +16,8 @@
 - [v0.3 Peer Relay dogfood ledger](evidence/v0.3-peer-relay-dogfood.md)
 - [v0.4 embedded exporter dogfood](runbooks/v0.4-exporter-dogfood.md)
 - [v0.4 embedded exporter dogfood ledger](evidence/v0.4-exporter-dogfood.md)
+- [v0.5 Devices API dogfood](runbooks/v0.5-devices-dogfood.md)
+- [v0.5 Devices API dogfood ledger](evidence/v0.5-devices-dogfood.md)
 - [UI style guide](styleguide.md)
 - [Roadmap](roadmap.md)
 - [Architecture decisions](adr/README.md)
