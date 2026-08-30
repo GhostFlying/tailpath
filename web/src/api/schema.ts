@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the optional control-plane device directory. */
+        get: operations["getDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -130,6 +147,76 @@ export interface components {
         ServerCapabilities: {
             observerProtocolVersions: number[];
             features: string[];
+        };
+        DeviceDirectory: {
+            sync: components["schemas"]["DirectorySyncState"];
+            devices: components["schemas"]["DirectoryDevice"][];
+        };
+        DirectorySyncState: {
+            /** @enum {string} */
+            status: "disabled" | "syncing" | "healthy" | "stale";
+            /** Format: date-time */
+            lastAttemptAt?: string;
+            /** Format: date-time */
+            lastSuccessAt?: string;
+            /** Format: date-time */
+            nextRetryAt?: string;
+            /** @enum {string} */
+            errorCode?: "unauthorized" | "forbidden" | "rate-limited" | "unavailable" | "timeout" | "invalid-response";
+            invalidAddressCount: number;
+        };
+        DirectoryDevice: {
+            id: string;
+            stableNodeId: string;
+            dnsName?: string;
+            hostname?: string;
+            platform?: string;
+            tailscaleIps: string[];
+            tags: string[];
+            connectedToControl: boolean;
+            /** Format: date-time */
+            lastSeen?: string;
+            /** Format: date-time */
+            collectedAt: string;
+            runtime?: components["schemas"]["DirectoryRuntimeEvidence"];
+            identityStatus: components["schemas"]["IdentityStatus"];
+            conflicts: components["schemas"]["MetadataConflict"][];
+        };
+        DirectoryRuntimeEvidence: {
+            dnsName?: string;
+            hostname?: string;
+            platform?: string;
+            tailscaleIps: string[];
+            observable: boolean;
+            online: boolean;
+            /** Format: date-time */
+            lastEvidenceAt: string;
+            /** Format: date-time */
+            collectedAt: string;
+        };
+        MetadataConflict: {
+            /** @enum {string} */
+            field: "dnsName" | "hostname" | "os" | "tailscaleIps";
+            directoryValues: string[];
+            runtimeValues: string[];
+            /** Format: date-time */
+            directoryCollectedAt: string;
+            /** Format: date-time */
+            runtimeCollectedAt: string;
+        };
+        DirectoryEnrichment: {
+            stableNodeId: string;
+            dnsName?: string;
+            hostname?: string;
+            os?: string;
+            tailscaleIps: string[];
+            tags: string[];
+            connectedToControl: boolean;
+            /** Format: date-time */
+            lastSeen?: string;
+            /** Format: date-time */
+            collectedAt: string;
+            conflicts: components["schemas"]["MetadataConflict"][];
         };
         /** @description Normal observer messages contain observers. observer_withdrawal contains observer identities without peers. relay_session_update contains relaySessions instead; the server rejects envelopes that mix the forms. */
         ReportEnvelope: {
@@ -257,6 +344,7 @@ export interface components {
             lastEvidenceAt: string;
             clockSkewed: boolean;
             identityStatus?: components["schemas"]["IdentityStatus"];
+            directory?: components["schemas"]["DirectoryEnrichment"];
         };
         TopologyEdge: {
             id: string;
@@ -459,6 +547,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Topology"];
+                };
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    getDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current full directory snapshot and synchronization state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceDirectory"];
                 };
             };
             401: components["responses"]["Problem"];

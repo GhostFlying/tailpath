@@ -299,9 +299,16 @@ type MetadataConflict struct {
 }
 
 type DirectoryEnrichment struct {
-	DirectoryDevice
-	CollectedAt time.Time          `json:"collectedAt"`
-	Conflicts   []MetadataConflict `json:"conflicts"`
+	StableNodeID       string             `json:"stableNodeId"`
+	DNSName            string             `json:"dnsName,omitempty"`
+	Hostname           string             `json:"hostname,omitempty"`
+	OS                 string             `json:"os,omitempty"`
+	TailscaleIPs       []string           `json:"tailscaleIps"`
+	Tags               []string           `json:"tags"`
+	ConnectedToControl bool               `json:"connectedToControl"`
+	LastSeen           *time.Time         `json:"lastSeen,omitempty"`
+	CollectedAt        time.Time          `json:"collectedAt"`
+	Conflicts          []MetadataConflict `json:"conflicts"`
 }
 
 type DirectoryRuntimeEvidence struct {

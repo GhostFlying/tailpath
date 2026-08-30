@@ -294,6 +294,14 @@ func TestServerRejectsRelayScaleFixtureOutsideFixtureCommand(t *testing.T) {
 	}
 }
 
+func TestServerRejectsDevicesFixtureOutsideFixtureCommand(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runServer([]string{"--devices"}, logger, false)
+	if err == nil || err.Error() != "devices fixture is only available with fixture-server" {
+		t.Fatalf("runServer error = %v, want devices fixture validation", err)
+	}
+}
+
 func TestFixtureServerRejectsMultipleFixtureModes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	err := runServer([]string{"--scale", "--relay-scale"}, logger, true)

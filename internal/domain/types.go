@@ -13,6 +13,7 @@ const ProtocolVersion = 1
 const (
 	FeatureMultiObserver      = "multi-observer"
 	FeatureObserverWithdrawal = "observer-withdrawal"
+	FeatureDeviceDirectory    = "device-directory"
 )
 
 type ServerCapabilities struct {
