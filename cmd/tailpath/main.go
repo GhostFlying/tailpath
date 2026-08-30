@@ -28,6 +28,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/collector"
 	"github.com/GhostFlying/tailpath/internal/devicesapi"
 	"github.com/GhostFlying/tailpath/internal/devicesync"
+	"github.com/GhostFlying/tailpath/internal/domain"
 	"github.com/GhostFlying/tailpath/internal/fixtures"
 	"github.com/GhostFlying/tailpath/internal/httpapi"
 	"github.com/GhostFlying/tailpath/internal/store"
@@ -89,6 +90,7 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	scaleFixture := flags.Bool("scale", false, "load the 250-node/1,000-edge test fixture")
 	relayScaleFixture := flags.Bool("relay-scale", false, "load the 250-node/1,000-relay-session test fixture")
 	emptyFixture := flags.Bool("empty", false, "start without generated reports (fixture-server only)")
+	devicesFixture := flags.Bool("devices", false, "load the 250-device directory fixture (fixture-server only)")
 	devicesFlags := bindDevicesConfigFlags(flags, os.Getenv)
 	if fixture {
 		*networkMode = "plain"
@@ -105,6 +107,9 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	}
 	if *emptyFixture && !fixture {
 		return errors.New("empty fixture is only available with fixture-server")
+	}
+	if *devicesFixture && !fixture {
+		return errors.New("devices fixture is only available with fixture-server")
 	}
 	selectedFixtures := 0
 	for _, selected := range []bool{*scaleFixture, *relayScaleFixture, *emptyFixture} {
@@ -124,6 +129,9 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 	devicesConfig, err := resolveDevicesServerConfig(devicesFlags, os.ReadFile)
 	if err != nil {
 		return err
+	}
+	if *devicesFixture && devicesConfig.enabled {
+		return errors.New("devices fixture cannot be combined with Devices API OAuth")
 	}
 	if err := ensureDatabaseDirectory(*databasePath); err != nil {
 		return err
@@ -207,13 +215,23 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			return fmt.Errorf("clear disabled device directory: %w", err)
 		}
 	} else {
+		if application.DeviceDirectory().Sync.Status == domain.DirectorySyncDisabled {
+			if err := application.UpdateDirectorySyncState(ctx, domain.DirectorySyncState{
+				Status: domain.DirectorySyncSyncing,
+			}); err != nil {
+				return fmt.Errorf("initialize device directory sync: %w", err)
+			}
+		}
 		client := devicesapi.New(devicesapi.Config{
 			Tailnet: devicesConfig.tailnet, ClientID: devicesConfig.clientID, ClientSecret: devicesConfig.clientSecret,
 		})
 		synchronizer := devicesync.New(client, application, devicesync.Options{Logger: logger})
 		go synchronizer.Run(ctx)
 	}
-	serverOptions := httpapi.Options{Authorizer: authorizer, WebDir: *webDir, Logger: logger}
+	serverOptions := httpapi.Options{
+		Authorizer: authorizer, WebDir: *webDir, Logger: logger,
+		DeviceDirectoryEnabled: devicesConfig.enabled || *devicesFixture,
+	}
 	if fixture {
 		if *scaleFixture {
 			scenario, err := fixtures.NewScaleScenario(fixtures.DefaultScaleConfig())
@@ -288,6 +306,17 @@ func runServer(arguments []string, logger *slog.Logger, fixture bool) error {
 			if err := fixtures.New(application, logger).Start(ctx); err != nil {
 				return err
 			}
+		}
+	}
+	if fixture && *devicesFixture {
+		at := time.Now().UTC()
+		syncState := domain.DirectorySyncState{
+			Status: domain.DirectorySyncHealthy, LastAttemptAt: &at, LastSuccessAt: &at,
+		}
+		if _, err := application.ApplyDirectorySnapshotAt(
+			ctx, fixtures.DeviceDirectorySnapshot(at, fixtures.DefaultDirectoryDeviceCount), syncState, at,
+		); err != nil {
+			return fmt.Errorf("load devices fixture: %w", err)
 		}
 	}
 	// Fixture history must exist before the first maintenance pass establishes

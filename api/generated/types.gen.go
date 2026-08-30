@@ -9,6 +9,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for DirectorySyncStateErrorCode.
+const (
+	Forbidden       DirectorySyncStateErrorCode = "forbidden"
+	InvalidResponse DirectorySyncStateErrorCode = "invalid-response"
+	RateLimited     DirectorySyncStateErrorCode = "rate-limited"
+	Timeout         DirectorySyncStateErrorCode = "timeout"
+	Unauthorized    DirectorySyncStateErrorCode = "unauthorized"
+	Unavailable     DirectorySyncStateErrorCode = "unavailable"
+)
+
+// Defines values for DirectorySyncStateStatus.
+const (
+	Disabled DirectorySyncStateStatus = "disabled"
+	Healthy  DirectorySyncStateStatus = "healthy"
+	Stale    DirectorySyncStateStatus = "stale"
+	Syncing  DirectorySyncStateStatus = "syncing"
+)
+
 // Defines values for HistoryWindow.
 const (
 	N15m HistoryWindow = "15m"
@@ -24,6 +42,14 @@ const (
 	Conflict  IdentityStatus = "conflict"
 	Partial   IdentityStatus = "partial"
 	Resolved  IdentityStatus = "resolved"
+)
+
+// Defines values for MetadataConflictField.
+const (
+	DnsName      MetadataConflictField = "dnsName"
+	Hostname     MetadataConflictField = "hostname"
+	Os           MetadataConflictField = "os"
+	TailscaleIps MetadataConflictField = "tailscaleIps"
 )
 
 // Defines values for PathKind.
@@ -49,6 +75,71 @@ const (
 	Active TopologyEdgeState = "active"
 	Recent TopologyEdgeState = "recent"
 )
+
+// DeviceDirectory defines model for DeviceDirectory.
+type DeviceDirectory struct {
+	Devices []DirectoryDevice  `json:"devices"`
+	Sync    DirectorySyncState `json:"sync"`
+}
+
+// DirectoryDevice defines model for DirectoryDevice.
+type DirectoryDevice struct {
+	CollectedAt        time.Time                 `json:"collectedAt"`
+	Conflicts          []MetadataConflict        `json:"conflicts"`
+	ConnectedToControl bool                      `json:"connectedToControl"`
+	DnsName            *string                   `json:"dnsName,omitempty"`
+	Hostname           *string                   `json:"hostname,omitempty"`
+	Id                 string                    `json:"id"`
+	IdentityStatus     IdentityStatus            `json:"identityStatus"`
+	LastSeen           *time.Time                `json:"lastSeen,omitempty"`
+	Platform           *string                   `json:"platform,omitempty"`
+	Runtime            *DirectoryRuntimeEvidence `json:"runtime,omitempty"`
+	StableNodeId       string                    `json:"stableNodeId"`
+	Tags               []string                  `json:"tags"`
+	TailscaleIps       []string                  `json:"tailscaleIps"`
+}
+
+// DirectoryEnrichment defines model for DirectoryEnrichment.
+type DirectoryEnrichment struct {
+	CollectedAt        time.Time          `json:"collectedAt"`
+	Conflicts          []MetadataConflict `json:"conflicts"`
+	ConnectedToControl bool               `json:"connectedToControl"`
+	DnsName            *string            `json:"dnsName,omitempty"`
+	Hostname           *string            `json:"hostname,omitempty"`
+	LastSeen           *time.Time         `json:"lastSeen,omitempty"`
+	Os                 *string            `json:"os,omitempty"`
+	StableNodeId       string             `json:"stableNodeId"`
+	Tags               []string           `json:"tags"`
+	TailscaleIps       []string           `json:"tailscaleIps"`
+}
+
+// DirectoryRuntimeEvidence defines model for DirectoryRuntimeEvidence.
+type DirectoryRuntimeEvidence struct {
+	CollectedAt    time.Time `json:"collectedAt"`
+	DnsName        *string   `json:"dnsName,omitempty"`
+	Hostname       *string   `json:"hostname,omitempty"`
+	LastEvidenceAt time.Time `json:"lastEvidenceAt"`
+	Observable     bool      `json:"observable"`
+	Online         bool      `json:"online"`
+	Platform       *string   `json:"platform,omitempty"`
+	TailscaleIps   []string  `json:"tailscaleIps"`
+}
+
+// DirectorySyncState defines model for DirectorySyncState.
+type DirectorySyncState struct {
+	ErrorCode           *DirectorySyncStateErrorCode `json:"errorCode,omitempty"`
+	InvalidAddressCount int                          `json:"invalidAddressCount"`
+	LastAttemptAt       *time.Time                   `json:"lastAttemptAt,omitempty"`
+	LastSuccessAt       *time.Time                   `json:"lastSuccessAt,omitempty"`
+	NextRetryAt         *time.Time                   `json:"nextRetryAt,omitempty"`
+	Status              DirectorySyncStateStatus     `json:"status"`
+}
+
+// DirectorySyncStateErrorCode defines model for DirectorySyncState.ErrorCode.
+type DirectorySyncStateErrorCode string
+
+// DirectorySyncStateStatus defines model for DirectorySyncState.Status.
+type DirectorySyncStateStatus string
 
 // EdgeHistory defines model for EdgeHistory.
 type EdgeHistory struct {
@@ -105,6 +196,18 @@ type HistoryWindow string
 
 // IdentityStatus defines model for IdentityStatus.
 type IdentityStatus string
+
+// MetadataConflict defines model for MetadataConflict.
+type MetadataConflict struct {
+	DirectoryCollectedAt time.Time             `json:"directoryCollectedAt"`
+	DirectoryValues      []string              `json:"directoryValues"`
+	Field                MetadataConflictField `json:"field"`
+	RuntimeCollectedAt   time.Time             `json:"runtimeCollectedAt"`
+	RuntimeValues        []string              `json:"runtimeValues"`
+}
+
+// MetadataConflictField defines model for MetadataConflict.Field.
+type MetadataConflictField string
 
 // NodeIdentity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 type NodeIdentity struct {
@@ -298,17 +401,18 @@ type TopologyEdgeState string
 
 // TopologyNode defines model for TopologyNode.
 type TopologyNode struct {
-	ClockSkewed    bool            `json:"clockSkewed"`
-	DiscoKey       *string         `json:"discoKey,omitempty"`
-	DnsName        *string         `json:"dnsName,omitempty"`
-	Hostname       *string         `json:"hostname,omitempty"`
-	Id             string          `json:"id"`
-	IdentityStatus *IdentityStatus `json:"identityStatus,omitempty"`
-	LastEvidenceAt time.Time       `json:"lastEvidenceAt"`
-	NodeId         *string         `json:"nodeId,omitempty"`
-	NodeKey        *string         `json:"nodeKey,omitempty"`
-	Observable     bool            `json:"observable"`
-	Online         bool            `json:"online"`
+	ClockSkewed    bool                 `json:"clockSkewed"`
+	Directory      *DirectoryEnrichment `json:"directory,omitempty"`
+	DiscoKey       *string              `json:"discoKey,omitempty"`
+	DnsName        *string              `json:"dnsName,omitempty"`
+	Hostname       *string              `json:"hostname,omitempty"`
+	Id             string               `json:"id"`
+	IdentityStatus *IdentityStatus      `json:"identityStatus,omitempty"`
+	LastEvidenceAt time.Time            `json:"lastEvidenceAt"`
+	NodeId         *string              `json:"nodeId,omitempty"`
+	NodeKey        *string              `json:"nodeKey,omitempty"`
+	Observable     bool                 `json:"observable"`
+	Online         bool                 `json:"online"`
 
 	// Os Reported operating system for display only; never identity evidence.
 	Os           *string   `json:"os,omitempty"`

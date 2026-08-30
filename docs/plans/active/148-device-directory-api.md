@@ -45,11 +45,14 @@ Generated contracts can drift from handlers or expose upstream details.
 
 ## Current state
 
-Not started.
+Implemented on `issue/148-device-api`. The generated contract, authenticated
+handler, optional capability, topology enrichment, and deterministic fixture
+are connected end to end.
 
 ## Next step
 
-Begin after synchronizer and persistence behavior stabilize.
+Open the Draft PR after the full repository gate passes, then build the lazy
+Devices workspace in #149.
 
 ## Verification
 
@@ -57,4 +60,9 @@ Begin after synchronizer and persistence behavior stabilize.
 
 ## Completion summary
 
-Pending.
+Added `GET /api/v1/devices`, fixed sync and error enums, stable full-directory
+responses, runtime evidence, metadata conflicts, and optional topology
+enrichment. Directory NodeKeys remain internal and can only match an existing
+runtime alias; they are not exposed or installed as directory-only aliases.
+The synthetic 250-device fixture includes runtime overlap and directory-only
+nodes without changing Live topology.

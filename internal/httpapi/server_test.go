@@ -12,6 +12,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/aggregate"
 	"github.com/GhostFlying/tailpath/internal/app"
 	"github.com/GhostFlying/tailpath/internal/domain"
+	"github.com/GhostFlying/tailpath/internal/fixtures"
 	"github.com/GhostFlying/tailpath/internal/store"
 )
 
@@ -87,7 +88,7 @@ func TestFixtureLifecycleRouteIsExplicitAndAuthorized(t *testing.T) {
 
 func TestReadAPIsRequireAuthorization(t *testing.T) {
 	server := newTestServer(t, nil)
-	for _, path := range []string{"/api/v1/capabilities", "/api/v1/topology", "/api/v1/events", "/api/v1/history/edges/edge"} {
+	for _, path := range []string{"/api/v1/capabilities", "/api/v1/topology", "/api/v1/devices", "/api/v1/events", "/api/v1/history/edges/edge"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		server.Handler().ServeHTTP(recorder, request)
@@ -114,6 +115,192 @@ func TestCapabilitiesAdvertiseImplementedProtocolFeatures(t *testing.T) {
 		!capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) {
 		t.Fatalf("unexpected capabilities: %#v", capabilities)
 	}
+	if capabilities.SupportsFeature(domain.FeatureDeviceDirectory) {
+		t.Fatalf("disabled directory advertised: %#v", capabilities)
+	}
+
+	server = newTestServerWithOptions(t, Options{Authorizer: staticAuthorizer{}, DeviceDirectoryEnabled: true})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if err := json.NewDecoder(recorder.Body).Decode(&capabilities); err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.SupportsFeature(domain.FeatureDeviceDirectory) {
+		t.Fatalf("enabled directory missing from capabilities: %#v", capabilities)
+	}
+}
+
+func TestDevicesAPIEncodesDisabledAndEmptyCollections(t *testing.T) {
+	server := newTestServer(t, staticAuthorizer{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("devices status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Body.String(); got != "{\"sync\":{\"status\":\"disabled\",\"invalidAddressCount\":0},\"devices\":[]}\n" {
+		t.Fatalf("disabled devices response = %s", got)
+	}
+	if err := server.app.UpdateDirectorySyncState(context.Background(), domain.DirectorySyncState{
+		Status: domain.DirectorySyncSyncing,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recorder = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/devices", nil))
+	if got := recorder.Body.String(); got != "{\"sync\":{\"status\":\"syncing\",\"invalidAddressCount\":0},\"devices\":[]}\n" {
+		t.Fatalf("syncing devices response = %s", got)
+	}
+}
+
+func TestDevicesAPIExposesDirectoryAndRuntimeAsSeparateDimensions(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	server := newTestServerWithOptions(t, Options{Authorizer: staticAuthorizer{}, DeviceDirectoryEnabled: true})
+	_, err := server.app.SubmitAt(context.Background(), domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: now, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{
+				StableNodeID: "stable-runtime", NodeKey: "nodekey:private-runtime",
+				DNSName: "runtime.example.ts.net", Hostname: "runtime-host", OS: "linux",
+				TailscaleIPs: []string{"100.64.0.1"},
+			},
+			InventoryGeneration: "inventory",
+		}},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastSeen := now.Add(-time.Hour)
+	directoryAt := now.Add(time.Minute)
+	_, err = server.app.ApplyDirectorySnapshotAt(context.Background(), domain.DirectorySnapshot{
+		CollectedAt: directoryAt,
+		Devices: []domain.DirectoryDevice{
+			{
+				StableNodeID: "stable-runtime", NodeKey: "nodekey:private-directory",
+				DNSName: "catalog.example.ts.net", Hostname: "catalog-host", OS: "macos",
+				TailscaleIPs: []string{"fd7a:115c:a1e0::1", "100.64.0.2"}, Tags: []string{"tag:dev"},
+				ConnectedToControl: true, LastSeen: &lastSeen,
+			},
+			{
+				StableNodeID: "stable-directory-only", DNSName: "alpha.example.ts.net",
+				TailscaleIPs: []string{}, Tags: []string{}, LastSeen: &lastSeen,
+			},
+		},
+	}, healthyDirectoryState(directoryAt), directoryAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("devices status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	payload := recorder.Body.Bytes()
+	if bytes.Contains(payload, []byte("nodekey:")) {
+		t.Fatalf("devices response leaked identity evidence: %s", payload)
+	}
+	var raw struct {
+		Devices []map[string]any `json:"devices"`
+	}
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, device := range raw.Devices {
+		if device["stableNodeId"] == "stable-runtime" {
+			if _, exists := device["lastSeen"]; exists {
+				t.Fatalf("control-connected device exposed lastSeen: %#v", device)
+			}
+		}
+	}
+	var response deviceDirectoryResponse
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Sync.Status != domain.DirectorySyncHealthy || len(response.Devices) != 2 {
+		t.Fatalf("devices response = %#v", response)
+	}
+	if response.Devices[0].StableNodeID != "stable-directory-only" || response.Devices[1].StableNodeID != "stable-runtime" {
+		t.Fatalf("device sort = %#v", response.Devices)
+	}
+	item := response.Devices[1]
+	if item.Runtime == nil || item.Runtime.Platform != "linux" || !item.Runtime.Observable || !item.Runtime.Online ||
+		item.Platform != "macos" || item.LastSeen != nil || len(item.Conflicts) != 4 {
+		t.Fatalf("directory/runtime dimensions = %#v", item)
+	}
+
+	topologyRecorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(topologyRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/topology", nil))
+	if bytes.Contains(topologyRecorder.Body.Bytes(), []byte("nodekey:private-directory")) {
+		t.Fatalf("topology directory enrichment leaked NodeKey: %s", topologyRecorder.Body.String())
+	}
+	var topology domain.Topology
+	if err := json.NewDecoder(topologyRecorder.Body).Decode(&topology); err != nil {
+		t.Fatal(err)
+	}
+	if len(topology.Nodes) != 1 || topology.Nodes[0].DNSName != "catalog.example.ts.net" || topology.Nodes[0].Directory == nil {
+		t.Fatalf("enriched topology = %#v", topology)
+	}
+}
+
+func TestDevicesAPIKeepsLastGoodWhenSyncIsStale(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	server := newTestServerWithOptions(t, Options{Authorizer: staticAuthorizer{}, DeviceDirectoryEnabled: true})
+	_, err := server.app.ApplyDirectorySnapshotAt(context.Background(), domain.DirectorySnapshot{
+		CollectedAt: now,
+		Devices:     []domain.DirectoryDevice{{StableNodeID: "stable-device", Hostname: "catalog-device"}},
+	}, healthyDirectoryState(now), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := now.Add(5 * time.Minute)
+	retry := attempt.Add(30 * time.Second)
+	if err := server.app.UpdateDirectorySyncStateAt(context.Background(), domain.DirectorySyncState{
+		Status: domain.DirectorySyncStale, LastAttemptAt: &attempt, LastSuccessAt: &now,
+		NextRetryAt: &retry, ErrorCode: domain.DirectoryErrorRateLimited,
+	}, attempt); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/devices", nil))
+	var response deviceDirectoryResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Sync.Status != domain.DirectorySyncStale || response.Sync.ErrorCode != domain.DirectoryErrorRateLimited ||
+		len(response.Devices) != 1 || response.Devices[0].Hostname != "catalog-device" {
+		t.Fatalf("stale directory = %#v", response)
+	}
+}
+
+func TestDevicesAPIReturnsFull250DeviceFixtureWithoutChangingLive(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	server := newTestServerWithOptions(t, Options{Authorizer: staticAuthorizer{}, DeviceDirectoryEnabled: true})
+	if _, err := server.app.ApplyDirectorySnapshotAt(
+		context.Background(), fixtures.DeviceDirectorySnapshot(now, fixtures.DefaultDirectoryDeviceCount),
+		healthyDirectoryState(now), now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/devices", nil))
+	var response deviceDirectoryResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Devices) != fixtures.DefaultDirectoryDeviceCount {
+		t.Fatalf("fixture devices = %d", len(response.Devices))
+	}
+	if topology := server.app.Aggregator.Snapshot(); len(topology.Nodes) != 0 || len(topology.Edges) != 0 {
+		t.Fatalf("directory fixture entered Live: nodes=%d edges=%d", len(topology.Nodes), len(topology.Edges))
+	}
+}
+
+func healthyDirectoryState(at time.Time) domain.DirectorySyncState {
+	return domain.DirectorySyncState{Status: domain.DirectorySyncHealthy, LastAttemptAt: &at, LastSuccessAt: &at}
 }
 
 func TestLegacySingleObserverReportIngestsWithoutCapabilityNegotiation(t *testing.T) {

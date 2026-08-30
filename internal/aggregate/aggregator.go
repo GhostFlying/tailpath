@@ -226,15 +226,9 @@ func (a *Aggregator) applyDirectorySnapshotLocked(snapshot domain.DirectorySnaps
 	nodeKeyConflicts := snapshot.ConflictingNodeKeys()
 
 	for _, device := range snapshot.Devices {
-		identity := domain.NodeIdentity{StableNodeID: device.StableNodeID}
-		var conflictingNodeID string
-		if device.NodeKey != "" {
-			if _, conflicted := nodeKeyConflicts[device.NodeKey]; !conflicted {
-				identity.NodeKey = device.NodeKey
-				conflictingNodeID = a.conflictingStableAliasLocked(device.StableNodeID, "node-key:"+device.NodeKey)
-			}
-		}
-		nodeID, created, canonicalChanged := a.resolveIdentityLocked(identity, snapshot.CollectedAt)
+		_, nodeKeyConflicted := nodeKeyConflicts[device.NodeKey]
+		nodeID, conflictingNodeID, created, canonicalChanged :=
+			a.resolveDirectoryDeviceLocked(device, snapshot.CollectedAt, nodeKeyConflicted)
 		if created {
 			node := a.state.Nodes[nodeID]
 			node.LastEvidence = time.Time{}
@@ -260,6 +254,42 @@ func (a *Aggregator) applyDirectorySnapshotLocked(snapshot domain.DirectorySnaps
 	}
 	a.state.Directory = state
 	return result
+}
+
+func (a *Aggregator) resolveDirectoryDeviceLocked(
+	device domain.DirectoryDevice,
+	seenAt time.Time,
+	nodeKeyConflicted bool,
+) (nodeID, conflictingNodeID string, created, canonicalChanged bool) {
+	stableAlias := "stable:" + device.StableNodeID
+	nodeID = a.state.Aliases[stableAlias]
+	if device.NodeKey != "" && !nodeKeyConflicted {
+		nodeKeyAlias := "node-key:" + device.NodeKey
+		nodeKeyID := a.state.Aliases[nodeKeyAlias]
+		if nodeKeyID != "" {
+			conflictingNodeID = a.conflictingStableAliasLocked(device.StableNodeID, nodeKeyAlias)
+			if conflictingNodeID == "" {
+				switch {
+				case nodeID == "":
+					nodeID = nodeKeyID
+					node := a.state.Nodes[nodeID]
+					node.Identity = mergeIdentity(node.Identity, domain.NodeIdentity{StableNodeID: device.StableNodeID})
+					node.IdentityStatus = domain.IdentityResolved
+					a.state.Aliases[stableAlias] = nodeID
+					canonicalChanged = true
+				case nodeKeyID != nodeID:
+					a.mergeNodesLocked(nodeID, nodeKeyID)
+					canonicalChanged = true
+				}
+			}
+		}
+	}
+	if nodeID == "" {
+		nodeID, created, canonicalChanged = a.resolveIdentityLocked(
+			domain.NodeIdentity{StableNodeID: device.StableNodeID}, seenAt,
+		)
+	}
+	return nodeID, conflictingNodeID, created, canonicalChanged
 }
 
 func (a *Aggregator) UpdateDirectorySyncState(syncState domain.DirectorySyncState) error {
@@ -1439,10 +1469,19 @@ func (a *Aggregator) effectiveNodeIdentityLocked(nodeID string, node *nodeState)
 	identity.OS = device.OS
 	identity.TailscaleIPs = append([]string{}, device.TailscaleIPs...)
 	return identity, &domain.DirectoryEnrichment{
-		DirectoryDevice: device.Clone(),
-		CollectedAt:     collectedAt,
-		Conflicts:       append([]domain.MetadataConflict{}, conflicts...),
+		StableNodeID: device.StableNodeID, DNSName: device.DNSName, Hostname: device.Hostname, OS: device.OS,
+		TailscaleIPs: append([]string{}, device.TailscaleIPs...), Tags: append([]string{}, device.Tags...),
+		ConnectedToControl: device.ConnectedToControl, LastSeen: cloneTimePointer(device.LastSeen),
+		CollectedAt: collectedAt, Conflicts: append([]domain.MetadataConflict{}, conflicts...),
 	}
+}
+
+func cloneTimePointer(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
 }
 
 func (a *Aggregator) directoryDeviceForNodeLocked(nodeID string) (domain.DirectoryDevice, time.Time, bool) {

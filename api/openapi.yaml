@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Tailpath API
-  version: 0.2.0
+  version: 0.5.0
   description: Sparse observer ingest, live topology, and bounded history API.
 servers:
   - url: /api/v1
@@ -51,6 +51,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Topology'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /devices:
+    get:
+      operationId: getDevices
+      summary: Return the optional control-plane device directory.
+      responses:
+        '200':
+          description: Current full directory snapshot and synchronization state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceDirectory'
         '401':
           $ref: '#/components/responses/Problem'
   /events:
@@ -176,6 +189,170 @@ components:
           items:
             type: string
             minLength: 1
+    DeviceDirectory:
+      type: object
+      required: [sync, devices]
+      properties:
+        sync:
+          $ref: '#/components/schemas/DirectorySyncState'
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DirectoryDevice'
+    DirectorySyncState:
+      type: object
+      required: [status, invalidAddressCount]
+      properties:
+        status:
+          type: string
+          enum: [disabled, syncing, healthy, stale]
+        lastAttemptAt:
+          type: string
+          format: date-time
+        lastSuccessAt:
+          type: string
+          format: date-time
+        nextRetryAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+          enum: [unauthorized, forbidden, rate-limited, unavailable, timeout, invalid-response]
+        invalidAddressCount:
+          type: integer
+          minimum: 0
+    DirectoryDevice:
+      type: object
+      required:
+        - id
+        - stableNodeId
+        - tailscaleIps
+        - tags
+        - connectedToControl
+        - collectedAt
+        - identityStatus
+        - conflicts
+      properties:
+        id:
+          type: string
+          minLength: 1
+        stableNodeId:
+          type: string
+          minLength: 1
+        dnsName:
+          type: string
+        hostname:
+          type: string
+        platform:
+          type: string
+        tailscaleIps:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        connectedToControl:
+          type: boolean
+        lastSeen:
+          type: string
+          format: date-time
+        collectedAt:
+          type: string
+          format: date-time
+        runtime:
+          $ref: '#/components/schemas/DirectoryRuntimeEvidence'
+        identityStatus:
+          $ref: '#/components/schemas/IdentityStatus'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetadataConflict'
+    DirectoryRuntimeEvidence:
+      type: object
+      required: [tailscaleIps, observable, online, lastEvidenceAt, collectedAt]
+      properties:
+        dnsName:
+          type: string
+        hostname:
+          type: string
+        platform:
+          type: string
+        tailscaleIps:
+          type: array
+          items:
+            type: string
+        observable:
+          type: boolean
+        online:
+          type: boolean
+        lastEvidenceAt:
+          type: string
+          format: date-time
+        collectedAt:
+          type: string
+          format: date-time
+    MetadataConflict:
+      type: object
+      required: [field, directoryValues, runtimeValues, directoryCollectedAt, runtimeCollectedAt]
+      properties:
+        field:
+          type: string
+          enum: [dnsName, hostname, os, tailscaleIps]
+        directoryValues:
+          type: array
+          items:
+            type: string
+        runtimeValues:
+          type: array
+          items:
+            type: string
+        directoryCollectedAt:
+          type: string
+          format: date-time
+        runtimeCollectedAt:
+          type: string
+          format: date-time
+    DirectoryEnrichment:
+      type: object
+      required:
+        - stableNodeId
+        - tailscaleIps
+        - tags
+        - connectedToControl
+        - collectedAt
+        - conflicts
+      properties:
+        stableNodeId:
+          type: string
+          minLength: 1
+        dnsName:
+          type: string
+        hostname:
+          type: string
+        os:
+          type: string
+        tailscaleIps:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        connectedToControl:
+          type: boolean
+        lastSeen:
+          type: string
+          format: date-time
+        collectedAt:
+          type: string
+          format: date-time
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetadataConflict'
     ReportEnvelope:
       type: object
       required: [version, reportId, reporterInstanceId, sequence, collectedAt, kind]
@@ -455,6 +632,8 @@ components:
               type: boolean
             identityStatus:
               $ref: '#/components/schemas/IdentityStatus'
+            directory:
+              $ref: '#/components/schemas/DirectoryEnrichment'
     TopologyEdge:
       type: object
       required: [id, source, target, systemTelemetry, path, state, aToBBytesPerSecond, bToABytesPerSecond, lastActive, observations]

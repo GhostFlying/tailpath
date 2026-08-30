@@ -26,21 +26,64 @@ type Authorizer interface {
 }
 
 type Options struct {
-	Authorizer            Authorizer
-	WebDir                string
-	Logger                *slog.Logger
-	TopologyEventInterval time.Duration
-	FixtureMutation       func(context.Context) (any, error)
-	FixtureLifecycle      func(context.Context) (any, error)
+	Authorizer             Authorizer
+	WebDir                 string
+	Logger                 *slog.Logger
+	DeviceDirectoryEnabled bool
+	TopologyEventInterval  time.Duration
+	FixtureMutation        func(context.Context) (any, error)
+	FixtureLifecycle       func(context.Context) (any, error)
 }
 
 type Server struct {
-	app        *app.App
-	authorizer Authorizer
-	webDir     string
-	logger     *slog.Logger
-	mux        *http.ServeMux
-	eventEvery time.Duration
+	app                    *app.App
+	authorizer             Authorizer
+	webDir                 string
+	logger                 *slog.Logger
+	mux                    *http.ServeMux
+	eventEvery             time.Duration
+	deviceDirectoryEnabled bool
+}
+
+type deviceDirectoryResponse struct {
+	Sync    deviceDirectorySyncResponse `json:"sync"`
+	Devices []deviceDirectoryNode       `json:"devices"`
+}
+
+type deviceDirectorySyncResponse struct {
+	Status              domain.DirectorySyncStatus `json:"status"`
+	LastAttemptAt       *time.Time                 `json:"lastAttemptAt,omitempty"`
+	LastSuccessAt       *time.Time                 `json:"lastSuccessAt,omitempty"`
+	NextRetryAt         *time.Time                 `json:"nextRetryAt,omitempty"`
+	ErrorCode           domain.DirectoryErrorCode  `json:"errorCode,omitempty"`
+	InvalidAddressCount int                        `json:"invalidAddressCount"`
+}
+
+type deviceDirectoryNode struct {
+	ID                 string                    `json:"id"`
+	StableNodeID       string                    `json:"stableNodeId"`
+	DNSName            string                    `json:"dnsName,omitempty"`
+	Hostname           string                    `json:"hostname,omitempty"`
+	Platform           string                    `json:"platform,omitempty"`
+	TailscaleIPs       []string                  `json:"tailscaleIps"`
+	Tags               []string                  `json:"tags"`
+	ConnectedToControl bool                      `json:"connectedToControl"`
+	LastSeen           *time.Time                `json:"lastSeen,omitempty"`
+	CollectedAt        time.Time                 `json:"collectedAt"`
+	Runtime            *deviceDirectoryRuntime   `json:"runtime,omitempty"`
+	IdentityStatus     domain.IdentityStatus     `json:"identityStatus"`
+	Conflicts          []domain.MetadataConflict `json:"conflicts"`
+}
+
+type deviceDirectoryRuntime struct {
+	DNSName        string    `json:"dnsName,omitempty"`
+	Hostname       string    `json:"hostname,omitempty"`
+	Platform       string    `json:"platform,omitempty"`
+	TailscaleIPs   []string  `json:"tailscaleIps"`
+	Observable     bool      `json:"observable"`
+	Online         bool      `json:"online"`
+	LastEvidenceAt time.Time `json:"lastEvidenceAt"`
+	CollectedAt    time.Time `json:"collectedAt"`
 }
 
 type transportIdentityKey struct{}
@@ -53,16 +96,18 @@ func New(application *app.App, options Options) *Server {
 		options.TopologyEventInterval = 250 * time.Millisecond
 	}
 	server := &Server{
-		app:        application,
-		authorizer: options.Authorizer,
-		webDir:     options.WebDir,
-		logger:     options.Logger,
-		mux:        http.NewServeMux(),
-		eventEvery: options.TopologyEventInterval,
+		app:                    application,
+		authorizer:             options.Authorizer,
+		webDir:                 options.WebDir,
+		logger:                 options.Logger,
+		mux:                    http.NewServeMux(),
+		eventEvery:             options.TopologyEventInterval,
+		deviceDirectoryEnabled: options.DeviceDirectoryEnabled,
 	}
 	server.mux.HandleFunc("GET /api/v1/capabilities", server.getCapabilities)
 	server.mux.HandleFunc("POST /api/v1/reports", server.submitReport)
 	server.mux.HandleFunc("GET /api/v1/topology", server.getTopology)
+	server.mux.HandleFunc("GET /api/v1/devices", server.getDevices)
 	server.mux.HandleFunc("GET /api/v1/events", server.streamEvents)
 	server.mux.HandleFunc("GET /api/v1/history/nodes", server.getHistoryNodes)
 	server.mux.HandleFunc("GET /api/v1/history/edges", server.listHistoryEdges)
@@ -95,7 +140,11 @@ func New(application *app.App, options Options) *Server {
 }
 
 func (s *Server) getCapabilities(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, domain.CurrentServerCapabilities())
+	capabilities := domain.CurrentServerCapabilities()
+	if s.deviceDirectoryEnabled {
+		capabilities.Features = append(capabilities.Features, domain.FeatureDeviceDirectory)
+	}
+	writeJSON(response, http.StatusOK, capabilities)
 }
 
 func (s *Server) Handler() http.Handler {
@@ -151,6 +200,47 @@ func (s *Server) authorizeAPI(next http.Handler) http.Handler {
 
 func (s *Server) getTopology(response http.ResponseWriter, _ *http.Request) {
 	writeJSON(response, http.StatusOK, s.app.Aggregator.Snapshot())
+}
+
+func (s *Server) getDevices(response http.ResponseWriter, _ *http.Request) {
+	directory := s.app.DeviceDirectory()
+	result := deviceDirectoryResponse{
+		Sync: deviceDirectorySyncResponse{
+			Status: directory.Sync.Status, LastAttemptAt: directory.Sync.LastAttemptAt,
+			LastSuccessAt: directory.Sync.LastSuccessAt, NextRetryAt: directory.Sync.NextRetryAt,
+			ErrorCode: directory.Sync.ErrorCode, InvalidAddressCount: directory.Sync.InvalidAddressCount,
+		},
+		Devices: make([]deviceDirectoryNode, 0, len(directory.Devices)),
+	}
+	for _, entry := range directory.Devices {
+		device := entry.Device
+		item := deviceDirectoryNode{
+			ID: entry.ID, StableNodeID: device.StableNodeID, DNSName: device.DNSName, Hostname: device.Hostname,
+			Platform: device.OS, TailscaleIPs: append([]string{}, device.TailscaleIPs...),
+			Tags: append([]string{}, device.Tags...), ConnectedToControl: device.ConnectedToControl,
+			LastSeen: cloneTimePointer(device.LastSeen), CollectedAt: entry.CollectedAt,
+			IdentityStatus: entry.IdentityStatus, Conflicts: append([]domain.MetadataConflict{}, entry.Conflicts...),
+		}
+		if entry.Runtime != nil {
+			item.Runtime = &deviceDirectoryRuntime{
+				DNSName: entry.Runtime.Identity.DNSName, Hostname: entry.Runtime.Identity.Hostname,
+				Platform:     entry.Runtime.Identity.OS,
+				TailscaleIPs: append([]string{}, entry.Runtime.Identity.TailscaleIPs...),
+				Observable:   entry.Runtime.Observable, Online: entry.Runtime.Online,
+				LastEvidenceAt: entry.Runtime.LastEvidenceAt, CollectedAt: entry.Runtime.CollectedAt,
+			}
+		}
+		result.Devices = append(result.Devices, item)
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+func cloneTimePointer(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
 }
 
 func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Request) {

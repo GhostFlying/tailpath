@@ -16,7 +16,7 @@ func TestDirectoryOnlyDeviceNeverAppearsInLive(t *testing.T) {
 	result, err := aggregator.ApplyDirectorySnapshot(domain.DirectorySnapshot{
 		CollectedAt: now,
 		Devices: []domain.DirectoryDevice{{
-			StableNodeID: "stable-directory", DNSName: "catalog-only.example.ts.net",
+			StableNodeID: "stable-directory", NodeKey: "nodekey:directory-only", DNSName: "catalog-only.example.ts.net",
 			TailscaleIPs: []string{"100.64.0.20"},
 		}},
 	}, healthyDirectorySync(now))
@@ -36,6 +36,9 @@ func TestDirectoryOnlyDeviceNeverAppearsInLive(t *testing.T) {
 	}
 	if _, exists := aggregator.state.Aliases["ip:100.64.0.20"]; exists {
 		t.Fatal("directory display IP entered runtime alias index")
+	}
+	if _, exists := aggregator.state.Aliases["node-key:nodekey:directory-only"]; exists {
+		t.Fatal("directory-only NodeKey entered runtime alias index")
 	}
 }
 
