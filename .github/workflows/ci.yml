@@ -31,7 +31,7 @@ jobs:
       - run: make bootstrap
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - run: make check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: topology-screenshots
@@ -115,7 +115,7 @@ jobs:
           version: v2.17.1
           args: release --snapshot --clean
       - run: packaging/tests/archive-layout.sh dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-collector-archives
           path: |

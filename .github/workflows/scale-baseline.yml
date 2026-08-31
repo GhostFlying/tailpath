@@ -84,7 +84,7 @@ jobs:
           TAILPATH_E2E_STARTUP_ATTEMPTS: "180"
           TAILPATH_PLAYWRIGHT_OUTPUT_DIR: test-results/relay-scale
         run: ./scripts/e2e.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: v0.4-multi-runtime-exporter-scale-gate
