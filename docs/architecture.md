@@ -65,7 +65,10 @@ The default server is a dedicated tsnet identity. Traffic between a reporter
 and this identity is classified as system telemetry, never subtracted from
 peer counters, and excluded from the Live graph and edge activity counts. The
 classification remains available through the topology API and is retained in
-runtime state, SQLite traffic/history, and provenance for diagnostics.
+runtime state, SQLite traffic/history, and provenance for diagnostics. Normal
+History queries exclude these edges and their control-only nodes; operators can
+request them explicitly with the diagnostic `includeSystemTelemetry=true`
+query parameter.
 Unresolved relay clients are never guessed to be this identity. Sharing a
 tailscaled identity is a degraded opt-in mode because its counters cannot
 separate control traffic from unrelated applications.
@@ -105,10 +108,13 @@ only relay identity, VNI, session ID, and resolution status. Existing logical
 edge mappings apply scoped-node redirects before rollup and query, so relay
 fallback traffic and anchors remain attached to the surviving endpoint pair.
 
-Path transitions compare logical path identity. Observer-local direct endpoints
-remain provenance attributes and do not create a new transition when opposite
-observers report different ends of the same Direct connection. DERP region and
-Peer Relay node changes remain logical transitions. A known Peer Relay node is
+Path state is a sticky primary plus a deterministic set of conflicting fresh
+evidence. A supported primary remains selected regardless of cross-observer
+receipt order; after it expires, endpoint observations outrank relay-side
+observations and canonical node IDs break ties. Transitions are written only
+when the normalized primary/conflict set changes. Direct endpoints, relay VNI,
+session ID, and sample time remain provenance details, while DERP region and
+Peer Relay StableNodeID identify distinct paths. A known Peer Relay node is
 retained in the visible topology for as long as fresh edge provenance refers to
 it.
 
@@ -142,4 +148,6 @@ join a persisted physical-to-logical edge map built from canonical redirects,
 correct direction before deduplicating alias buckets, use keyset pagination,
 and cap detail responses at 200 traffic points and 500 path transitions. A path
 anchor records the latest logical-edge state across all aliases at the start of
-a window without replaying topology.
+a window without replaying topology. Detail responses include source, target,
+observer, and Peer Relay node references so provenance never depends on a
+second identity lookup.

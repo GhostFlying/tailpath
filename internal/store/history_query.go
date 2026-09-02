@@ -20,6 +20,7 @@ type historyEdgeRecord struct {
 	edgeID, sourceID, targetID string
 	firstTrafficAt             time.Time
 	lastTrafficAt              time.Time
+	systemTelemetry            bool
 }
 
 type historyIndex struct {
@@ -50,7 +51,7 @@ type historyPathSet struct {
 	pathKinds map[domain.PathKind]struct{}
 }
 
-func (s *SQLite) HistoryNodes(ctx context.Context, window domain.HistoryWindow, to time.Time) (domain.HistoryNodes, error) {
+func (s *SQLite) HistoryNodes(ctx context.Context, window domain.HistoryWindow, to time.Time, includeSystemTelemetryOption ...bool) (domain.HistoryNodes, error) {
 	if !window.Valid() {
 		return domain.HistoryNodes{}, fmt.Errorf("invalid history window %q", window)
 	}
@@ -59,6 +60,7 @@ func (s *SQLite) HistoryNodes(ctx context.Context, window domain.HistoryWindow, 
 		return domain.HistoryNodes{}, err
 	}
 	from := to.UTC().Add(-window.Duration())
+	includeSystemTelemetry := len(includeSystemTelemetryOption) != 0 && includeSystemTelemetryOption[0]
 	points, err := s.loadTrafficSummaryPoints(ctx, index, window, from, to.UTC())
 	if err != nil {
 		return domain.HistoryNodes{}, err
@@ -66,7 +68,7 @@ func (s *SQLite) HistoryNodes(ctx context.Context, window domain.HistoryWindow, 
 	ids := make(map[string]struct{})
 	for edgeID := range points {
 		edge := index.edges[edgeID]
-		if edge == nil {
+		if edge == nil || (edge.systemTelemetry && !includeSystemTelemetry) {
 			continue
 		}
 		ids[edge.sourceID] = struct{}{}
@@ -116,6 +118,9 @@ func (s *SQLite) HistoryEdges(ctx context.Context, query domain.HistoryEdgeQuery
 	summaries := summarizeHistoryEdges(index, points, paths, from, to.UTC())
 	filtered := summaries[:0]
 	for _, summary := range summaries {
+		if summary.SystemTelemetry && !query.IncludeSystemTelemetry {
+			continue
+		}
 		if nodeID != "" && summary.Source.ID != nodeID && summary.Target.ID != nodeID {
 			continue
 		}
@@ -143,7 +148,7 @@ func (s *SQLite) HistoryEdges(ctx context.Context, query domain.HistoryEdgeQuery
 	return page, nil
 }
 
-func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window domain.HistoryWindow, to time.Time) (domain.EdgeHistory, bool, error) {
+func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window domain.HistoryWindow, to time.Time, includeSystemTelemetryOption ...bool) (domain.EdgeHistory, bool, error) {
 	if !window.Valid() {
 		return domain.EdgeHistory{}, false, fmt.Errorf("invalid history window %q", window)
 	}
@@ -156,7 +161,8 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 		canonicalID = edgeID
 	}
 	edge := index.edges[canonicalID]
-	if edge == nil {
+	includeSystemTelemetry := len(includeSystemTelemetryOption) != 0 && includeSystemTelemetryOption[0]
+	if edge == nil || (edge.systemTelemetry && !includeSystemTelemetry) {
 		return domain.EdgeHistory{}, false, nil
 	}
 	to = to.UTC()
@@ -172,8 +178,9 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 	}
 	history := domain.EdgeHistory{
 		EdgeID: canonicalID, Source: historyNodeReference(edge.sourceID, index.nodes[edge.sourceID]),
-		Target: historyNodeReference(edge.targetID, index.nodes[edge.targetID]),
-		From:   from, To: to, BucketDurationMS: window.Resolution().Milliseconds(),
+		Target:          historyNodeReference(edge.targetID, index.nodes[edge.targetID]),
+		SystemTelemetry: edge.systemTelemetry, RelatedNodes: []domain.HistoryNodeReference{},
+		From: from, To: to, BucketDurationMS: window.Resolution().Milliseconds(),
 		Traffic: []domain.TrafficBucket{}, PathEvents: []domain.PathEvent{},
 	}
 	if !edge.lastTrafficAt.Before(from) && edge.lastTrafficAt.Before(to) {
@@ -197,6 +204,7 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 			history.PathEvents = history.PathEvents[len(history.PathEvents)-500:]
 		}
 	}
+	history.RelatedNodes = relatedHistoryNodes(index, history)
 	return history, true, nil
 }
 
@@ -248,7 +256,7 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	rows, err = s.db.QueryContext(ctx, `
 		SELECT mapping.physical_edge_id, mapping.logical_edge_id,
 		  mapping.logical_source_id, mapping.logical_target_id, mapping.direction_reversed,
-		  edge.first_traffic_at, edge.last_traffic_at
+		  edge.first_traffic_at, edge.last_traffic_at, edge.system_telemetry
 		FROM history_edge_map AS mapping
 		JOIN history_edges AS edge ON edge.edge_id = mapping.physical_edge_id`)
 	if err != nil {
@@ -257,8 +265,8 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var originalID, canonicalID, sourceID, targetID, rawFirst, rawLast string
-		var reversed bool
-		if err := rows.Scan(&originalID, &canonicalID, &sourceID, &targetID, &reversed, &rawFirst, &rawLast); err != nil {
+		var reversed, systemTelemetry bool
+		if err := rows.Scan(&originalID, &canonicalID, &sourceID, &targetID, &reversed, &rawFirst, &rawLast, &systemTelemetry); err != nil {
 			return index, err
 		}
 		index.edgeAlias[originalID] = canonicalID
@@ -274,9 +282,10 @@ func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 		}
 		edge := index.edges[canonicalID]
 		if edge == nil {
-			edge = &historyEdgeRecord{edgeID: canonicalID, sourceID: sourceID, targetID: targetID, firstTrafficAt: first, lastTrafficAt: last}
+			edge = &historyEdgeRecord{edgeID: canonicalID, sourceID: sourceID, targetID: targetID, firstTrafficAt: first, lastTrafficAt: last, systemTelemetry: systemTelemetry}
 			index.edges[canonicalID] = edge
 		} else {
+			edge.systemTelemetry = edge.systemTelemetry || systemTelemetry
 			if first.Before(edge.firstTrafficAt) {
 				edge.firstTrafficAt = first
 			}
@@ -570,7 +579,7 @@ func (s *SQLite) loadPathSets(ctx context.Context, index historyIndex, from, to 
 }
 
 func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, from, to time.Time, edgeIDs []string) (map[string]*historyPathSet, error) {
-	query := `SELECT edge_id, observed_at, path, observations FROM path_events WHERE observed_at < ?`
+	query := `SELECT edge_id, observed_at, path, conflicts, observations FROM path_events WHERE observed_at < ?`
 	args := []any{formatTime(to)}
 	if len(edgeIDs) != 0 {
 		placeholders := make([]string, len(edgeIDs))
@@ -589,8 +598,8 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 	result := make(map[string]*historyPathSet)
 	for rows.Next() {
 		var originalID, rawTime string
-		var rawPath, rawObservations []byte
-		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawObservations); err != nil {
+		var rawPath, rawConflicts, rawObservations []byte
+		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawConflicts, &rawObservations); err != nil {
 			return nil, err
 		}
 		edgeID := index.edgeAlias[originalID]
@@ -605,6 +614,12 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		}
 		if err := json.Unmarshal(rawPath, &event.Path); err != nil {
 			return nil, err
+		}
+		if err := json.Unmarshal(rawConflicts, &event.Conflicts); err != nil {
+			return nil, err
+		}
+		if event.Conflicts == nil {
+			event.Conflicts = []domain.PathObservation{}
 		}
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return nil, err
@@ -627,10 +642,16 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		}
 		set.events = append(set.events, event)
 		set.pathKinds[event.Path.Kind] = struct{}{}
+		for _, conflict := range event.Conflicts {
+			set.pathKinds[conflict.Kind] = struct{}{}
+		}
 	}
 	for _, set := range result {
 		if set.anchor != nil {
 			set.pathKinds[set.anchor.Path.Kind] = struct{}{}
+			for _, conflict := range set.anchor.Conflicts {
+				set.pathKinds[conflict.Kind] = struct{}{}
+			}
 		}
 	}
 	return result, rows.Err()
@@ -656,9 +677,10 @@ func summarizeHistoryEdges(index historyIndex, points map[string][]storedTraffic
 		}
 		summary := domain.HistoryEdgeSummary{
 			EdgeID: edgeID, Source: historyNodeReference(edge.sourceID, index.nodes[edge.sourceID]),
-			Target:        historyNodeReference(edge.targetID, index.nodes[edge.targetID]),
-			LastTrafficAt: traffic[len(traffic)-1].bucketStart,
-			Paths:         []domain.PathKind{},
+			Target:          historyNodeReference(edge.targetID, index.nodes[edge.targetID]),
+			SystemTelemetry: edge.systemTelemetry,
+			LastTrafficAt:   traffic[len(traffic)-1].bucketStart,
+			Paths:           []domain.PathKind{},
 		}
 		if !edge.lastTrafficAt.Before(from) && edge.lastTrafficAt.Before(to) {
 			summary.LastTrafficAt = edge.lastTrafficAt
@@ -690,9 +712,66 @@ func historyNodeReference(id string, identity storedNodeIdentity) domain.History
 		label = id
 	}
 	return domain.HistoryNodeReference{
-		ID: id, Label: label, Hostname: identity.Hostname, DNSName: identity.DNSName,
+		ID: id, StableNodeID: identity.StableNodeID, Label: label, Hostname: identity.Hostname, DNSName: identity.DNSName,
 		OS: identity.OS, IdentityStatus: identity.IdentityStatus,
 	}
+}
+
+func relatedHistoryNodes(index historyIndex, history domain.EdgeHistory) []domain.HistoryNodeReference {
+	ids := map[string]struct{}{history.Source.ID: {}, history.Target.ID: {}}
+	stableIDs := make(map[string]string)
+	unresolvedStableIDs := make(map[string]struct{})
+	for nodeID, identity := range index.nodes {
+		if identity.StableNodeID != "" {
+			stableIDs[identity.StableNodeID] = nodeID
+		}
+	}
+	addEvent := func(event *domain.PathEvent) {
+		if event == nil {
+			return
+		}
+		addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, event.Path.PeerRelayStableNodeID)
+		for _, conflict := range event.Conflicts {
+			addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, conflict.PeerRelayStableNodeID)
+		}
+		for _, observation := range event.Observations {
+			ids[observation.ObserverID] = struct{}{}
+			addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, observation.Path.PeerRelayStableNodeID)
+		}
+	}
+	addEvent(history.PathAnchor)
+	for index := range history.PathEvents {
+		addEvent(&history.PathEvents[index])
+	}
+	result := make([]domain.HistoryNodeReference, 0, len(ids))
+	for id := range ids {
+		result = append(result, historyNodeReference(id, index.nodes[id]))
+	}
+	for stableID := range unresolvedStableIDs {
+		result = append(result, domain.HistoryNodeReference{
+			ID: "stable:" + stableID, StableNodeID: stableID, Label: stableID,
+			IdentityStatus: domain.IdentityPartial,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		left, right := strings.ToLower(result[i].Label), strings.ToLower(result[j].Label)
+		if left == right {
+			return result[i].ID < result[j].ID
+		}
+		return left < right
+	})
+	return result
+}
+
+func addRelayHistoryNode(ids, unresolved map[string]struct{}, stableIDs map[string]string, stableID string) {
+	if stableID == "" {
+		return
+	}
+	if relayID := stableIDs[stableID]; relayID != "" {
+		ids[relayID] = struct{}{}
+		return
+	}
+	unresolved[stableID] = struct{}{}
 }
 
 func resolveNodeID(redirects map[string]string, id string) string {

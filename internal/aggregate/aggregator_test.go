@@ -41,7 +41,8 @@ func TestDirectEndpointsFromOppositeObserversAreEquivalent(t *testing.T) {
 		{ObserverID: "node:a", Path: domain.PathObservation{Kind: domain.PathDirect, DirectEndpoint: "192.0.2.1:41641"}},
 		{ObserverID: "node:b", Path: domain.PathObservation{Kind: domain.PathDirect, DirectEndpoint: "192.0.2.2:41641"}},
 	}
-	path, conflicts := reconcilePaths(observations)
+	reconciled := domain.ReconcilePathEvidence("node:a", "node:b", domain.PathObservation{}, observations)
+	path, conflicts := reconciled.Path, reconciled.Conflicts
 	if path.Kind != domain.PathDirect || len(conflicts) != 0 {
 		t.Fatalf("path = %#v, conflicts = %#v", path, conflicts)
 	}
@@ -65,13 +66,14 @@ func TestReconcilePathsEnrichesLatestPeerRelayFromRelayProvenance(t *testing.T) 
 		},
 	}
 
-	path, conflicts := reconcilePaths(observations)
-	if path.Kind != domain.PathPeerRelay || path.PeerRelayStableNodeID != "relay-stable" ||
+	reconciled := domain.ReconcilePathEvidence("endpoint", "peer", domain.PathObservation{}, observations)
+	path, conflicts := reconciled.Path, reconciled.Conflicts
+	if path.Kind != domain.PathPeerRelay || path.PeerRelayStableNodeID != "" ||
 		path.PeerRelayVNI == nil || *path.PeerRelayVNI != vni {
-		t.Fatalf("path = %#v, want enriched peer relay", path)
+		t.Fatalf("path = %#v, want endpoint peer relay evidence", path)
 	}
-	if len(conflicts) != 0 {
-		t.Fatalf("equivalent relay provenance produced conflicts: %#v", conflicts)
+	if len(conflicts) != 1 || conflicts[0].PeerRelayStableNodeID != "relay-stable" {
+		t.Fatalf("unknown relay evidence was not retained as a conflict: %#v", conflicts)
 	}
 }
 
@@ -92,12 +94,38 @@ func TestReconcilePathsKeepsConflictingRelayIdentity(t *testing.T) {
 		},
 	}
 
-	path, conflicts := reconcilePaths(observations)
-	if path.PeerRelayStableNodeID != "relay-new" {
-		t.Fatalf("path = %#v, want newest detailed relay", path)
+	reconciled := domain.ReconcilePathEvidence("endpoint", "peer", domain.PathObservation{}, observations)
+	path, conflicts := reconciled.Path, reconciled.Conflicts
+	if path.PeerRelayStableNodeID != "" {
+		t.Fatalf("path = %#v, want endpoint evidence as primary", path)
 	}
-	if len(conflicts) != 1 || conflicts[0].PeerRelayStableNodeID != "relay-old" {
-		t.Fatalf("conflicts = %#v, want older conflicting relay", conflicts)
+	if len(conflicts) != 2 || conflicts[0].PeerRelayStableNodeID != "relay-new" || conflicts[1].PeerRelayStableNodeID != "relay-old" {
+		t.Fatalf("conflicts = %#v, want stable relay-key order", conflicts)
+	}
+}
+
+func TestReconcilePathsKeepsSupportedPrimaryAcrossReceiptOrder(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	previous := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-b"}
+	observations := []domain.ObservationProvenance{
+		{ObserverID: "relay-a", ReceivedAt: now.Add(2 * time.Second), Path: domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-a"}},
+		{ObserverID: "relay-b", ReceivedAt: now, Path: previous},
+		{ObserverID: "source", ReceivedAt: now.Add(time.Second), Path: domain.PathObservation{Kind: domain.PathDirect}},
+	}
+
+	reconciled := domain.ReconcilePathEvidence("source", "target", previous, observations)
+	path, conflicts := reconciled.Path, reconciled.Conflicts
+	if path.PeerRelayStableNodeID != "relay-b" {
+		t.Fatalf("path = %#v, want supported sticky primary", path)
+	}
+	if got := []string{domain.PathEvidenceKey(conflicts[0]), domain.PathEvidenceKey(conflicts[1])}; got[0] != "direct" || got[1] != "peer_relay:relay-a" {
+		t.Fatalf("conflicts = %#v", conflicts)
+	}
+
+	reconciled = domain.ReconcilePathEvidence("source", "target", previous, observations[:1])
+	path, conflicts = reconciled.Path, reconciled.Conflicts
+	if path.PeerRelayStableNodeID != "relay-a" || len(conflicts) != 0 {
+		t.Fatalf("unsupported primary did not move deterministically: path=%#v conflicts=%#v", path, conflicts)
 	}
 }
 
@@ -128,7 +156,8 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 		AliasLastSeen: map[string]time.Time{"ip:100.64.0.1": now},
 		Edges: map[string]*edgeState{"observer--peer": {
 			ID: "observer--peer", Source: "observer", Target: "peer",
-			Observations: map[string]edgeObservation{"observer": {ObserverID: "observer", TxRate: 1}},
+			LastKnownConflicts: []domain.PathObservation{{Kind: domain.PathDERP, DERPRegion: "hkg"}},
+			Observations:       map[string]edgeObservation{"observer": {ObserverID: "observer", TxRate: 1}},
 		}},
 		RelayScopes: map[string]*relayScopeState{"relay:7": {
 			RelayID: "relay", VNI: 7, Sessions: map[string]*relaySessionState{"session": {
@@ -150,6 +179,7 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	observation := clone.Edges["observer--peer"].Observations["observer"]
 	observation.TxRate = 2
 	clone.Edges["observer--peer"].Observations["observer"] = observation
+	clone.Edges["observer--peer"].LastKnownConflicts[0].DERPRegion = "fra"
 	clone.RelayScopes["relay:7"].Sessions["session"].Clients["left"] = "other"
 
 	reporter := source.Reporters["reporter"]
@@ -165,6 +195,7 @@ func TestCloneRuntimeStateIsIndependent(t *testing.T) {
 	if source.Nodes["observer"].Identity.TailscaleIPs[0] != "100.64.0.1" ||
 		source.Aliases["stable:observer"] != "observer" || !source.AliasLastSeen["ip:100.64.0.1"].Equal(now) ||
 		source.Edges["observer--peer"].Observations["observer"].TxRate != 1 ||
+		source.Edges["observer--peer"].LastKnownConflicts[0].DERPRegion != "hkg" ||
 		source.RelayScopes["relay:7"].Sessions["session"].Clients["left"] != "observer" {
 		t.Fatal("node, alias, or edge clone mutated source")
 	}
@@ -219,7 +250,7 @@ func TestReporterDeduplicationWindowStaysBounded(t *testing.T) {
 	}
 }
 
-func TestEquivalentDirectEndpointsDoNotCreatePathTransitions(t *testing.T) {
+func TestPathEvidenceTransitionsOnlyWhenNormalizedSetChanges(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })
 	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
@@ -255,8 +286,22 @@ func TestEquivalentDirectEndpointsDoNotCreatePathTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changed.PathTransitions) != 1 || changed.PathTransitions[0].Path.Kind != domain.PathDERP {
-		t.Fatalf("real path change transitions = %#v, want one DERP event", changed.PathTransitions)
+	if len(changed.PathTransitions) != 1 || changed.PathTransitions[0].Path.Kind != domain.PathDirect ||
+		len(changed.PathTransitions[0].Conflicts) != 1 || changed.PathTransitions[0].Conflicts[0].Kind != domain.PathDERP {
+		t.Fatalf("evidence-set transition = %#v, want sticky Direct plus DERP conflict", changed.PathTransitions)
+	}
+
+	now = now.Add(2*time.Minute + time.Second)
+	settled, err := aggregator.ApplyAt(sampleReport(
+		"reporter-a", 4, "a", "A", "b", "B", "inventory-a",
+		domain.PathObservation{Kind: domain.PathDERP, DERPRegion: "hkg"}, 100, 50,
+	), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settled.PathTransitions) != 1 || settled.PathTransitions[0].Path.Kind != domain.PathDERP ||
+		len(settled.PathTransitions[0].Conflicts) != 0 {
+		t.Fatalf("expired primary transition = %#v, want one DERP event", settled.PathTransitions)
 	}
 }
 
@@ -726,7 +771,7 @@ func TestEndpointTrafficOutranksRelayFallbackWithoutSumming(t *testing.T) {
 	}
 }
 
-func TestPreservesPathConflictsAndPeerRelayWins(t *testing.T) {
+func TestPreservesPathConflictsAndStickyPrimary(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })
 	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
@@ -736,11 +781,11 @@ func TestPreservesPathConflictsAndPeerRelayWins(t *testing.T) {
 	applySampleWithPath(t, aggregator, "reporter-b", 2, "b", "B", "a", "A", "inventory-b", domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay"})
 
 	edge := aggregator.Snapshot().Edges[0]
-	if edge.Path.Kind != domain.PathPeerRelay {
-		t.Fatalf("path = %q, want peer_relay", edge.Path.Kind)
+	if edge.Path.Kind != domain.PathDirect {
+		t.Fatalf("path = %q, want sticky direct", edge.Path.Kind)
 	}
-	if len(edge.Conflicts) != 1 || edge.Conflicts[0].Kind != domain.PathDirect {
-		t.Fatalf("conflicts = %#v, want direct", edge.Conflicts)
+	if len(edge.Conflicts) != 1 || edge.Conflicts[0].Kind != domain.PathPeerRelay {
+		t.Fatalf("conflicts = %#v, want peer relay", edge.Conflicts)
 	}
 }
 
@@ -771,7 +816,7 @@ func TestEmptySnapshotUsesEmptyCollections(t *testing.T) {
 	}
 }
 
-func TestNewestReceivedPathWinsAndStaleRateIsNotReused(t *testing.T) {
+func TestStickyPathAndStaleRateIsNotReused(t *testing.T) {
 	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	aggregator := newTestAggregator(func() time.Time { return now })
 	applyHello(t, aggregator, "reporter-a", 1, "a", "A", "inventory-a")
@@ -784,14 +829,14 @@ func TestNewestReceivedPathWinsAndStaleRateIsNotReused(t *testing.T) {
 		domain.PathObservation{Kind: domain.PathDirect}, 80, 40)
 
 	edge := aggregator.Snapshot().Edges[0]
-	if edge.Path.Kind != domain.PathDirect {
-		t.Fatalf("path = %q, want latest direct observation", edge.Path.Kind)
+	if edge.Path.Kind != domain.PathPeerRelay {
+		t.Fatalf("path = %q, want still-supported sticky peer relay", edge.Path.Kind)
 	}
 	if edge.AToBBytesPerSecond != 20 || edge.BToABytesPerSecond != 40 {
 		t.Fatalf("rates = %.0f/%.0f, want 20/40 without stale A rate", edge.AToBBytesPerSecond, edge.BToABytesPerSecond)
 	}
-	if len(edge.Conflicts) != 1 || edge.Conflicts[0].Kind != domain.PathPeerRelay {
-		t.Fatalf("conflicts = %#v, want retained fresh peer relay provenance", edge.Conflicts)
+	if len(edge.Conflicts) != 1 || edge.Conflicts[0].Kind != domain.PathDirect {
+		t.Fatalf("conflicts = %#v, want fresh direct provenance", edge.Conflicts)
 	}
 }
 

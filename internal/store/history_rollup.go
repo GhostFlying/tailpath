@@ -208,21 +208,23 @@ func logicalMinuteTraffic(ctx context.Context, tx *sql.Tx, start, end time.Time)
 
 func persistLogicalHourEdge(ctx context.Context, tx *sql.Tx, record logicalTraffic, updatedAt time.Time) error {
 	var firstTrafficAt, lastTrafficAt string
+	var systemTelemetry bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT MIN(edge.first_traffic_at), MAX(edge.last_traffic_at)
+		SELECT MIN(edge.first_traffic_at), MAX(edge.last_traffic_at), MAX(edge.system_telemetry)
 		FROM history_edges AS edge
 		JOIN history_edge_map AS mapping ON mapping.physical_edge_id = edge.edge_id
-		WHERE mapping.logical_edge_id = ?`, record.edgeID).Scan(&firstTrafficAt, &lastTrafficAt); err != nil {
+		WHERE mapping.logical_edge_id = ?`, record.edgeID).Scan(&firstTrafficAt, &lastTrafficAt, &systemTelemetry); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at, system_telemetry)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(edge_id) DO UPDATE SET
 		  source_id = excluded.source_id, target_id = excluded.target_id,
 		  first_traffic_at = MIN(history_edges.first_traffic_at, excluded.first_traffic_at),
-		  last_traffic_at = MAX(history_edges.last_traffic_at, excluded.last_traffic_at)`,
-		record.edgeID, record.sourceID, record.targetID, firstTrafficAt, lastTrafficAt); err != nil {
+		  last_traffic_at = MAX(history_edges.last_traffic_at, excluded.last_traffic_at),
+		  system_telemetry = MAX(history_edges.system_telemetry, excluded.system_telemetry)`,
+		record.edgeID, record.sourceID, record.targetID, firstTrafficAt, lastTrafficAt, systemTelemetry); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `

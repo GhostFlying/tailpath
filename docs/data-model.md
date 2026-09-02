@@ -106,10 +106,12 @@ decode with an empty status, so v0.3 requires no numbered schema migration.
 History node search, edge summaries, and details resolve redirects before
 selecting the surviving identity and status.
 
-The latest server-received fresh observation selects `peer_relay`, `direct`,
-`derp`, or `unknown`. Path specificity only breaks receive-time ties.
-Conflicting fresh observations retain provenance and expose a transitioning
-state.
+Fresh observations form a normalized path-evidence set. The current primary
+remains selected while supported; after it expires, endpoint observations
+outrank relay-side observations and canonical node IDs provide a deterministic
+tie-break. Other paths are exposed as sorted conflicts. Direct endpoint, relay
+VNI, session ID, and sample time remain provenance details and do not create a
+transition by themselves.
 
 An edge is active for ten seconds after a business byte delta, recent for two
 heartbeat intervals, and otherwise hidden. Rates become zero when the active
@@ -132,6 +134,13 @@ already-aggregated physical hour cannot reveal whether aliases overlapped.
 Maintenance rebuilds the recoverable hour range from retained minute rows; it
 does not present unreconstructable dogfood totals as exact history.
 
+Schema migration 5 adds sticky system-telemetry classification to history
+edges and a normalized conflict set to path events. It scans retained v4 path
+events in time order and removes adjacent events whose primary/conflict keys
+are equivalent, preserving the earliest event as the window anchor. History
+node, list, and detail queries exclude system telemetry by default; the
+diagnostic query option includes it without changing stored provenance.
+
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including
 direction reversal when a canonical endpoint order changes. A durable edge map
@@ -151,3 +160,6 @@ History edge detail exposes the exact server-received `lastTrafficAt` when the
 selected window contains traffic. Chart `bucketStart` values remain aggregated
 time-axis coordinates and are never used as a substitute for exact recency. A
 known edge with no traffic in the selected window omits `lastTrafficAt`.
+Each detail response also carries a complete `relatedNodes` set for its
+endpoints, observers, and resolved Peer Relay identities. An unresolved relay
+is represented by its StableNodeID with `partial` identity status.

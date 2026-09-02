@@ -591,7 +591,7 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 		"retained": {"a", "b", now},
 		"expired":  {"c", "d", cutoff.Add(-time.Hour)},
 	} {
-		if _, err := database.db.Exec(`INSERT INTO history_edges VALUES (?, ?, ?, ?, ?)`, edgeID, edge.sourceID, edge.targetID, formatTime(edge.lastTraffic), formatTime(edge.lastTraffic)); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at) VALUES (?, ?, ?, ?, ?)`, edgeID, edge.sourceID, edge.targetID, formatTime(edge.lastTraffic), formatTime(edge.lastTraffic)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -653,7 +653,7 @@ func TestMaintainKeepsLatestPathAnchorAcrossEdgeAliases(t *testing.T) {
 		}
 	}
 	if _, err := database.db.Exec(`
-		INSERT INTO history_edges VALUES
+		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at) VALUES
 		  ('n_b--n_old', 'n_b', 'n_old', ?, ?),
 		  ('n_a--n_b', 'n_a', 'n_b', ?, ?)`,
 		formatTime(cutoff.Add(-time.Hour)), formatTime(cutoff.Add(-time.Hour)),
@@ -1029,6 +1029,80 @@ func TestOpenRepairsCanonicalHourRollupsFromSchemaV2AndV3(t *testing.T) {
 				t.Fatalf("rebuilt hour = %q %d/%d, want n_a--n_b 0/10", edgeID, aToB, bToA)
 			}
 		})
+	}
+}
+
+func TestOpenMigratesV4PathStormToStickyEvidence(t *testing.T) {
+	path := t.TempDir() + "/history-v4.db"
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := raw.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for migrationIndex := 0; migrationIndex < 4; migrationIndex++ {
+		if err := migrations[migrationIndex](tx); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	if _, err := tx.Exec(`INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at) VALUES ('n_a--n_b', 'n_a', 'n_b', ?, ?)`, formatTime(now.Add(-time.Hour)), formatTime(now)); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	vni := int64(2120)
+	direct := domain.PathObservation{Kind: domain.PathDirect}
+	relay := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni}
+	directPayload, _ := json.Marshal(direct)
+	relayPayload, _ := json.Marshal(relay)
+	observations, _ := json.Marshal([]domain.ObservationProvenance{
+		{ObserverID: "n_a", Path: direct, CollectedAt: now, ReceivedAt: now},
+		{ObserverID: "n_relay", Path: relay, CollectedAt: now, ReceivedAt: now},
+	})
+	for eventIndex := range 500 {
+		pathPayload := directPayload
+		if eventIndex%2 == 1 {
+			pathPayload = relayPayload
+		}
+		if _, err := tx.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_a--n_b', ?, ?, ?)`, formatTime(now.Add(-time.Hour).Add(time.Duration(eventIndex)*time.Second)), pathPayload, observations); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 4`); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	assertTableCount(t, database, "path_events", 1)
+	var rawPath, rawConflicts []byte
+	if err := database.db.QueryRow(`SELECT path, conflicts FROM path_events`).Scan(&rawPath, &rawConflicts); err != nil {
+		t.Fatal(err)
+	}
+	var migratedPath domain.PathObservation
+	var conflicts []domain.PathObservation
+	if err := json.Unmarshal(rawPath, &migratedPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(rawConflicts, &conflicts); err != nil {
+		t.Fatal(err)
+	}
+	if migratedPath.Kind != domain.PathDirect || len(conflicts) != 1 || conflicts[0].PeerRelayStableNodeID != "relay" {
+		t.Fatalf("migrated evidence path=%#v conflicts=%#v", migratedPath, conflicts)
 	}
 }
 

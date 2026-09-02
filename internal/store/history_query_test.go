@@ -54,6 +54,62 @@ func TestHistoryQueriesResolveRedirectsFilterAndPaginate(t *testing.T) {
 	}
 }
 
+func TestHistoryQueriesHideSystemTelemetryUnlessExplicitlyIncluded(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_app", NodeIdentity: domain.NodeIdentity{StableNodeID: "app", Hostname: "App"}},
+		{ID: "n_peer", NodeIdentity: domain.NodeIdentity{StableNodeID: "peer", Hostname: "Peer"}},
+		{ID: "n_control", NodeIdentity: domain.NodeIdentity{StableNodeID: "control", Hostname: "Tailpath"}},
+		{ID: "n_control_old", NodeIdentity: domain.NodeIdentity{DiscoKey: "old-control"}},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	for index, record := range []domain.AcceptedTraffic{
+		{EdgeID: "n_app--n_peer", SourceID: "n_app", TargetID: "n_peer", ObserverID: "n_app", AToBBytes: 10, ReceivedAt: now.Add(-time.Minute)},
+		{EdgeID: "n_app--n_control_old", SourceID: "n_app", TargetID: "n_control_old", ObserverID: "n_app", AToBBytes: 20, ReceivedAt: now.Add(-30 * time.Second)},
+	} {
+		if _, err := database.Record(context.Background(), sampleReport(record.ReceivedAt, record.ReceivedAt, fmt.Sprintf("system-%d", index)), record.ReceivedAt, nil, []domain.AcceptedTraffic{record}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata.Redirects = map[string]string{"n_control_old": "n_control"}
+	metadata.ControlNodeIDs = []string{"n_control"}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+
+	nodes, err := database.HistoryNodes(context.Background(), domain.History15Minutes, now)
+	if err != nil || len(nodes.Nodes) != 2 {
+		t.Fatalf("default nodes = %#v, err=%v", nodes.Nodes, err)
+	}
+	page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{Window: domain.History15Minutes}, now)
+	if err != nil || len(page.Edges) != 1 || page.Edges[0].SystemTelemetry {
+		t.Fatalf("default page = %#v, err=%v", page, err)
+	}
+	if _, found, err := database.EdgeHistoryWindow(context.Background(), "n_app--n_control_old", domain.History15Minutes, now); err != nil || found {
+		t.Fatalf("default system detail found=%v err=%v", found, err)
+	}
+
+	nodes, err = database.HistoryNodes(context.Background(), domain.History15Minutes, now, true)
+	if err != nil || len(nodes.Nodes) != 3 {
+		t.Fatalf("diagnostic nodes = %#v, err=%v", nodes.Nodes, err)
+	}
+	page, err = database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{Window: domain.History15Minutes, IncludeSystemTelemetry: true}, now)
+	if err != nil || len(page.Edges) != 2 || !page.Edges[0].SystemTelemetry {
+		t.Fatalf("diagnostic page = %#v, err=%v", page, err)
+	}
+	history, found, err := database.EdgeHistoryWindow(context.Background(), "n_app--n_control_old", domain.History15Minutes, now, true)
+	if err != nil || !found || !history.SystemTelemetry || history.EdgeID != "n_app--n_control" {
+		t.Fatalf("diagnostic detail = %#v, found=%v err=%v", history, found, err)
+	}
+}
+
 func TestEdgeHistoryWindowReturnsAnchorBoundsAndKnownEmpty(t *testing.T) {
 	database, now := seededHistoryDatabase(t)
 	ctx := context.Background()
@@ -105,6 +161,50 @@ func TestEdgeHistoryWindowReturnsAnchorBoundsAndKnownEmpty(t *testing.T) {
 	}
 	if _, found, err := database.EdgeHistoryWindow(ctx, "missing", domain.History1Hour, now); err != nil || found {
 		t.Fatalf("unknown edge found=%v err=%v", found, err)
+	}
+}
+
+func TestEdgeHistoryWindowReturnsObserverAndRelayNodeReferences(t *testing.T) {
+	database, err := Open(":memory:", 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	metadata := domain.HistoryMetadata{Nodes: []domain.TopologyNode{
+		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "Alpha"}, IdentityStatus: domain.IdentityResolved},
+		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "Beta"}, IdentityStatus: domain.IdentityResolved},
+		{ID: "n_observer", NodeIdentity: domain.NodeIdentity{StableNodeID: "observer", Hostname: "Observer"}, IdentityStatus: domain.IdentityResolved},
+		{ID: "n_relay", NodeIdentity: domain.NodeIdentity{StableNodeID: "relay-known", Hostname: "Relay Hangzhou"}, IdentityStatus: domain.IdentityResolved},
+	}}
+	if err := database.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
+	vni := int64(2120)
+	knownRelay := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-known", PeerRelayVNI: &vni}
+	unknownRelay := domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay-unknown"}
+	transition := domain.PathTransition{
+		EdgeID: "n_a--n_b", ObservedAt: now.Add(-time.Minute), Path: knownRelay,
+		Conflicts:    []domain.PathObservation{unknownRelay},
+		Observations: []domain.ObservationProvenance{{ObserverID: "n_observer", Path: knownRelay, CollectedAt: now, ReceivedAt: now}},
+	}
+	traffic := domain.AcceptedTraffic{EdgeID: "n_a--n_b", SourceID: "n_a", TargetID: "n_b", ObserverID: "n_observer", AToBBytes: 10, ReceivedAt: now.Add(-time.Minute)}
+	if _, err := database.Record(context.Background(), sampleReport(now.Add(-time.Minute), now, "related-nodes"), now, nil, []domain.AcceptedTraffic{traffic}, []domain.PathTransition{transition}); err != nil {
+		t.Fatal(err)
+	}
+	history, found, err := database.EdgeHistoryWindow(context.Background(), "n_a--n_b", domain.History15Minutes, now)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	byStableID := make(map[string]domain.HistoryNodeReference)
+	for _, node := range history.RelatedNodes {
+		byStableID[node.StableNodeID] = node
+	}
+	if len(history.RelatedNodes) != 5 || byStableID["observer"].Label != "Observer" || byStableID["relay-known"].Label != "Relay Hangzhou" {
+		t.Fatalf("related nodes = %#v", history.RelatedNodes)
+	}
+	if unresolved := byStableID["relay-unknown"]; unresolved.ID != "stable:relay-unknown" || unresolved.IdentityStatus != domain.IdentityPartial {
+		t.Fatalf("unresolved relay = %#v", unresolved)
 	}
 }
 
@@ -503,7 +603,7 @@ func seededHistoryDatabase(t *testing.T) (*SQLite, time.Time) {
 	record("post-merge", "n_a--n_b", "n_a", "n_b", now.Add(-2*time.Minute), 10, 4, domain.PathDERP)
 	record("newest", "n_a--n_c", "n_a", "n_c", now.Add(-time.Minute), 5, 1, domain.PathDirect)
 	old := now.Add(-8 * 24 * time.Hour)
-	if _, err := database.db.Exec(`INSERT INTO history_edges VALUES ('n_b--n_c', 'n_b', 'n_c', ?, ?)`, formatTime(old), formatTime(old)); err != nil {
+	if _, err := database.db.Exec(`INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at) VALUES ('n_b--n_c', 'n_b', 'n_c', ?, ?)`, formatTime(old), formatTime(old)); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := database.db.BeginTx(context.Background(), nil)
