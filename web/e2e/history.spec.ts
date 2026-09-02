@@ -276,6 +276,27 @@ test("keeps path evidence usable in a 320px bottom sheet", async ({
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile"));
   await page.setViewportSize({ width: 320, height: 700 });
+  const relayStableNodeID =
+    "nodekey:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  await page.route("**/api/v1/history/edges/*?**", async (route) => {
+    const detail = historyFor(edgeSummaries[0]);
+    await route.fulfill({
+      json: {
+        ...detail,
+        pathEvents: detail.pathEvents.map((event, index) =>
+          index === detail.pathEvents.length - 1
+            ? {
+                ...event,
+                path: {
+                  kind: "peer_relay",
+                  peerRelayStableNodeId: relayStableNodeID,
+                },
+              }
+            : event,
+        ),
+      },
+    });
+  });
   await page.goto("/history/edges/node-mac--node-dev?window=24h");
   const timeline = page.getByRole("list", { name: "Path timeline" });
   await timeline.scrollIntoViewIfNeeded();
@@ -291,6 +312,13 @@ test("keeps path evidence usable in a 320px bottom sheet", async ({
   expect(
     await page.locator("body").evaluate((body) => body.scrollWidth),
   ).toBeLessThanOrEqual(320);
+  const pathLabel = sheet.getByLabel("Effective path");
+  await expect(pathLabel).toContainText(relayStableNodeID);
+  expect(
+    await pathLabel.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
   await page.keyboard.press("Shift+Tab");
   await expect(
     sheet.getByRole("button", { name: "Close path evidence" }),
