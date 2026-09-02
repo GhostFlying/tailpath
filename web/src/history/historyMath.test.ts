@@ -76,6 +76,8 @@ describe("path timeline", () => {
       edgeId: "a--b",
       source: { id: "a", label: "A" },
       target: { id: "b", label: "B" },
+      systemTelemetry: false,
+      relatedNodes: [],
       from: "2026-08-24T00:00:00Z",
       to: "2026-08-24T01:00:00Z",
       bucketDurationMs: 30_000,
@@ -83,12 +85,14 @@ describe("path timeline", () => {
       pathAnchor: {
         observedAt: "2026-08-23T23:00:00Z",
         path: { kind: "direct" },
+        conflicts: [],
         observations: [],
       },
       pathEvents: [
         {
           observedAt: "2026-08-24T00:30:00Z",
           path: { kind: "derp", derpRegion: "hkg" },
+          conflicts: [],
           observations: [],
         },
       ],

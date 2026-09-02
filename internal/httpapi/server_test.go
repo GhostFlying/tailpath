@@ -400,6 +400,7 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		{ID: "n_a", NodeIdentity: domain.NodeIdentity{StableNodeID: "a", Hostname: "Alpha"}, LastEvidenceAt: now},
 		{ID: "n_b", NodeIdentity: domain.NodeIdentity{StableNodeID: "b", Hostname: "Beta"}, LastEvidenceAt: now},
 		{ID: "n_c", NodeIdentity: domain.NodeIdentity{StableNodeID: "c", Hostname: "Charlie"}, LastEvidenceAt: now},
+		{ID: "n_control", NodeIdentity: domain.NodeIdentity{StableNodeID: "control", Hostname: "Tailpath"}, LastEvidenceAt: now},
 	}}
 	if err := server.app.Store.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
 		t.Fatal(err)
@@ -407,6 +408,11 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	recordHistoryTraffic(t, server, "recent", "n_a--n_b", "n_a", "n_b", now.Add(-time.Minute))
 	recordHistoryTraffic(t, server, "anchor-only", "n_a--n_c", "n_a", "n_c", now.Add(-2*time.Hour))
 	recordHistoryTraffic(t, server, "old", "n_b--n_c", "n_b", "n_c", now.Add(-8*24*time.Hour))
+	recordHistoryTraffic(t, server, "system", "n_a--n_control", "n_a", "n_control", now.Add(-30*time.Second))
+	metadata.ControlNodeIDs = []string{"n_control"}
+	if err := server.app.Store.SaveHistoryMetadata(context.Background(), metadata, now); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, requestPath := range []string{
 		"/api/v1/history/nodes",
@@ -414,6 +420,7 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		"/api/v1/history/edges?window=1h&limit=101",
 		"/api/v1/history/edges?window=1h&path=invalid",
 		"/api/v1/history/edges?window=1h&cursor=invalid",
+		"/api/v1/history/edges?window=1h&includeSystemTelemetry=maybe",
 		"/api/v1/history/edges/n_a--n_b",
 	} {
 		recorder := httptest.NewRecorder()
@@ -459,6 +466,9 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	if history.PathEvents == nil || len(history.PathEvents) != 1 || history.PathEvents[0].Observations == nil {
 		t.Fatalf("recent history collections = %#v", history)
 	}
+	if history.RelatedNodes == nil || history.PathEvents[0].Conflicts == nil {
+		t.Fatalf("required history collections = %#v", history)
+	}
 
 	recorder = httptest.NewRecorder()
 	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_c?window=1h", nil)
@@ -494,6 +504,22 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	server.Handler().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("unknown detail status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_control?window=1h", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("default system detail status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_control?window=1h&includeSystemTelemetry=true", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("diagnostic system detail status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&history); err != nil || !history.SystemTelemetry {
+		t.Fatalf("diagnostic system history = %#v, err=%v", history, err)
 	}
 }
 

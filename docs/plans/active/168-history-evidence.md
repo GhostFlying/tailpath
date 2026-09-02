@@ -56,10 +56,15 @@ Playwright, immutable-image scale, and independent read-only review.
 
 ## Current state
 
-Issue and active plan opened. Backend implementation is in progress from
-`origin/main` at `ef656eec7a00c6b7914b03c4e8cd5438de089c09`.
+Issue and active plan opened from `origin/main` at
+`ef656eec7a00c6b7914b03c4e8cd5438de089c09`. The backend implementation now
+uses schema v5, compacts equivalent v4 path events, persists sticky path
+evidence and system classification, filters normal History queries, and
+returns complete provenance node references. Generated clients and legacy-null
+normalization are updated. Canonical `make check` passes in the devcontainer,
+including 44 Playwright cases with 14 project-conditional skips.
 
 ## Next step
 
-Implement the append-only migration and deterministic path evidence model,
-then expose the updated History API and generated types.
+Open the backend Draft PR, then implement the stacked Web interaction PR with
+newest-first timeline semantics and the mobile provenance bottom sheet.

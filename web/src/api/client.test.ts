@@ -12,8 +12,10 @@ describe("getEdgeHistory", () => {
       traffic: null,
       pathAnchor: {
         ...pathEvent(),
+        conflicts: null,
         observations: null,
       },
+      relatedNodes: null,
       pathEvents: null,
     });
 
@@ -21,6 +23,8 @@ describe("getEdgeHistory", () => {
 
     expect(history.traffic).toEqual([]);
     expect(history.pathEvents).toEqual([]);
+    expect(history.relatedNodes).toEqual([]);
+    expect(history.pathAnchor?.conflicts).toEqual([]);
     expect(history.pathAnchor?.observations).toEqual([]);
   });
 
@@ -72,6 +76,8 @@ function historyResponse() {
     edgeId: "node-a--node-b",
     source: { id: "node-a", label: "Node A" },
     target: { id: "node-b", label: "Node B" },
+    systemTelemetry: false,
+    relatedNodes: [],
     from: "2026-08-30T00:00:00Z",
     to: "2026-08-30T00:15:00Z",
     bucketDurationMs: 10_000,
@@ -86,6 +92,7 @@ function pathEvent() {
   return {
     observedAt: "2026-08-29T23:00:00Z",
     path: { kind: "direct" },
+    conflicts: [],
     observations: [],
   };
 }
