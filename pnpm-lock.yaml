@@ -11,8 +11,8 @@ importers:
   web:
     dependencies:
       cytoscape:
-        specifier: 3.33.1
-        version: 3.33.1
+        specifier: 3.34.1
+        version: 3.34.1
       lucide-react:
         specifier: 0.468.0
         version: 0.468.0(react@19.1.1)
@@ -30,8 +30,8 @@ importers:
         specifier: 1.55.0
         version: 1.55.0
       '@types/cytoscape':
-        specifier: 3.21.9
-        version: 3.21.9
+        specifier: 3.31.0
+        version: 3.31.0
       '@types/react':
         specifier: 19.1.10
         version: 19.1.10
@@ -478,8 +478,9 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
-  '@types/cytoscape@3.21.9':
-    resolution: {integrity: sha512-JyrG4tllI6jvuISPjHK9j2Xv/LTbnLekLke5otGStjFluIyA9JjgnvgZrSBsp8cEDpiTjwgZUZwpPv8TSBcoLw==}
+  '@types/cytoscape@3.31.0':
+    resolution: {integrity: sha512-EXHOHxqQjGxLDEh5cP4te6J0bi7LbCzmZkzsR6f703igUac8UGMdEohMyU3GHAayCTZrLQOMnaE/lqB2Ekh8Ww==}
+    deprecated: This is a stub types definition. cytoscape provides its own type definitions, so you do not need this installed.
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
@@ -595,8 +596,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  cytoscape@3.33.1:
-    resolution: {integrity: sha512-iJc4TwyANnOGR1OmWhsS9ayRS3s+XQ185FmuHObThD+5AeJCakAAbWv8KimMTt08xCCLNgneQwFp+JRJOr9qGQ==}
+  cytoscape@3.34.1:
+    resolution: {integrity: sha512-Lr0RvH9H75y9ar8h9Toy6u4lxRSCcxUq+hHcQ26sVWo6BnaQp1gwEZOYqwuYTZhyW7npyKnNLP8oJ2p1/3OZ7g==}
     engines: {node: '>=0.10'}
 
   debug@4.4.3:
@@ -1313,7 +1314,9 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
-  '@types/cytoscape@3.21.9': {}
+  '@types/cytoscape@3.31.0':
+    dependencies:
+      cytoscape: 3.34.1
 
   '@types/deep-eql@4.0.2': {}
 
@@ -1433,7 +1436,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  cytoscape@3.33.1: {}
+  cytoscape@3.34.1: {}
 
   debug@4.4.3(supports-color@10.2.2):
     dependencies:
