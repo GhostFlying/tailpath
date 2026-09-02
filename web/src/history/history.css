@@ -842,9 +842,12 @@
 }
 
 .provenance-title > .path-text {
+  min-width: 0;
   margin-left: auto;
   font-size: 11px;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .provenance-title > button {
