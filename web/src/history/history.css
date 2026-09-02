@@ -784,6 +784,7 @@
 }
 
 .timeline-copy {
+  min-width: 0;
   grid-column: 2;
   display: grid;
   gap: 2px;
@@ -792,6 +793,7 @@
 
 .timeline-copy strong {
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .timeline-copy small,

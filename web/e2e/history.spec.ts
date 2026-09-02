@@ -300,6 +300,19 @@ test("keeps path evidence usable in a 320px bottom sheet", async ({
   await page.goto("/history/edges/node-mac--node-dev?window=24h");
   const timeline = page.getByRole("list", { name: "Path timeline" });
   await timeline.scrollIntoViewIfNeeded();
+  const timelinePathLabel = timeline
+    .getByRole("listitem")
+    .first()
+    .locator(".timeline-copy strong");
+  await expect(timelinePathLabel).toContainText(relayStableNodeID);
+  expect(
+    await timelinePathLabel.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await page.locator("body").evaluate((body) => body.scrollWidth),
+  ).toBeLessThanOrEqual(320);
   await timeline.getByRole("listitem").first().click();
 
   const sheet = page.getByRole("dialog", { name: "Path evidence" });
