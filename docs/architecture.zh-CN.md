@@ -40,7 +40,8 @@ session 保持在线。
 默认服务端使用专用 tsnet identity。Reporter 到该节点的流量归类为 system
 telemetry，不做 counter 扣减，也不进入 Live graph 和 edge activity 计数。该分类仍可通过
 topology API 获取，并保留在运行时状态、SQLite traffic/history 和 provenance 中用于
-诊断。未解析的 relay client 不会被猜测为该 identity。
+诊断。普通 History 查询会排除这些边及其专属节点；只有显式传入诊断参数
+`includeSystemTelemetry=true` 才会返回。未解析的 relay client 不会被猜测为该 identity。
 共享 tailscaled identity 属于 degraded opt-in，因为它无法将控制流量与其他应用分开。
 
 当前拓扑由内存提供读取。每个 accepted report、traffic bucket 和逻辑路径变更都在
@@ -56,10 +57,13 @@ metadata；只有全部成功后才替换内存并发布合并后的 SSE invalid
 会保留 last-good directory layer 并标记 stale。未配置目录启动时清除当前 directory
 layer，但保留 canonical redirect 和既有 History。
 
-路径变更按逻辑路径身份比较。Observer-local Direct endpoint 只属于 provenance
-属性；相反两侧 observer 报告同一条 Direct 连接的不同端点时不会产生新 transition。
-DERP region 或 Peer Relay node 的变化仍然是逻辑路径变更。只要新鲜 edge
-provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在可见拓扑中。
+路径状态由一个粘性主路径和确定性排序的新鲜冲突证据集合组成。只要主路径仍有
+新鲜证据支持，跨 observer 的 report 到达顺序就不会改变它；失去支持后，endpoint
+证据优先于 relay 侧证据，并以 canonical node ID 确定性打破平局。只有规范化后的
+主路径或冲突集合变化时才写 transition。Direct endpoint、relay VNI、session ID 和
+采样时间只属于 provenance，DERP region 和 Peer Relay StableNodeID 才区分路径。
+只要新鲜 edge provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在
+可见拓扑中。
 
 重启从最新 checkpoint 恢复 reporter sequence、observer 自己持有的 inventory
 generation 和 membership、reporter 到 observer 的 ownership、identity alias、节点、

@@ -577,7 +577,7 @@ func TestRelayIdentityEnrichmentMergesPlaceholderAcrossRestart(t *testing.T) {
 	}
 }
 
-func TestDirectToRelayTransitionPersistsSanitizedProvenance(t *testing.T) {
+func TestPathConflictTransitionPersistsSanitizedRelayProvenance(t *testing.T) {
 	database, err := store.Open(":memory:", 7*24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -611,7 +611,8 @@ func TestDirectToRelayTransitionPersistsSanitizedProvenance(t *testing.T) {
 		t.Fatalf("relay receipt = %#v, err=%v", receipt, err)
 	}
 	topology := application.Aggregator.Snapshot()
-	if len(topology.Edges) != 1 || topology.Edges[0].Path.Kind != domain.PathPeerRelay {
+	if len(topology.Edges) != 1 || topology.Edges[0].Path.Kind != domain.PathDirect ||
+		len(topology.Edges[0].Conflicts) != 1 || topology.Edges[0].Conflicts[0].Kind != domain.PathPeerRelay {
 		t.Fatalf("transition topology = %#v", topology.Edges)
 	}
 	history, err := database.EdgeHistory(context.Background(), topology.Edges[0].ID, at.Add(-time.Hour))
@@ -627,7 +628,8 @@ func TestDirectToRelayTransitionPersistsSanitizedProvenance(t *testing.T) {
 		}
 	}
 	if len(history.PathEvents) != 2 || history.PathEvents[0].Path.Kind != domain.PathDirect ||
-		history.PathEvents[1].Path.Kind != domain.PathPeerRelay ||
+		history.PathEvents[1].Path.Kind != domain.PathDirect || len(history.PathEvents[1].Conflicts) != 1 ||
+		history.PathEvents[1].Conflicts[0].Kind != domain.PathPeerRelay ||
 		len(history.PathEvents[1].Observations) != 2 || !hasRelaySession {
 		t.Fatalf("Direct-to-Relay history = %#v", history.PathEvents)
 	}

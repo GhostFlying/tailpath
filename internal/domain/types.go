@@ -411,44 +411,50 @@ type TrafficBucket struct {
 type PathEvent struct {
 	ObservedAt   time.Time               `json:"observedAt"`
 	Path         PathObservation         `json:"path"`
+	Conflicts    []PathObservation       `json:"conflicts"`
 	Observations []ObservationProvenance `json:"observations"`
 }
 
 type AcceptedTraffic struct {
-	EdgeID     string
-	SourceID   string
-	TargetID   string
-	ObserverID string
-	AToBBytes  int64
-	BToABytes  int64
-	ReceivedAt time.Time
+	EdgeID          string
+	SourceID        string
+	TargetID        string
+	ObserverID      string
+	SystemTelemetry bool
+	AToBBytes       int64
+	BToABytes       int64
+	ReceivedAt      time.Time
 }
 
 type PathTransition struct {
 	EdgeID       string
 	ObservedAt   time.Time
 	Path         PathObservation
+	Conflicts    []PathObservation
 	Observations []ObservationProvenance
 }
 
 type EdgeHistory struct {
-	EdgeID              string               `json:"edgeId"`
-	Source              HistoryNodeReference `json:"source"`
-	Target              HistoryNodeReference `json:"target"`
-	From                time.Time            `json:"from"`
-	To                  time.Time            `json:"to"`
-	BucketDurationMS    int64                `json:"bucketDurationMs"`
-	LastTrafficAt       *time.Time           `json:"lastTrafficAt,omitempty"`
-	Traffic             []TrafficBucket      `json:"traffic"`
-	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
-	PathEvents          []PathEvent          `json:"pathEvents"`
-	TrafficTruncated    bool                 `json:"trafficTruncated"`
-	PathEventsTruncated bool                 `json:"pathEventsTruncated"`
+	EdgeID              string                 `json:"edgeId"`
+	Source              HistoryNodeReference   `json:"source"`
+	Target              HistoryNodeReference   `json:"target"`
+	SystemTelemetry     bool                   `json:"systemTelemetry"`
+	RelatedNodes        []HistoryNodeReference `json:"relatedNodes"`
+	From                time.Time              `json:"from"`
+	To                  time.Time              `json:"to"`
+	BucketDurationMS    int64                  `json:"bucketDurationMs"`
+	LastTrafficAt       *time.Time             `json:"lastTrafficAt,omitempty"`
+	Traffic             []TrafficBucket        `json:"traffic"`
+	PathAnchor          *PathEvent             `json:"pathAnchor,omitempty"`
+	PathEvents          []PathEvent            `json:"pathEvents"`
+	TrafficTruncated    bool                   `json:"trafficTruncated"`
+	PathEventsTruncated bool                   `json:"pathEventsTruncated"`
 }
 
 type HistoryMetadata struct {
-	Nodes     []TopologyNode
-	Redirects map[string]string
+	Nodes          []TopologyNode
+	Redirects      map[string]string
+	ControlNodeIDs []string
 }
 
 type HistoryWindow string
@@ -501,6 +507,7 @@ func (window HistoryWindow) Valid() bool {
 
 type HistoryNodeReference struct {
 	ID             string         `json:"id"`
+	StableNodeID   string         `json:"stableNodeId,omitempty"`
 	Label          string         `json:"label"`
 	Hostname       string         `json:"hostname,omitempty"`
 	DNSName        string         `json:"dnsName,omitempty"`
@@ -513,13 +520,14 @@ type HistoryNodes struct {
 }
 
 type HistoryEdgeSummary struct {
-	EdgeID        string               `json:"edgeId"`
-	Source        HistoryNodeReference `json:"source"`
-	Target        HistoryNodeReference `json:"target"`
-	LastTrafficAt time.Time            `json:"lastTrafficAt"`
-	AToBBytes     int64                `json:"aToBBytes"`
-	BToABytes     int64                `json:"bToABytes"`
-	Paths         []PathKind           `json:"paths"`
+	EdgeID          string               `json:"edgeId"`
+	Source          HistoryNodeReference `json:"source"`
+	Target          HistoryNodeReference `json:"target"`
+	SystemTelemetry bool                 `json:"systemTelemetry"`
+	LastTrafficAt   time.Time            `json:"lastTrafficAt"`
+	AToBBytes       int64                `json:"aToBBytes"`
+	BToABytes       int64                `json:"bToABytes"`
+	Paths           []PathKind           `json:"paths"`
 }
 
 type HistoryEdgePage struct {
@@ -528,11 +536,12 @@ type HistoryEdgePage struct {
 }
 
 type HistoryEdgeQuery struct {
-	Window HistoryWindow
-	NodeID string
-	Path   PathKind
-	Cursor string
-	Limit  int
+	Window                 HistoryWindow
+	NodeID                 string
+	Path                   PathKind
+	Cursor                 string
+	Limit                  int
+	IncludeSystemTelemetry bool
 }
 
 func EdgeID(a, b string) (id, source, target string) {

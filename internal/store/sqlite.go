@@ -247,12 +247,13 @@ func recordTraffic(ctx context.Context, tx *sql.Tx, record domain.AcceptedTraffi
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO history_edges(edge_id, source_id, target_id, first_traffic_at, last_traffic_at, system_telemetry)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(edge_id) DO UPDATE SET
 		  first_traffic_at = MIN(first_traffic_at, excluded.first_traffic_at),
-		  last_traffic_at = MAX(last_traffic_at, excluded.last_traffic_at)`,
-		record.EdgeID, record.SourceID, record.TargetID, formatTime(record.ReceivedAt), formatTime(record.ReceivedAt)); err != nil {
+		  last_traffic_at = MAX(last_traffic_at, excluded.last_traffic_at),
+		  system_telemetry = MAX(system_telemetry, excluded.system_telemetry)`,
+		record.EdgeID, record.SourceID, record.TargetID, formatTime(record.ReceivedAt), formatTime(record.ReceivedAt), record.SystemTelemetry); err != nil {
 		return err
 	}
 	return upsertHistoryEdgeMapping(ctx, tx, record.EdgeID, record.SourceID, record.TargetID, record.ReceivedAt)
@@ -292,6 +293,23 @@ func recordHistoryMetadata(ctx context.Context, tx *sql.Tx, metadata domain.Hist
 			return err
 		}
 	}
+	controlNodeIDs := make(map[string]struct{}, len(metadata.ControlNodeIDs))
+	for _, nodeID := range metadata.ControlNodeIDs {
+		controlNodeIDs[nodeID] = struct{}{}
+	}
+	for fromID := range metadata.Redirects {
+		resolvedID := resolveNodeID(metadata.Redirects, fromID)
+		if _, isControl := controlNodeIDs[resolvedID]; isControl {
+			controlNodeIDs[fromID] = struct{}{}
+		}
+	}
+	for nodeID := range controlNodeIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE history_edges SET system_telemetry = 1
+			WHERE source_id = ? OR target_id = ?`, nodeID, nodeID); err != nil {
+			return err
+		}
+	}
 	if redirectsChanged {
 		return rebuildHistoryEdgeMap(ctx, tx, updatedAt)
 	}
@@ -319,9 +337,17 @@ func recordPathTransition(ctx context.Context, tx *sql.Tx, transition domain.Pat
 	if err != nil {
 		return err
 	}
+	conflictValues := transition.Conflicts
+	if conflictValues == nil {
+		conflictValues = []domain.PathObservation{}
+	}
+	conflicts, err := json.Marshal(conflictValues)
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `
-        INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, ?)`,
-		transition.EdgeID, formatTime(transition.ObservedAt), path, observations)
+		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations) VALUES (?, ?, ?, ?, ?)`,
+		transition.EdgeID, formatTime(transition.ObservedAt), path, conflicts, observations)
 	return err
 }
 
@@ -362,7 +388,7 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 	}
 
 	rows, err = s.db.QueryContext(ctx, `
-        SELECT observed_at, path, observations FROM path_events
+		SELECT observed_at, path, conflicts, observations FROM path_events
         WHERE edge_id = ? AND observed_at >= ? ORDER BY observed_at`, edgeID, formatTime(since))
 	if err != nil {
 		return history, err
@@ -370,9 +396,9 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 	defer rows.Close()
 	for rows.Next() {
 		var rawTime string
-		var rawPath, rawObservations []byte
+		var rawPath, rawConflicts, rawObservations []byte
 		var event domain.PathEvent
-		if err := rows.Scan(&rawTime, &rawPath, &rawObservations); err != nil {
+		if err := rows.Scan(&rawTime, &rawPath, &rawConflicts, &rawObservations); err != nil {
 			return history, err
 		}
 		event.ObservedAt, err = time.Parse(time.RFC3339Nano, rawTime)
@@ -381,6 +407,12 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 		}
 		if err := json.Unmarshal(rawPath, &event.Path); err != nil {
 			return history, err
+		}
+		if err := json.Unmarshal(rawConflicts, &event.Conflicts); err != nil {
+			return history, err
+		}
+		if event.Conflicts == nil {
+			event.Conflicts = []domain.PathObservation{}
 		}
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return history, err
