@@ -148,15 +148,17 @@ type EdgeHistory struct {
 	From             time.Time `json:"from"`
 
 	// LastTrafficAt Exact server-received time of the last traffic in the selected window. Omitted when the window is empty.
-	LastTrafficAt       *time.Time           `json:"lastTrafficAt,omitempty"`
-	PathAnchor          *PathEvent           `json:"pathAnchor,omitempty"`
-	PathEvents          []PathEvent          `json:"pathEvents"`
-	PathEventsTruncated bool                 `json:"pathEventsTruncated"`
-	Source              HistoryNodeReference `json:"source"`
-	Target              HistoryNodeReference `json:"target"`
-	To                  time.Time            `json:"to"`
-	Traffic             []TrafficBucket      `json:"traffic"`
-	TrafficTruncated    bool                 `json:"trafficTruncated"`
+	LastTrafficAt       *time.Time             `json:"lastTrafficAt,omitempty"`
+	PathAnchor          *PathEvent             `json:"pathAnchor,omitempty"`
+	PathEvents          []PathEvent            `json:"pathEvents"`
+	PathEventsTruncated bool                   `json:"pathEventsTruncated"`
+	RelatedNodes        []HistoryNodeReference `json:"relatedNodes"`
+	Source              HistoryNodeReference   `json:"source"`
+	SystemTelemetry     bool                   `json:"systemTelemetry"`
+	Target              HistoryNodeReference   `json:"target"`
+	To                  time.Time              `json:"to"`
+	Traffic             []TrafficBucket        `json:"traffic"`
+	TrafficTruncated    bool                   `json:"trafficTruncated"`
 }
 
 // HistoryEdgePage defines model for HistoryEdgePage.
@@ -167,13 +169,14 @@ type HistoryEdgePage struct {
 
 // HistoryEdgeSummary defines model for HistoryEdgeSummary.
 type HistoryEdgeSummary struct {
-	AToBBytes     int64                `json:"aToBBytes"`
-	BToABytes     int64                `json:"bToABytes"`
-	EdgeId        string               `json:"edgeId"`
-	LastTrafficAt time.Time            `json:"lastTrafficAt"`
-	Paths         []PathKind           `json:"paths"`
-	Source        HistoryNodeReference `json:"source"`
-	Target        HistoryNodeReference `json:"target"`
+	AToBBytes       int64                `json:"aToBBytes"`
+	BToABytes       int64                `json:"bToABytes"`
+	EdgeId          string               `json:"edgeId"`
+	LastTrafficAt   time.Time            `json:"lastTrafficAt"`
+	Paths           []PathKind           `json:"paths"`
+	Source          HistoryNodeReference `json:"source"`
+	SystemTelemetry bool                 `json:"systemTelemetry"`
+	Target          HistoryNodeReference `json:"target"`
 }
 
 // HistoryNodeReference defines model for HistoryNodeReference.
@@ -184,6 +187,7 @@ type HistoryNodeReference struct {
 	IdentityStatus *IdentityStatus `json:"identityStatus,omitempty"`
 	Label          string          `json:"label"`
 	Os             *string         `json:"os,omitempty"`
+	StableNodeId   *string         `json:"stableNodeId,omitempty"`
 }
 
 // HistoryNodes defines model for HistoryNodes.
@@ -258,6 +262,7 @@ type ObserverState struct {
 
 // PathEvent defines model for PathEvent.
 type PathEvent struct {
+	Conflicts    []PathObservation       `json:"conflicts"`
 	Observations []ObservationProvenance `json:"observations"`
 	ObservedAt   time.Time               `json:"observedAt"`
 	Path         PathObservation         `json:"path"`
@@ -427,10 +432,16 @@ type TrafficBucket struct {
 	BucketStart time.Time `json:"bucketStart"`
 }
 
+// IncludeSystemTelemetry defines model for IncludeSystemTelemetry.
+type IncludeSystemTelemetry = bool
+
 // ListHistoryEdgesParams defines parameters for ListHistoryEdges.
 type ListHistoryEdgesParams struct {
 	Window HistoryWindow `form:"window" json:"window"`
-	NodeId *string       `form:"nodeId,omitempty" json:"nodeId,omitempty"`
+
+	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
+	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
+	NodeId                 *string                 `form:"nodeId,omitempty" json:"nodeId,omitempty"`
 
 	// Path Match when the path appeared at any point in the window.
 	Path   *PathKind `form:"path,omitempty" json:"path,omitempty"`
@@ -441,11 +452,17 @@ type ListHistoryEdgesParams struct {
 // GetEdgeHistoryParams defines parameters for GetEdgeHistory.
 type GetEdgeHistoryParams struct {
 	Window HistoryWindow `form:"window" json:"window"`
+
+	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
+	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
 }
 
 // GetHistoryNodesParams defines parameters for GetHistoryNodes.
 type GetHistoryNodesParams struct {
 	Window HistoryWindow `form:"window" json:"window"`
+
+	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
+	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
 }
 
 // SubmitReportJSONRequestBody defines body for SubmitReport for application/json ContentType.

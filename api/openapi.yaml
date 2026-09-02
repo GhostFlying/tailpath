@@ -90,6 +90,7 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/HistoryWindow'
+        - $ref: '#/components/parameters/IncludeSystemTelemetry'
       responses:
         '200':
           description: Edge history.
@@ -107,6 +108,7 @@ paths:
       summary: Return canonical nodes with traffic in a fixed history window.
       parameters:
         - $ref: '#/components/parameters/HistoryWindow'
+        - $ref: '#/components/parameters/IncludeSystemTelemetry'
       responses:
         '200':
           description: Matching canonical node references.
@@ -124,6 +126,7 @@ paths:
       summary: Return a keyset-paginated page of logical traffic edges.
       parameters:
         - $ref: '#/components/parameters/HistoryWindow'
+        - $ref: '#/components/parameters/IncludeSystemTelemetry'
         - name: nodeId
           in: query
           schema:
@@ -164,6 +167,14 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/HistoryWindow'
+    IncludeSystemTelemetry:
+      name: includeSystemTelemetry
+      in: query
+      required: false
+      description: Include Tailpath control-plane telemetry for explicit diagnostics.
+      schema:
+        type: boolean
+        default: false
   responses:
     Problem:
       description: Request failed.
@@ -732,6 +743,8 @@ components:
         - edgeId
         - source
         - target
+        - systemTelemetry
+        - relatedNodes
         - from
         - to
         - bucketDurationMs
@@ -746,6 +759,12 @@ components:
           $ref: '#/components/schemas/HistoryNodeReference'
         target:
           $ref: '#/components/schemas/HistoryNodeReference'
+        systemTelemetry:
+          type: boolean
+        relatedNodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryNodeReference'
         from:
           type: string
           format: date-time
@@ -785,6 +804,8 @@ components:
       properties:
         id:
           type: string
+        stableNodeId:
+          type: string
         label:
           type: string
         hostname:
@@ -806,7 +827,7 @@ components:
             $ref: '#/components/schemas/HistoryNodeReference'
     HistoryEdgeSummary:
       type: object
-      required: [edgeId, source, target, lastTrafficAt, aToBBytes, bToABytes, paths]
+      required: [edgeId, source, target, systemTelemetry, lastTrafficAt, aToBBytes, bToABytes, paths]
       properties:
         edgeId:
           type: string
@@ -814,6 +835,8 @@ components:
           $ref: '#/components/schemas/HistoryNodeReference'
         target:
           $ref: '#/components/schemas/HistoryNodeReference'
+        systemTelemetry:
+          type: boolean
         lastTrafficAt:
           type: string
           format: date-time
@@ -854,13 +877,17 @@ components:
           format: int64
     PathEvent:
       type: object
-      required: [observedAt, path, observations]
+      required: [observedAt, path, conflicts, observations]
       properties:
         observedAt:
           type: string
           format: date-time
         path:
           $ref: '#/components/schemas/PathObservation'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathObservation'
         observations:
           type: array
           items:

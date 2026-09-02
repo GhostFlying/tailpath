@@ -49,15 +49,17 @@ export function getEdgeHistory(
 
 type NullablePathEvent = Omit<
   EdgeHistory["pathEvents"][number],
-  "observations"
+  "conflicts" | "observations"
 > & {
+  conflicts: EdgeHistory["pathEvents"][number]["conflicts"] | null;
   observations: EdgeHistory["pathEvents"][number]["observations"] | null;
 };
 
 type NullableEdgeHistory = Omit<
   EdgeHistory,
-  "traffic" | "pathAnchor" | "pathEvents"
+  "relatedNodes" | "traffic" | "pathAnchor" | "pathEvents"
 > & {
+  relatedNodes: EdgeHistory["relatedNodes"] | null;
   traffic: EdgeHistory["traffic"] | null;
   pathAnchor?: NullablePathEvent | null;
   pathEvents: NullablePathEvent[] | null;
@@ -66,6 +68,7 @@ type NullableEdgeHistory = Omit<
 function normalizePathEvent(event: NullablePathEvent) {
   return {
     ...event,
+    conflicts: event.conflicts ?? [],
     observations: event.observations ?? [],
   };
 }
@@ -73,6 +76,7 @@ function normalizePathEvent(event: NullablePathEvent) {
 function normalizeEdgeHistory(history: NullableEdgeHistory): EdgeHistory {
   return {
     ...history,
+    relatedNodes: history.relatedNodes ?? [],
     traffic: history.traffic ?? [],
     pathAnchor: history.pathAnchor
       ? normalizePathEvent(history.pathAnchor)

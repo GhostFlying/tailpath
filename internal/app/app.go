@@ -246,16 +246,16 @@ func (a *App) EdgeHistory(ctx context.Context, edgeID string) (domain.EdgeHistor
 	return a.Store.EdgeHistory(ctx, edgeID, time.Now().Add(-a.StoreRetention()))
 }
 
-func (a *App) HistoryNodes(ctx context.Context, window domain.HistoryWindow) (domain.HistoryNodes, error) {
-	return a.Store.HistoryNodes(ctx, window, time.Now().UTC())
+func (a *App) HistoryNodes(ctx context.Context, window domain.HistoryWindow, includeSystemTelemetry bool) (domain.HistoryNodes, error) {
+	return a.Store.HistoryNodes(ctx, window, time.Now().UTC(), includeSystemTelemetry)
 }
 
 func (a *App) HistoryEdges(ctx context.Context, query domain.HistoryEdgeQuery) (domain.HistoryEdgePage, error) {
 	return a.Store.HistoryEdges(ctx, query, time.Now().UTC())
 }
 
-func (a *App) EdgeHistoryWindow(ctx context.Context, edgeID string, window domain.HistoryWindow) (domain.EdgeHistory, bool, error) {
-	return a.Store.EdgeHistoryWindow(ctx, edgeID, window, time.Now().UTC())
+func (a *App) EdgeHistoryWindow(ctx context.Context, edgeID string, window domain.HistoryWindow, includeSystemTelemetry bool) (domain.EdgeHistory, bool, error) {
+	return a.Store.EdgeHistoryWindow(ctx, edgeID, window, time.Now().UTC(), includeSystemTelemetry)
 }
 
 func (a *App) StoreRetention() time.Duration {

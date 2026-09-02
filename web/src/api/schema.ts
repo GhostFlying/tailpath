@@ -398,6 +398,8 @@ export interface components {
             edgeId: string;
             source: components["schemas"]["HistoryNodeReference"];
             target: components["schemas"]["HistoryNodeReference"];
+            systemTelemetry: boolean;
+            relatedNodes: components["schemas"]["HistoryNodeReference"][];
             /** Format: date-time */
             from: string;
             /** Format: date-time */
@@ -419,6 +421,7 @@ export interface components {
         HistoryWindow: "15m" | "1h" | "6h" | "24h" | "7d";
         HistoryNodeReference: {
             id: string;
+            stableNodeId?: string;
             label: string;
             hostname?: string;
             dnsName?: string;
@@ -432,6 +435,7 @@ export interface components {
             edgeId: string;
             source: components["schemas"]["HistoryNodeReference"];
             target: components["schemas"]["HistoryNodeReference"];
+            systemTelemetry: boolean;
             /** Format: date-time */
             lastTrafficAt: string;
             /** Format: int64 */
@@ -456,6 +460,7 @@ export interface components {
             /** Format: date-time */
             observedAt: string;
             path: components["schemas"]["PathObservation"];
+            conflicts: components["schemas"]["PathObservation"][];
             observations: components["schemas"]["ObservationProvenance"][];
         };
         Problem: {
@@ -477,6 +482,8 @@ export interface components {
     };
     parameters: {
         HistoryWindow: components["schemas"]["HistoryWindow"];
+        /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
+        IncludeSystemTelemetry: boolean;
     };
     requestBodies: never;
     headers: never;
@@ -598,6 +605,8 @@ export interface operations {
         parameters: {
             query: {
                 window: components["parameters"]["HistoryWindow"];
+                /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
+                includeSystemTelemetry?: components["parameters"]["IncludeSystemTelemetry"];
             };
             header?: never;
             path: {
@@ -624,6 +633,8 @@ export interface operations {
         parameters: {
             query: {
                 window: components["parameters"]["HistoryWindow"];
+                /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
+                includeSystemTelemetry?: components["parameters"]["IncludeSystemTelemetry"];
             };
             header?: never;
             path?: never;
@@ -648,6 +659,8 @@ export interface operations {
         parameters: {
             query: {
                 window: components["parameters"]["HistoryWindow"];
+                /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
+                includeSystemTelemetry?: components["parameters"]["IncludeSystemTelemetry"];
                 nodeId?: string;
                 /** @description Match when the path appeared at any point in the window. */
                 path?: components["schemas"]["PathKind"];

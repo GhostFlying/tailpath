@@ -253,7 +253,11 @@ func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Requ
 	if !ok {
 		return
 	}
-	history, found, err := s.app.EdgeHistoryWindow(request.Context(), edgeID, window)
+	includeSystemTelemetry, ok := parseIncludeSystemTelemetry(response, request)
+	if !ok {
+		return
+	}
+	history, found, err := s.app.EdgeHistoryWindow(request.Context(), edgeID, window, includeSystemTelemetry)
 	if err != nil {
 		if historyRequestCanceled(request, err) {
 			return
@@ -277,12 +281,21 @@ func normalizeHistoryCollections(history *domain.EdgeHistory) {
 	if history.PathEvents == nil {
 		history.PathEvents = []domain.PathEvent{}
 	}
+	if history.RelatedNodes == nil {
+		history.RelatedNodes = []domain.HistoryNodeReference{}
+	}
 	if history.PathAnchor != nil && history.PathAnchor.Observations == nil {
 		history.PathAnchor.Observations = []domain.ObservationProvenance{}
+	}
+	if history.PathAnchor != nil && history.PathAnchor.Conflicts == nil {
+		history.PathAnchor.Conflicts = []domain.PathObservation{}
 	}
 	for index := range history.PathEvents {
 		if history.PathEvents[index].Observations == nil {
 			history.PathEvents[index].Observations = []domain.ObservationProvenance{}
+		}
+		if history.PathEvents[index].Conflicts == nil {
+			history.PathEvents[index].Conflicts = []domain.PathObservation{}
 		}
 	}
 }
@@ -292,7 +305,11 @@ func (s *Server) getHistoryNodes(response http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	nodes, err := s.app.HistoryNodes(request.Context(), window)
+	includeSystemTelemetry, ok := parseIncludeSystemTelemetry(response, request)
+	if !ok {
+		return
+	}
+	nodes, err := s.app.HistoryNodes(request.Context(), window, includeSystemTelemetry)
 	if err != nil {
 		if historyRequestCanceled(request, err) {
 			return
@@ -309,9 +326,14 @@ func (s *Server) listHistoryEdges(response http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
+	includeSystemTelemetry, ok := parseIncludeSystemTelemetry(response, request)
+	if !ok {
+		return
+	}
 	query := domain.HistoryEdgeQuery{
 		Window: window, NodeID: request.URL.Query().Get("nodeId"),
 		Path: domain.PathKind(request.URL.Query().Get("path")), Cursor: request.URL.Query().Get("cursor"), Limit: 50,
+		IncludeSystemTelemetry: includeSystemTelemetry,
 	}
 	if query.Path != "" && !validPathKind(query.Path) {
 		writeProblem(response, http.StatusBadRequest, "invalid history path", "path must be direct, derp, peer_relay, or unknown")
@@ -353,6 +375,18 @@ func parseHistoryWindow(response http.ResponseWriter, request *http.Request) (do
 		return "", false
 	}
 	return window, true
+}
+
+func parseIncludeSystemTelemetry(response http.ResponseWriter, request *http.Request) (bool, bool) {
+	switch request.URL.Query().Get("includeSystemTelemetry") {
+	case "", "false":
+		return false, true
+	case "true":
+		return true, true
+	default:
+		writeProblem(response, http.StatusBadRequest, "invalid system telemetry option", "includeSystemTelemetry must be true or false")
+		return false, false
+	}
 }
 
 func validPathKind(path domain.PathKind) bool {
