@@ -3,7 +3,8 @@ module github.com/GhostFlying/tailpath
 go 1.26.5
 
 require (
-	github.com/oapi-codegen/runtime v1.1.2
+	github.com/oapi-codegen/runtime v1.7.0
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.39.1
 	tailscale.com v1.102.2
 	tailscale.com/client/tailscale/v2 v2.10.1
@@ -65,7 +66,6 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
