@@ -6,36 +6,62 @@ import {
   RadioTower,
   TriangleAlert,
   Users,
+  X,
 } from "lucide-react";
-import { memo, useMemo, useState } from "react";
-import type { EdgeHistory, PathKind } from "../api/types";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
+import type { EdgeHistory, HistoryNodeReference, PathKind } from "../api/types";
 import { pathLabel } from "../lib/format";
-import { IdentityBadge } from "../lib/identity";
-import { buildPathTimeline, pathColor } from "./historyMath";
+import { identityPresentation } from "../lib/identity";
+import {
+  buildPathTimeline,
+  pathColor,
+  pathEvidenceKey,
+  type PathTimelineItem,
+} from "./historyMath";
 
 interface Props {
   history: EdgeHistory;
+  mobile: boolean;
 }
 
-export const PathTimeline = memo(function PathTimeline({ history }: Props) {
+export const PathTimeline = memo(function PathTimeline({
+  history,
+  mobile,
+}: Props) {
   const items = useMemo(() => buildPathTimeline(history), [history]);
   const [selectedID, setSelectedID] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
   const selected =
     items.find((item) => item.id === selectedID) ??
     items.find((item) => !item.anchored && item.observations.length > 0) ??
     items[0];
-  const nodeByID = useMemo(
-    () =>
-      new Map([
-        [history.source.id, history.source],
-        [history.target.id, history.target],
-      ]),
-    [history.source, history.target],
-  );
+  const nodes = useMemo(() => buildHistoryNodeMaps(history), [history]);
+
+  useEffect(() => {
+    if (!mobile) setSheetOpen(false);
+  }, [mobile]);
+
+  function select(item: PathTimelineItem) {
+    setSelectedID(item.id);
+    if (mobile) setSheetOpen(true);
+  }
 
   return (
     <section className="history-section path-timeline-section">
-      <h2>Path timeline</h2>
+      <div className="history-section-heading">
+        <h2>Path timeline</h2>
+        <span>Newest first</span>
+      </div>
       {items.length === 0 ? (
         <div className="history-chart-empty">
           No path evidence in this window
@@ -57,7 +83,8 @@ export const PathTimeline = memo(function PathTimeline({ history }: Props) {
                     "--timeline-grow": Math.max(1, item.durationMs),
                   } as React.CSSProperties
                 }
-                onClick={() => setSelectedID(item.id)}
+                aria-pressed={active}
+                onClick={() => select(item)}
               >
                 <span className="timeline-time">
                   <strong>{formatTimelineTime(item.from)}</strong>
@@ -69,7 +96,9 @@ export const PathTimeline = memo(function PathTimeline({ history }: Props) {
                   <Icon size={19} />
                 </span>
                 <span className="timeline-copy">
-                  <strong>{pathLabel(item.path)}</strong>
+                  <strong>
+                    {displayPathLabel(item.path, nodes.byStableID)}
+                  </strong>
                   <small>{formatDuration(item.durationMs)}</small>
                 </span>
                 <span className="timeline-observers">
@@ -81,82 +110,287 @@ export const PathTimeline = memo(function PathTimeline({ history }: Props) {
           })}
         </div>
       )}
-      {selected ? (
-        <div className="provenance-section">
-          <h2>Observed by</h2>
-          {selected.observations.length === 0 ? (
-            <div className="provenance-empty">
-              No observer provenance retained
-            </div>
-          ) : (
-            <div
-              className="provenance-table"
-              role="table"
-              aria-label="Observed by"
-            >
-              <div className="provenance-head" role="row">
-                <span>Node</span>
-                <span>Path</span>
-                <span>First seen</span>
-                <span>Last seen</span>
-              </div>
-              {selected.observations.map((observation, index) => {
-                const node = nodeByID.get(observation.observerId);
-                return (
-                  <div
-                    className={`provenance-row ${observation.relaySession ? "relay-session" : ""}`}
-                    role="row"
-                    key={`${observation.observerId}:${index}`}
-                  >
-                    <span>
-                      {node?.label ?? observation.observerId}
-                      {observation.clockSkewed ? (
-                        <TriangleAlert
-                          size={14}
-                          aria-label="Collector clock warning"
-                        />
-                      ) : null}
-                    </span>
-                    <span className={`path-text ${observation.path.kind}`}>
-                      {pathLabel(observation.path)}
-                    </span>
-                    <time dateTime={observation.collectedAt}>
-                      {formatTimelineTime(observation.collectedAt, true)}
-                    </time>
-                    <time dateTime={observation.receivedAt}>
-                      {formatTimelineTime(observation.receivedAt, true)}
-                    </time>
-                    {observation.relaySession ? (
-                      <div className="history-relay-provenance">
-                        <span>
-                          Relay{" "}
-                          {observation.path.peerRelayStableNodeId ?? "unknown"}
-                        </span>
-                        <span>VNI {observation.relaySession.vni}</span>
-                        <span>
-                          Session{" "}
-                          <code>{observation.relaySession.sessionId}</code>
-                        </span>
-                        <IdentityBadge
-                          status={observation.relaySession.sourceIdentityStatus}
-                          compact
-                        />
-                        <IdentityBadge
-                          status={observation.relaySession.targetIdentityStatus}
-                          compact
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      {selected && !mobile ? (
+        <ProvenanceContent
+          history={history}
+          selected={selected}
+          nodes={nodes}
+        />
+      ) : null}
+      {selected && mobile && sheetOpen ? (
+        <MobileProvenanceSheet
+          history={history}
+          selected={selected}
+          nodes={nodes}
+          onClose={closeSheet}
+        />
       ) : null}
     </section>
   );
 });
+
+interface HistoryNodeMaps {
+  byID: Map<string, HistoryNodeReference>;
+  byStableID: Map<string, HistoryNodeReference>;
+}
+
+function buildHistoryNodeMaps(history: EdgeHistory): HistoryNodeMaps {
+  const byID = new Map<string, HistoryNodeReference>();
+  const byStableID = new Map<string, HistoryNodeReference>();
+  for (const node of [
+    history.source,
+    history.target,
+    ...history.relatedNodes,
+  ]) {
+    byID.set(node.id, node);
+    if (node.stableNodeId) byStableID.set(node.stableNodeId, node);
+  }
+  return { byID, byStableID };
+}
+
+function ProvenanceContent({
+  history,
+  selected,
+  nodes,
+  onClose,
+  closeButtonRef,
+}: {
+  history: EdgeHistory;
+  selected: PathTimelineItem;
+  nodes: HistoryNodeMaps;
+  onClose?: () => void;
+  closeButtonRef?: RefObject<HTMLButtonElement | null>;
+}) {
+  return (
+    <div className="provenance-section">
+      <header className="provenance-title">
+        <div>
+          <span>Effective path at</span>
+          <strong>{formatTimelineDateTime(selected.from)}</strong>
+        </div>
+        <span
+          className={`path-text ${selected.path.kind}`}
+          aria-label="Effective path"
+        >
+          {displayPathLabel(selected.path, nodes.byStableID)}
+        </span>
+        {onClose ? (
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close path evidence"
+          >
+            <X size={20} />
+          </button>
+        ) : null}
+      </header>
+      <h2>Observed by</h2>
+      {selected.observations.length === 0 ? (
+        <div className="provenance-empty">No observer provenance retained</div>
+      ) : (
+        <div className="provenance-table" role="table" aria-label="Observed by">
+          <div className="provenance-head" role="row">
+            <span>Node</span>
+            <span>Evidence</span>
+            <span>Observed at</span>
+            <span>Received at</span>
+          </div>
+          {selected.observations.map((observation, index) => {
+            const node = nodes.byID.get(observation.observerId);
+            const supports =
+              pathEvidenceKey(observation.path) ===
+              pathEvidenceKey(selected.path);
+            return (
+              <div
+                className={`provenance-row ${observation.relaySession ? "relay-session" : ""}`}
+                role="row"
+                key={`${observation.observerId}:${index}`}
+              >
+                <span>
+                  {node?.label ?? observation.observerId}
+                  {observation.clockSkewed ? (
+                    <TriangleAlert
+                      size={14}
+                      aria-label="Collector clock warning"
+                    />
+                  ) : null}
+                </span>
+                <span
+                  className={
+                    supports ? "evidence-support" : "evidence-conflict"
+                  }
+                >
+                  {supports ? "Supports selected path" : "Conflicts"}:{" "}
+                  {displayPathLabel(observation.path, nodes.byStableID)}
+                </span>
+                <time dateTime={observation.collectedAt}>
+                  {formatTimelineTime(observation.collectedAt, true)}
+                </time>
+                <time dateTime={observation.receivedAt}>
+                  {formatTimelineTime(observation.receivedAt, true)}
+                </time>
+                {observation.relaySession ? (
+                  <RelaySessionDetails
+                    history={history}
+                    observation={observation}
+                    nodes={nodes}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelaySessionDetails({
+  history,
+  observation,
+  nodes,
+}: {
+  history: EdgeHistory;
+  observation: PathTimelineItem["observations"][number];
+  nodes: HistoryNodeMaps;
+}) {
+  const session = observation.relaySession;
+  if (!session) return null;
+  const relayLabel = observation.path.peerRelayStableNodeId
+    ? (nodes.byStableID.get(observation.path.peerRelayStableNodeId)?.label ??
+      observation.path.peerRelayStableNodeId)
+    : "unknown";
+  const bothResolved =
+    session.sourceIdentityStatus === "resolved" &&
+    session.targetIdentityStatus === "resolved";
+  return (
+    <div className="history-relay-provenance">
+      <span>Relay: {relayLabel}</span>
+      <span>VNI {session.vni}</span>
+      <span>
+        Session <code>{session.sessionId}</code>
+      </span>
+      {bothResolved ? (
+        <span className="identity-resolution resolved">
+          Both endpoints resolved
+        </span>
+      ) : (
+        <>
+          <EndpointIdentity
+            label={history.source.label}
+            status={session.sourceIdentityStatus}
+          />
+          <EndpointIdentity
+            label={history.target.label}
+            status={session.targetIdentityStatus}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function EndpointIdentity({
+  label,
+  status,
+}: {
+  label: string;
+  status: "resolved" | "partial" | "anonymous" | "conflict";
+}) {
+  const presentation = identityPresentation(status);
+  if (!presentation) return null;
+  return (
+    <span className={`identity-resolution ${status}`}>
+      {label}: {presentation.shortLabel}
+    </span>
+  );
+}
+
+function MobileProvenanceSheet({
+  history,
+  selected,
+  nodes,
+  onClose,
+}: {
+  history: EdgeHistory;
+  selected: PathTimelineItem;
+  nodes: HistoryNodeMaps;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="history-sheet-layer">
+      <div
+        className="history-sheet-backdrop"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <div
+        ref={dialogRef}
+        className="history-provenance-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Path evidence"
+      >
+        <ProvenanceContent
+          history={history}
+          selected={selected}
+          nodes={nodes}
+          onClose={onClose}
+          closeButtonRef={closeButtonRef}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function displayPathLabel(
+  path: PathTimelineItem["path"],
+  byStableID: Map<string, HistoryNodeReference>,
+) {
+  if (path.kind !== "peer_relay" || !path.peerRelayStableNodeId) {
+    return pathLabel(path);
+  }
+  const relay = byStableID.get(path.peerRelayStableNodeId);
+  return `Peer Relay via ${relay?.label ?? path.peerRelayStableNodeId}`;
+}
 
 function pathIcon(kind: PathKind) {
   switch (kind) {
@@ -184,6 +418,17 @@ function formatTimelineTime(value: string, seconds = false) {
     hour: "2-digit",
     minute: "2-digit",
     second: seconds ? "2-digit" : undefined,
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function formatTimelineDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   }).format(new Date(value));
 }

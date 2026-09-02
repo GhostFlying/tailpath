@@ -64,7 +64,17 @@ returns complete provenance node references. Generated clients and legacy-null
 normalization are updated. Canonical `make check` passes in the devcontainer,
 including 44 Playwright cases with 14 project-conditional skips.
 
+The stacked Web implementation computes timeline bounds chronologically and
+renders them newest-first, resolves observer and relay labels from
+`relatedNodes`, distinguishes supporting and conflicting evidence, and uses an
+accessible 70dvh mobile bottom sheet with focus and scroll restoration. Browser
+coverage includes desktop, 390px-class, and 320px layouts; the first focused
+run passed 45 cases with 15 project-conditional skips and produced desktop,
+mobile-detail, relay-sheet, and 320px-sheet screenshots. The final canonical
+`make check` also passes, including all Go checks, 63 Web unit tests, build, and
+45 Playwright cases with 15 project-conditional skips.
+
 ## Next step
 
-Open the backend Draft PR, then implement the stacked Web interaction PR with
-newest-first timeline semantics and the mobile provenance bottom sheet.
+Open the stacked Web Draft PR against the backend branch and wait for sequential
+review and rebase merge before deployment.

@@ -106,11 +106,16 @@ test("presents sanitized relay history provenance", async ({
   await expect(
     timeline.getByRole("listitem").filter({ hasText: "Peer Relay" }),
   ).toHaveCount(2);
+  await expect(page.getByText("Newest first", { exact: true })).toBeVisible();
+  await expect(timeline.getByRole("listitem").first()).toContainText(
+    "Relay Hangzhou",
+  );
   await timeline.locator(".selected").click();
   const provenance = page.getByRole("table", { name: "Observed by" });
-  await expect(provenance).toContainText("Relay relay-stable");
+  await expect(provenance).toContainText("Relay: Relay Hangzhou");
   await expect(provenance).toContainText("VNI 7");
   await expect(provenance).toContainText("session-7");
+  await expect(provenance).toContainText("Supports selected path");
   await expect(provenance).toContainText("Anonymous");
   await expect(provenance).not.toContainText("192.0.2.");
   expect(consoleErrors).toEqual([]);
@@ -285,6 +290,7 @@ function relayHistory() {
   const event = {
     observedAt,
     path: relayPath,
+    conflicts: [],
     observations: [
       {
         observerId: "relay-node",
@@ -300,6 +306,17 @@ function relayHistory() {
     edgeId: "client-a--client-b",
     source: historyNode("client-a", "Unresolved client", "partial"),
     target: historyNode("client-b", "Anonymous client", "anonymous"),
+    systemTelemetry: false,
+    relatedNodes: [
+      historyNode("client-a", "Unresolved client", "partial"),
+      historyNode("client-b", "Anonymous client", "anonymous"),
+      {
+        id: "relay-node",
+        stableNodeId: "relay-stable",
+        label: "Relay Hangzhou",
+        identityStatus: "resolved",
+      },
+    ],
     from: "2026-08-26T03:00:00Z",
     to: "2026-08-26T04:00:01Z",
     bucketDurationMs: 30000,

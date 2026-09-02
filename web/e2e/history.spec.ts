@@ -1,10 +1,34 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const nodes = [
-  { id: "node-mac", label: "MacBook", hostname: "macbook", os: "macos" },
-  { id: "node-dev", label: "DevBox", hostname: "devbox", os: "linux" },
-  { id: "node-phone", label: "iPhone", hostname: "iphone", os: "ios" },
-  { id: "node-win", label: "Windows", hostname: "windows", os: "windows" },
+  {
+    id: "node-mac",
+    stableNodeId: "stable-mac",
+    label: "MacBook",
+    hostname: "macbook",
+    os: "macos",
+  },
+  {
+    id: "node-dev",
+    stableNodeId: "stable-dev",
+    label: "DevBox",
+    hostname: "devbox",
+    os: "linux",
+  },
+  {
+    id: "node-phone",
+    stableNodeId: "stable-phone",
+    label: "iPhone",
+    hostname: "iphone",
+    os: "ios",
+  },
+  {
+    id: "node-win",
+    stableNodeId: "stable-win",
+    label: "Windows",
+    hostname: "windows",
+    os: "windows",
+  },
 ];
 
 const edgeSummaries = [
@@ -79,11 +103,19 @@ test("renders and filters the desktop history workspace", async ({
   await expect(page.getByRole("list", { name: "Path timeline" })).toContainText(
     "DERP",
   );
+  await expect(page.getByText("Newest first", { exact: true })).toBeVisible();
+  await expect(page.getByRole("listitem").first()).toContainText("Direct");
   await page.getByRole("listitem").filter({ hasText: "DERP" }).click();
   await expect(page.getByRole("table", { name: "Observed by" })).toContainText(
     "MacBook",
   );
   await expect(page.getByLabel("Collector clock warning")).toBeVisible();
+  await expect(page.getByRole("table", { name: "Observed by" })).toContainText(
+    "Supports selected path: DERP hkg",
+  );
+  await expect(page.getByRole("table", { name: "Observed by" })).toContainText(
+    "Conflicts: Direct",
+  );
 
   await page.screenshot({
     path: testInfo.outputPath("history-desktop.png"),
@@ -138,6 +170,26 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(
     page.getByLabel("Server reachable", { exact: true }),
   ).toBeVisible();
+  const timeline = page.getByRole("list", { name: "Path timeline" });
+  await timeline.scrollIntoViewIfNeeded();
+  const detailPane = page.getByLabel("History edge detail");
+  const scrollBefore = await detailPane.evaluate(
+    (element) => element.scrollTop,
+  );
+  const newestEvent = timeline.getByRole("listitem").first();
+  await newestEvent.click();
+  const sheet = page.getByRole("dialog", { name: "Path evidence" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("Effective path at")).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Close path evidence" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(newestEvent).toBeFocused();
+  expect(await detailPane.evaluate((element) => element.scrollTop)).toBe(
+    scrollBefore,
+  );
   await page.screenshot({
     path: testInfo.outputPath("history-mobile-detail.png"),
     fullPage: true,
@@ -217,6 +269,38 @@ test("separates mobile History identity, recency, and traffic totals", async ({
     path: testInfo.outputPath("history-mobile-metadata.png"),
     fullPage: true,
   });
+});
+
+test("keeps path evidence usable in a 320px bottom sheet", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("mobile"));
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/history/edges/node-mac--node-dev?window=24h");
+  const timeline = page.getByRole("list", { name: "Path timeline" });
+  await timeline.scrollIntoViewIfNeeded();
+  await timeline.getByRole("listitem").first().click();
+
+  const sheet = page.getByRole("dialog", { name: "Path evidence" });
+  await expect(sheet).toBeVisible();
+  const bounds = await sheet.boundingBox();
+  if (!bounds) throw new Error("path evidence sheet has no bounds");
+  expect(bounds.height).toBeLessThanOrEqual(490);
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  expect(
+    await page.locator("body").evaluate((body) => body.scrollWidth),
+  ).toBeLessThanOrEqual(320);
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    sheet.getByRole("button", { name: "Close path evidence" }),
+  ).toBeFocused();
+  await page.screenshot({
+    path: testInfo.outputPath("history-evidence-sheet-320.png"),
+    fullPage: true,
+  });
+  await sheet.getByRole("button", { name: "Close path evidence" }).click();
+  await expect(sheet).toBeHidden();
 });
 
 test("shows bounded empty and error states", async ({ page }, testInfo) => {
@@ -329,8 +413,10 @@ test("renders a direct empty-window link with legacy null collections", async ({
         pathAnchor: {
           observedAt: "2026-08-23T01:59:00Z",
           path: { kind: "direct" },
+          conflicts: null,
           observations: null,
         },
+        relatedNodes: null,
         pathEvents: null,
       },
     });
@@ -458,8 +544,12 @@ function historyFor(summary: (typeof edgeSummaries)[number]) {
     aToBBytes: 600_000 + Math.round((Math.sin(index / 8) + 1.2) * 9_000_000),
     bToABytes: 350_000 + Math.round((Math.cos(index / 11) + 1.2) * 3_000_000),
   }));
-  const provenance = (kind: "direct" | "derp", clockSkewed = false) => ({
-    observerId: summary.source.id,
+  const provenance = (
+    kind: "direct" | "derp",
+    clockSkewed = false,
+    observerId = summary.source.id,
+  ) => ({
+    observerId,
     path:
       kind === "derp"
         ? { kind, derpRegion: "hkg" }
@@ -472,6 +562,8 @@ function historyFor(summary: (typeof edgeSummaries)[number]) {
     edgeId: summary.edgeId,
     source: summary.source,
     target: summary.target,
+    systemTelemetry: false,
+    relatedNodes: [summary.source, summary.target],
     from: new Date(from).toISOString(),
     to: new Date(to).toISOString(),
     bucketDurationMs: 12 * 60_000,
@@ -480,17 +572,23 @@ function historyFor(summary: (typeof edgeSummaries)[number]) {
     pathAnchor: {
       observedAt: new Date(from - 60_000).toISOString(),
       path: { kind: "direct", directEndpoint: "203.0.113.4:41641" },
+      conflicts: [],
       observations: [provenance("direct")],
     },
     pathEvents: [
       {
         observedAt: "2026-08-23T14:00:00Z",
         path: { kind: "derp", derpRegion: "hkg" },
-        observations: [provenance("derp", true)],
+        conflicts: [{ kind: "direct" }],
+        observations: [
+          provenance("derp", true),
+          provenance("direct", false, summary.target.id),
+        ],
       },
       {
         observedAt: "2026-08-23T20:00:00Z",
         path: { kind: "direct", directEndpoint: "203.0.113.4:41641" },
+        conflicts: [],
         observations: [provenance("direct")],
       },
     ],

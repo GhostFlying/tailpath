@@ -114,6 +114,7 @@ export default function HistoryWorkspace() {
           onBack={backToList}
           onRetry={detail.retryRequest}
           onWindowChange={(window: HistoryWindow) => updateFilters({ window })}
+          mobile={isMobile}
         />
       </div>
     </main>

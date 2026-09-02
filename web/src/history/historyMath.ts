@@ -27,10 +27,12 @@ export interface TrafficGeometry {
 
 export interface PathTimelineItem {
   id: string;
+  observedAt: string;
   from: string;
   to: string;
   durationMs: number;
   path: PathEvent["path"];
+  conflicts: PathEvent["conflicts"];
   observations: PathEvent["observations"];
   anchored: boolean;
 }
@@ -122,11 +124,12 @@ export function buildPathTimeline(history: EdgeHistory): PathTimelineItem[] {
     ...history.pathEvents.map((event) => ({ event, anchored: false })),
   );
   if (events.length === 0) return [];
-  return events.map(({ event, anchored }, index) => {
+  const chronological = events.map(({ event, anchored }, index) => {
     const from = anchored ? history.from : event.observedAt;
     const to = events[index + 1]?.event.observedAt ?? history.to;
     return {
       id: `${event.observedAt}:${index}`,
+      observedAt: event.observedAt,
       from,
       to,
       durationMs: Math.max(
@@ -134,10 +137,25 @@ export function buildPathTimeline(history: EdgeHistory): PathTimelineItem[] {
         new Date(to).getTime() - new Date(from).getTime(),
       ),
       path: event.path,
+      conflicts: event.conflicts,
       observations: event.observations,
       anchored,
     };
   });
+  return chronological.reverse();
+}
+
+export function pathEvidenceKey(path: PathEvent["path"]): string {
+  switch (path.kind) {
+    case "direct":
+      return "direct";
+    case "derp":
+      return `derp:${path.derpRegion?.trim().toLowerCase() || "unknown"}`;
+    case "peer_relay":
+      return `peer_relay:${path.peerRelayStableNodeId?.trim() || "unknown"}`;
+    default:
+      return "unknown";
+  }
 }
 
 export function pathColor(kind: PathKind): string {
