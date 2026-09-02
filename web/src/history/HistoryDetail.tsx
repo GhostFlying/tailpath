@@ -22,6 +22,7 @@ interface Props {
   onBack: () => void;
   onRetry: () => void;
   onWindowChange: (window: HistoryWindow) => void;
+  mobile: boolean;
 }
 
 export const HistoryDetail = memo(function HistoryDetail({
@@ -32,6 +33,7 @@ export const HistoryDetail = memo(function HistoryDetail({
   onBack,
   onRetry,
   onWindowChange,
+  mobile,
 }: Props) {
   const totals = useMemo(() => {
     let aToB = 0;
@@ -146,7 +148,7 @@ export const HistoryDetail = memo(function HistoryDetail({
                 </span>
               </div>
               <DirectionalTrafficChart history={history} />
-              <PathTimeline history={history} />
+              <PathTimeline history={history} mobile={mobile} />
               {history.trafficTruncated || history.pathEventsTruncated ? (
                 <p className="history-truncation-note">
                   Latest retained points shown

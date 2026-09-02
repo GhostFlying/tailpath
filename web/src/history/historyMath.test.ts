@@ -71,7 +71,7 @@ describe("history chart geometry", () => {
 });
 
 describe("path timeline", () => {
-  it("starts an anchor at the selected window boundary", () => {
+  it("computes chronological bounds before returning newest first", () => {
     const history = {
       edgeId: "a--b",
       source: { id: "a", label: "A" },
@@ -102,10 +102,15 @@ describe("path timeline", () => {
     const timeline = buildPathTimeline(history);
     expect(timeline).toHaveLength(2);
     expect(timeline[0]).toMatchObject({
+      from: history.pathEvents[0].observedAt,
+      to: history.to,
+      anchored: false,
+    });
+    expect(timeline[1]).toMatchObject({
       from: history.from,
       to: history.pathEvents[0].observedAt,
       anchored: true,
     });
-    expect(timeline[1].durationMs).toBe(30 * 60 * 1000);
+    expect(timeline[0].durationMs).toBe(30 * 60 * 1000);
   });
 });
