@@ -230,7 +230,7 @@ test("copies MagicDNS and each IP through the HTTP fallback", async ({
   await expect(page.getByRole("status")).toContainText("MagicDNS copied");
   await expect
     .poll(() => copiedValue(page))
-    .toBe("catalog-node-001.directory.example.ts.net");
+    .toBe("catalog-node-001.directory.example.ts.net.");
 
   const ipCopies = page.getByRole("button", { name: /^Copy IP / });
   await expect(ipCopies).toHaveCount(2);
