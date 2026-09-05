@@ -48,17 +48,28 @@ visibility can be mistaken for completeness.
 
 ## Current state
 
-Compose packaging, nonroot secret-read CI coverage, the privacy sanitizer and
-fixtures, bilingual dogfood runbook, and pending ledger are implemented on the
-issue branch. The existing synthetic 250-device and 250-node / 1,000-edge
-browser gates pass locally. Real OAuth dogfood remains blocked on the full
-stack reaching main and a user-created client with only `devices:core:read`.
+The full stack is on main at `f0eb253`, its hosted repository and manual scale
+workflows passed, and real OAuth dogfood is running against the immutable
+full-SHA image. First sync, directory/runtime reconciliation, directory-only
+Live isolation, restart, stale last-good, recovery, and real desktop/mobile UI
+checks passed. The more-than-65-minute token-renewal window is in progress.
+
+Independent review found two qualification blockers before closeout: an
+upstream HTTP 200 response with a nil device list can be accepted as an empty
+snapshot, and the evidence content hash includes volatile runtime enrichment.
+It also found three P2 correctness/privacy gaps: directory-first runtime
+evidence can expose a zero timestamp, MagicDNS copy removes the trailing dot,
+and the Devices response is cacheable. All five will be fixed and requalified
+on a new immutable main image.
 
 ## Next step
 
-Run the complete repository check, open the Draft PR, and merge the stack in
-order. Then select main's successful full-SHA image and request the OAuth
-credential for the more-than-65-minute qualification run.
+Reject nil upstream device lists as `invalid-response`; hash only
+directory-authoritative fields in the dogfood sanitizer; use a valid identity
+evidence timestamp without changing Live freshness; copy the full MagicDNS
+value; mark the Devices response `no-store`; and add regression tests. Then run
+`make check` and open the blocker-remediation Draft PR. After it merges, repeat
+the immutable-image OAuth qualification before final ledger archival.
 
 ## Verification
 

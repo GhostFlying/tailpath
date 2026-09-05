@@ -41,7 +41,31 @@ directory_hash() {
     | if any($identities[]; type != "string" or length == 0) or
         (($identities | unique | length) != ($identities | length)) then
         error("invalid stable node identities")
-      else .devices | sort_by(.stableNodeId) end
+      else
+        [.devices[] | {
+          stableNodeId,
+          dnsName: (.dnsName // null),
+          hostname: (.hostname // null),
+          platform: (.platform // null),
+          tailscaleIps: ((.tailscaleIps // []) | sort),
+          tags: ((.tags // []) | sort),
+          connectedToControl,
+          lastSeen: (.lastSeen // null),
+          collectedAt
+        }] | sort_by(.stableNodeId)
+      end
+  ' "$1") || return
+  printf '%s' "$canonical" | sha256sum | cut -d ' ' -f 1
+}
+
+canonical_mapping_hash() {
+  canonical=$(jq -cer '
+    if (.devices | type) != "array" then error("invalid device directory") else . end
+    | [.devices[] | {stableNodeId, id}] as $mappings
+    | if any($mappings[]; (.stableNodeId | type) != "string" or (.stableNodeId | length) == 0 or
+        (.id | type) != "string" or (.id | length) == 0) then
+        error("invalid canonical mapping")
+      else $mappings | sort_by(.stableNodeId) end
   ' "$1") || return
   printf '%s' "$canonical" | sha256sum | cut -d ' ' -f 1
 }
@@ -60,10 +84,12 @@ case "$mode" in
     cat >"$temporary"
     hash=$(identity_hash "$temporary")
     content_hash=$(directory_hash "$temporary")
+    mapping_hash=$(canonical_mapping_hash "$temporary")
     jq -e \
       --arg scenario "$scenario" \
       --arg identityHash "$hash" \
       --arg contentHash "$content_hash" \
+      --arg mappingHash "$mapping_hash" \
       --slurpfile topology "$topology_file" '
       . as $directory
       | if ($topology | length) != 1 or (($topology[0].nodes | type) != "array") or
@@ -92,6 +118,7 @@ case "$mode" in
             deviceCount: (.devices | length),
             identitySetSha256: $identityHash,
             contentSha256: $contentHash,
+            canonicalMappingSha256: $mappingHash,
             controlConnectedCount: ([.devices[] | select(.connectedToControl == true)] | length),
             runtimeEvidenceCount: ([.devices[] | select(.runtime != null)] | length),
             runtimeObservableCount: ([.devices[] | select(.runtime.observable == true)] | length),
@@ -124,12 +151,16 @@ case "$mode" in
     after_hash=$(identity_hash "$after_file")
     before_content_hash=$(directory_hash "$before_file")
     after_content_hash=$(directory_hash "$after_file")
+    before_mapping_hash=$(canonical_mapping_hash "$before_file")
+    after_mapping_hash=$(canonical_mapping_hash "$after_file")
     jq -en \
       --arg scenario "$scenario" \
       --arg beforeHash "$before_hash" \
       --arg afterHash "$after_hash" \
       --arg beforeContentHash "$before_content_hash" \
       --arg afterContentHash "$after_content_hash" \
+      --arg beforeMappingHash "$before_mapping_hash" \
+      --arg afterMappingHash "$after_mapping_hash" \
       --slurpfile before "$before_file" \
       --slurpfile after "$after_file" '
       def syncTime($value):
@@ -157,18 +188,21 @@ case "$mode" in
               errorCode: ($before[0].sync.errorCode // null),
               deviceCount: ($before[0].devices | length),
               identitySetSha256: $beforeHash,
-              contentSha256: $beforeContentHash
+              contentSha256: $beforeContentHash,
+              canonicalMappingSha256: $beforeMappingHash
             },
             after: {
               status: $after[0].sync.status,
               errorCode: ($after[0].sync.errorCode // null),
               deviceCount: ($after[0].devices | length),
               identitySetSha256: $afterHash,
-              contentSha256: $afterContentHash
+              contentSha256: $afterContentHash,
+              canonicalMappingSha256: $afterMappingHash
             },
             lastGoodPreserved:
               (($before[0].devices | length) == ($after[0].devices | length) and
                 $beforeHash == $afterHash and $beforeContentHash == $afterContentHash),
+            canonicalMappingStable: ($beforeMappingHash == $afterMappingHash),
             successAdvancedSeconds:
               (if $beforeSuccess == null or $afterSuccess == null then null
                else ($afterSuccess - $beforeSuccess) end)
