@@ -184,6 +184,7 @@ func (s *Server) authorizeAPI(next http.Handler) http.Handler {
 			next.ServeHTTP(response, request)
 			return
 		}
+		response.Header().Set("Cache-Control", "no-store")
 		if s.authorizer == nil {
 			writeProblem(response, http.StatusUnauthorized, "Tailnet identity is required", "API has no WhoIs authorizer")
 			return

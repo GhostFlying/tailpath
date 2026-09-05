@@ -139,6 +139,9 @@ func TestDevicesAPIEncodesDisabledAndEmptyCollections(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("devices status = %d: %s", recorder.Code, recorder.Body.String())
 	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("cache control = %q, want no-store", got)
+	}
 	if got := recorder.Body.String(); got != "{\"sync\":{\"status\":\"disabled\",\"invalidAddressCount\":0},\"devices\":[]}\n" {
 		t.Fatalf("disabled devices response = %s", got)
 	}

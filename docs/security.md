@@ -54,3 +54,5 @@ route state, posture attributes, and administrative metadata are discarded.
 Remote failures are exposed only as fixed categories such as unauthorized,
 forbidden, rate-limited, unavailable, timeout, or invalid-response. Response
 bodies and credential details are never forwarded to the UI or logs.
+Authenticated API responses carry `Cache-Control: no-store` so browsers and
+intermediaries are not invited to retain Tailnet metadata.

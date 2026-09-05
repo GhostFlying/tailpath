@@ -1535,9 +1535,13 @@ func (a *Aggregator) DeviceDirectory() domain.DeviceDirectory {
 		if !node.LastEvidence.IsZero() || !node.IdentityCollectedAt.IsZero() || node.Observable {
 			identity := node.Identity
 			identity.TailscaleIPs = append([]string{}, node.Identity.TailscaleIPs...)
+			lastEvidenceAt := node.LastEvidence
+			if lastEvidenceAt.IsZero() {
+				lastEvidenceAt = runtimeAt
+			}
 			entry.Runtime = &domain.DirectoryRuntimeEvidence{
 				Identity: identity, Observable: node.Observable,
-				Online: a.observerOnlineLocked(nodeID, node, now), LastEvidenceAt: node.LastEvidence,
+				Online: a.observerOnlineLocked(nodeID, node, now), LastEvidenceAt: lastEvidenceAt,
 				CollectedAt: runtimeAt,
 			}
 		}
