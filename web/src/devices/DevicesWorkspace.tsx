@@ -506,7 +506,7 @@ function DeviceInspector({
         <DeviceDetail label="MagicDNS / hostname">
           {device.dnsName ? (
             <CopyValue
-              value={device.dnsName.replace(/\.$/, "")}
+              value={device.dnsName}
               label="MagicDNS"
               onCopy={onCopy}
             />
