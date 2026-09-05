@@ -43,13 +43,13 @@ Raw errors can leak secrets; partial responses can erase last-good data.
 
 ## Current state
 
-Implemented on `issue/154-directory-sync`. Server configuration is optional and
-strict, and the cancellable synchronizer is connected to the atomic App sink.
+Complete on main. Server configuration is optional and strict, and the
+cancellable synchronizer is connected to the atomic App sink. Real OAuth
+dogfood confirms immediate sync, stale last-good, and recovery behavior.
 
 ## Next step
 
-Open the Draft PR after the full repository gate passes, then expose the
-directory and capability through #148.
+No work remains; final review passed and this plan is archived.
 
 ## Verification
 

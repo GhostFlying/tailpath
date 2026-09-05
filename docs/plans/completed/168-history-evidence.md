@@ -56,16 +56,13 @@ Playwright, immutable-image scale, and independent read-only review.
 
 ## Current state
 
-Issue and active plan opened from `origin/main` at
-`ef656eec7a00c6b7914b03c4e8cd5438de089c09`. The backend implementation now
-uses schema v5, compacts equivalent v4 path events, persists sticky path
-evidence and system classification, filters normal History queries, and
-returns complete provenance node references. Generated clients and legacy-null
-normalization are updated. Canonical `make check` passes in the devcontainer,
-including 44 Playwright cases with 14 project-conditional skips.
+Complete on main. The backend uses schema v5, compacts equivalent v4 path
+events, persists sticky path evidence and system classification, filters
+normal History queries, and returns complete provenance node references.
+Generated clients and legacy-null normalization are updated.
 
-The stacked Web implementation computes timeline bounds chronologically and
-renders them newest-first, resolves observer and relay labels from
+The Web implementation computes timeline bounds chronologically and renders
+them newest-first, resolves observer and relay labels from
 `relatedNodes`, distinguishes supporting and conflicting evidence, and uses an
 accessible 70dvh mobile bottom sheet with focus and scroll restoration. Browser
 coverage includes desktop, 390px-class, and 320px layouts; the first focused
@@ -76,5 +73,13 @@ mobile-detail, relay-sheet, and 320px-sheet screenshots. The final canonical
 
 ## Next step
 
-Open the stacked Web Draft PR against the backend branch and wait for sequential
-review and rebase merge before deployment.
+No work remains; final v0.5 qualification passed and this remediation plan is
+archived.
+
+## Completion summary
+
+Normal History excludes system telemetry unless its diagnostic query flag is
+explicitly set. Sticky deterministic evidence removes receipt-order path
+storms, related node references resolve provenance, and desktop/mobile History
+uses newest-first events with an accessible mobile bottom sheet. The final
+main scale workflow passed the History API and browser gates.

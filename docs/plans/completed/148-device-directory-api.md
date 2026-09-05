@@ -45,14 +45,13 @@ Generated contracts can drift from handlers or expose upstream details.
 
 ## Current state
 
-Implemented on `issue/148-device-api`. The generated contract, authenticated
-handler, optional capability, topology enrichment, and deterministic fixture
-are connected end to end.
+Complete on main. The generated contract, authenticated handler, optional
+capability, topology enrichment, deterministic fixture, nil-list rejection,
+and authenticated API `no-store` policy are connected end to end.
 
 ## Next step
 
-Open the Draft PR after the full repository gate passes, then build the lazy
-Devices workspace in #149.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 

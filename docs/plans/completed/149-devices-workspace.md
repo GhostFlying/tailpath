@@ -44,13 +44,13 @@ A large catalog can block Live startup or collapse on narrow screens.
 
 ## Current state
 
-The lazy Devices workspace is implemented against the generated v0.5 API. The
-real fixture exposes 250 synthetic directory devices while preserving the
-existing Live topology. Desktop, 390px, and 320px browser coverage is green.
+Complete on main. The lazy Devices workspace uses the generated v0.5 API. The
+fixture exposes 250 synthetic directory devices while preserving existing
+Live topology, and real OAuth desktop, 390px, and 320px checks are green.
 
 ## Next step
 
-Open the Draft PR on top of the device API branch.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 
