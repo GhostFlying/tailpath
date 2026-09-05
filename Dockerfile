@@ -9,7 +9,7 @@ RUN --mount=type=cache,id=tailpath-pnpm,target=/pnpm/store \
 COPY web web
 RUN pnpm --dir web build
 
-FROM golang:1.26.6-bookworm AS go-build
+FROM golang:1.27.1-bookworm AS go-build
 ARG VERSION=dev
 ARG GOPROXY=https://proxy.golang.org,direct
 WORKDIR /src
