@@ -42,13 +42,13 @@ A failed commit could publish partial directory state or regenerate node IDs.
 
 ## Current state
 
-Implemented on `issue/156-directory-checkpoint`. App directory updates now use
-the same clone, durable commit, and in-memory replacement boundary as reports.
+Complete on main. App directory updates use the same clone, durable commit, and
+in-memory replacement boundary as reports. Real restart dogfood preserves the
+identity set and canonical mapping.
 
 ## Next step
 
-Open the Draft PR after the full repository gate passes, then connect the
-optional synchronizer in #154.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 

@@ -60,11 +60,15 @@ failed snapshot can partially replace last-good state.
 
 ## Current state
 
-Execution opened. ADR and cross-subsystem plans are being established in #157.
+All implementation and blocker-remediation changes are merged on main at
+`01d09b8`. Required CI, the manual scale workflow, and the complete real OAuth
+qualification pass on its immutable full-SHA image.
 
 ## Next step
 
-Merge #157, then add the pinned official API dependency in #152.
+No implementation or qualification work remains. After the closeout PR merges,
+close the remaining v0.5 issues and milestone, revoke the test credentials, and
+push the human-owned tag.
 
 ## Verification
 
@@ -73,4 +77,7 @@ scale, real OAuth dogfood, an independent read-only review, and privacy audit.
 
 ## Completion summary
 
-Pending.
+Delivered the optional credential-visible directory, strict runtime/directory
+authority boundary, durable reconciliation, responsive Devices workspace,
+deployment contract, and privacy-safe real OAuth qualification. Independent
+review passed with no remaining P0/P1/P2, and the private lab was deleted.

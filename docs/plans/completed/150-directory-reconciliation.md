@@ -44,15 +44,14 @@ Directory replacement can accidentally create Live nodes or corrupt redirects.
 
 ## Current state
 
-Implemented on `issue/150-directory-reconciliation`. The aggregator now keeps
-runtime and directory presentation as separate layers, preserves canonical
-directory references across identity merges, and excludes directory-only nodes
-from Live topology and counts.
+Complete on main. The aggregator keeps runtime and directory presentation as
+separate layers, preserves canonical directory references across identity
+merges, and excludes directory-only nodes from Live topology and counts. Real
+OAuth dogfood confirms directory-only isolation and canonical mapping stability.
 
 ## Next step
 
-Open the Draft PR after the full repository gate passes, then build atomic
-checkpoint persistence in #156.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 

@@ -44,12 +44,13 @@ Later PRs can diverge if conflict, stale, or identity authority is underspecifie
 
 ## Current state
 
-Milestone #7 and issues #147-#157 are open. ADR 0008, the bilingual durable
-documentation updates, and one active plan per primary issue are complete.
+Milestone #7, ADR 0008, bilingual durable documentation, issue decomposition,
+and one plan per primary issue guided the complete implementation now on main.
+Qualification and independent review passed, and the private lab was deleted.
 
 ## Next step
 
-Open the Draft PR and make it ready after hosted CI passes.
+No implementation work remains; this plan is archived in the closeout PR.
 
 ## Verification
 
@@ -58,6 +59,6 @@ GitHub milestone/issue audit, `git diff --check`, and `make check`.
 ## Completion summary
 
 The v0.5 authority, security, identity, API, UI, delivery, and dogfood boundaries
-are documented. Local `make check` passed in the canonical devcontainer with 56
-web unit tests and 30 default Playwright tests; 12 manual scale cases were
+are documented. Final `make check` passed in the canonical devcontainer with 63
+Web unit tests and 45 Playwright cases; 15 project-conditional cases were
 skipped by the normal gate.

@@ -41,13 +41,13 @@ An ambiguous identity hint could merge distinct stable nodes.
 
 ## Current state
 
-Complete on the implementation branch. Typed snapshot, device, synchronization,
-error, normalization, cloning, NodeKey-collision, and metadata-conflict
-contracts are implemented without changing observer protocol v1.
+Complete on main. Typed snapshot, device, synchronization, error,
+normalization, cloning, NodeKey-collision, and metadata-conflict contracts are
+implemented without changing observer protocol v1.
 
 ## Next step
 
-Open the stacked Draft PR and wait for hosted CI.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 

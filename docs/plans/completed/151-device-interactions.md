@@ -43,12 +43,13 @@ Fallback copy can steal focus or break native long-press selection.
 
 ## Current state
 
-Copy controls, HTTP fallback, conflict provenance, conditional Live navigation,
-and one-shot graph focus are implemented with desktop/mobile browser coverage.
+Complete on main. Copy controls, HTTP fallback, conflict provenance,
+conditional Live navigation, and one-shot graph focus have desktop/mobile
+browser coverage. Blocker remediation preserves the complete MagicDNS value.
 
 ## Next step
 
-Run the final gate and open a Draft PR on top of the Devices workspace.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 

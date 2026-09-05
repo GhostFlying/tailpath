@@ -42,13 +42,13 @@ Default client timeouts or fields can silently expand retention and privilege.
 
 ## Current state
 
-Complete on the implementation branch. The official client is pinned at
-v2.10.1 behind `internal/devicesapi`, which exposes only the approved default
-device fields and fixed sanitized request errors.
+Complete on main. The official client is pinned at v2.10.1 behind
+`internal/devicesapi`, which exposes only approved default device fields,
+rejects nil upstream lists, and returns fixed sanitized request errors.
 
 ## Next step
 
-Open the stacked Draft PR and wait for hosted CI.
+No work remains; v0.5 qualification passed and this plan is archived.
 
 ## Verification
 
