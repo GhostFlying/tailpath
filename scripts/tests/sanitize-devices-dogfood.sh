@@ -21,13 +21,15 @@ cat >"$temporary/healthy.json" <<'EOF'
       "id":"private-runtime-id","stableNodeId":"private-stable-a",
       "dnsName":"private-a.example.ts.net","hostname":"private-a","platform":"linux",
       "tailscaleIps":["100.64.0.1"],"tags":["tag:private"],"connectedToControl":true,
-      "runtime":{"observable":true,"online":true},
+      "collectedAt":"2026-08-31T00:00:00.123456789Z",
+      "runtime":{"observable":true,"online":true,"lastEvidenceAt":"2026-08-31T00:00:00Z"},
       "conflicts":[{"field":"hostname","directoryValues":["private-a"],"runtimeValues":["private-old"]}]
     },
     {
       "id":"private-directory-only-id","stableNodeId":"private-stable-b",
       "dnsName":"private-b.example.ts.net","hostname":"private-b","platform":"ios",
       "tailscaleIps":["fd7a:115c:a1e0::1"],"tags":[],"connectedToControl":false,
+      "collectedAt":"2026-08-31T00:00:00.123456789Z",
       "runtime":null,"conflicts":[]
     }
   ]
@@ -45,11 +47,15 @@ jq -e '
   .directory.conflictDeviceCount == 1 and .directory.conflictCount == 1 and
   (.directory.identitySetSha256 | test("^[0-9a-f]{64}$")) and
   (.directory.contentSha256 | test("^[0-9a-f]{64}$")) and
+  (.directory.canonicalMappingSha256 | test("^[0-9a-f]{64}$")) and
   .liveIsolation == {"topologyNodeCount":1,"topologyEdgeCount":1,
     "directoryOnlyAbsentFromTopology":true,"directoryOnlyAbsentFromEdges":true}
 ' "$temporary/snapshot-safe.json" >/dev/null
 
-jq '.sync.status = "stale" | .sync.errorCode = "unauthorized"' \
+jq '.sync.status = "stale" | .sync.errorCode = "unauthorized" |
+  .devices[0].runtime.lastEvidenceAt = "2026-08-31T00:01:00Z" |
+  .devices[0].runtime.online = false |
+  .devices[0].conflicts[0].runtimeCollectedAt = "2026-08-31T00:01:00Z"' \
   "$temporary/healthy.json" >"$temporary/stale.json"
 "$sanitizer" compare stale "$temporary/healthy.json" "$temporary/stale.json" \
   >"$temporary/compare-safe.json"
@@ -59,15 +65,26 @@ jq -e '
   .after.errorCode == "unauthorized" and .before.deviceCount == 2 and
   .after.deviceCount == 2 and .lastGoodPreserved == true and
   .successAdvancedSeconds == 0 and
+  .canonicalMappingStable == true and
   .before.contentSha256 == .after.contentSha256
 ' "$temporary/compare-safe.json" >/dev/null
+
+jq '.devices[0].hostname = "private-directory-change"' \
+  "$temporary/stale.json" >"$temporary/directory-changed.json"
+"$sanitizer" compare directory-change "$temporary/healthy.json" \
+  "$temporary/directory-changed.json" >"$temporary/directory-change-safe.json"
+jq -e '
+  .lastGoodPreserved == false and
+  .before.identitySetSha256 == .after.identitySetSha256 and
+  .before.contentSha256 != .after.contentSha256
+' "$temporary/directory-change-safe.json" >/dev/null
 
 cat >"$temporary/renewed.json" <<'EOF'
 {
   "sync":{"status":"healthy","lastSuccessAt":"2026-08-31T01:06:00Z","invalidAddressCount":0},
   "devices":[
-    {"id":"another-private-id-a","stableNodeId":"private-stable-a"},
-    {"id":"another-private-id-b","stableNodeId":"private-stable-b"}
+    {"id":"another-private-id-a","stableNodeId":"private-stable-a","connectedToControl":false,"collectedAt":"2026-08-31T01:06:00Z"},
+    {"id":"another-private-id-b","stableNodeId":"private-stable-b","connectedToControl":false,"collectedAt":"2026-08-31T01:06:00Z"}
   ]
 }
 EOF
@@ -81,7 +98,8 @@ jq -e '
   "$temporary/renewal-safe.json" >/dev/null
 
 for private in private-runtime private-peer private-stable private-canonical private-a private-b tag:private example.ts.net 100.64 fd7a; do
-  if grep -F "$private" "$temporary/snapshot-safe.json" "$temporary/compare-safe.json" "$temporary/renewal-safe.json" >/dev/null; then
+  if grep -F "$private" "$temporary/snapshot-safe.json" "$temporary/compare-safe.json" \
+    "$temporary/directory-change-safe.json" "$temporary/renewal-safe.json" >/dev/null; then
     echo "sanitized Devices evidence leaked $private" >&2
     exit 1
   fi
