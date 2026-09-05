@@ -33,3 +33,5 @@ runtime checkpoint、日志、API error 或 dogfood evidence。只保留规范�
 和展示字段；raw API response、用户数据、route、posture 和管理字段立即丢弃。远端错误
 只向 UI 暴露 unauthorized、forbidden、rate-limited、unavailable、timeout 或
 invalid-response 等固定分类，不转发 response body 或 credential 细节。
+所有已认证 API response 都携带 `Cache-Control: no-store`，避免浏览器或中间缓存
+保留 Tailnet metadata。

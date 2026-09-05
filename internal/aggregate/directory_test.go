@@ -42,6 +42,45 @@ func TestDirectoryOnlyDeviceNeverAppearsInLive(t *testing.T) {
 	}
 }
 
+func TestDirectoryFirstPeerUsesIdentityEvidenceTime(t *testing.T) {
+	t.Parallel()
+
+	directoryAt := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
+	reportAt := directoryAt.Add(time.Minute)
+	aggregator := directoryTestAggregator(reportAt, "n_directory", "n_observer")
+	_, err := aggregator.ApplyDirectorySnapshot(domain.DirectorySnapshot{
+		CollectedAt: directoryAt,
+		Devices: []domain.DirectoryDevice{{
+			StableNodeID: "stable-peer", DNSName: "directory.example.ts.net",
+		}},
+	}, healthyDirectorySync(directoryAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = aggregator.ApplyAt(domain.ReportEnvelope{
+		Version: domain.ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: reportAt, Kind: domain.ReportObserverHello,
+		Observers: []domain.ObserverReport{{
+			Observer: domain.NodeIdentity{StableNodeID: "stable-observer"}, InventoryGeneration: "g1",
+			Peers: []domain.PeerObservation{{Peer: domain.NodeIdentity{
+				StableNodeID: "stable-peer", DNSName: "runtime.example.ts.net",
+			}}},
+		}},
+	}, reportAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entry := aggregator.DeviceDirectory().Devices[0]
+	if entry.Runtime == nil || !entry.Runtime.LastEvidenceAt.Equal(reportAt) ||
+		!entry.Runtime.CollectedAt.Equal(reportAt) {
+		t.Fatalf("runtime evidence = %#v, want identity evidence time %s", entry.Runtime, reportAt)
+	}
+	if !aggregator.state.Nodes[entry.ID].LastEvidence.IsZero() {
+		t.Fatal("directory output fallback changed Live freshness state")
+	}
+}
+
 func TestDirectoryEnrichesPlaceholderWithoutReplacingRuntimeEvidence(t *testing.T) {
 	t.Parallel()
 

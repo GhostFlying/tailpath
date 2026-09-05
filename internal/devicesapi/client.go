@@ -93,6 +93,9 @@ func (c *Client) List(ctx context.Context) ([]Device, error) {
 	if err != nil {
 		return nil, sanitizeError(err)
 	}
+	if devices == nil {
+		return nil, &RequestError{Kind: ErrorInvalidResponse}
+	}
 
 	result := make([]Device, 0, len(devices))
 	for _, device := range devices {

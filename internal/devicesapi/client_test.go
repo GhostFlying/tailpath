@@ -134,6 +134,52 @@ func TestClientUsesFixedTimeoutAndRenewsOAuthToken(t *testing.T) {
 	}
 }
 
+func TestClientRejectsMissingDeviceCollection(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		body      string
+		wantError bool
+	}{
+		{name: "missing", body: `{}`, wantError: true},
+		{name: "null", body: `{"devices":null}`, wantError: true},
+		{name: "empty", body: `{"devices":[]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/api/v2/oauth/token" {
+					writeJSON(t, writer, map[string]any{
+						"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+					})
+					return
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(test.body))
+			}))
+			t.Cleanup(server.Close)
+
+			devices, err := New(Config{
+				ClientID: "client-id", ClientSecret: "client-secret", BaseURL: mustParseURL(t, server.URL),
+			}).List(context.Background())
+			if !test.wantError {
+				if err != nil || devices == nil || len(devices) != 0 {
+					t.Fatalf("devices = %#v, error = %v; want non-nil empty collection", devices, err)
+				}
+				return
+			}
+			var requestError *RequestError
+			if !errors.As(err, &requestError) || requestError.Kind != ErrorInvalidResponse {
+				t.Fatalf("error = %#v, want sanitized invalid-response", err)
+			}
+			if errors.Unwrap(requestError) != nil {
+				t.Fatalf("invalid response retained upstream details: %#v", errors.Unwrap(requestError))
+			}
+		})
+	}
+}
+
 func TestClientHonorsCancellation(t *testing.T) {
 	t.Parallel()
 
