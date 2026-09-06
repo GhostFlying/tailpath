@@ -340,9 +340,26 @@ async function clickGraphSegment(
   sourceID: string,
   targetID: string,
 ) {
-  const source = await graphPoint(graph, sourceID);
-  const target = await graphPoint(graph, targetID);
-  await page.mouse.click((source.x + target.x) / 2, (source.y + target.y) / 2);
+  const box = await graph.boundingBox();
+  if (!box) throw new Error("graph has no bounds");
+  const targets = JSON.parse(
+    (await graph.getAttribute("data-edge-hit-targets")) ?? "[]",
+  ) as Array<{ source: string; target: string; x: number; y: number }>;
+  const target = targets.find(
+    (candidate) =>
+      (candidate.source === sourceID && candidate.target === targetID) ||
+      (candidate.source === targetID && candidate.target === sourceID),
+  );
+  const viewport = (await graph.getAttribute("data-viewport")) ?? "";
+  const [, rawZoom, rawPanX, rawPanY] =
+    viewport.match(/^(-?[\d.]+):(-?[\d.]+),(-?[\d.]+)$/) ?? [];
+  if (!target || !rawZoom || !rawPanX || !rawPanY) {
+    throw new Error(`missing edge hit target: ${sourceID} / ${targetID}`);
+  }
+  await page.mouse.click(
+    box.x + target.x * Number(rawZoom) + Number(rawPanX),
+    box.y + target.y * Number(rawZoom) + Number(rawPanY),
+  );
 }
 
 async function graphPoint(graph: Locator, id: string) {

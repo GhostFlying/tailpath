@@ -45,6 +45,7 @@ jobs:
             web/test-results/**/tailpath-runtime-status-*.png
             web/test-results/**/tailpath-control-traffic.png
             web/test-results/**/relay-platform-icon-*.png
+            web/test-results/**/tailpath-obstacle-routing-*.png
           if-no-files-found: ignore
           retention-days: 14
 
