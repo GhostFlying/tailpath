@@ -22,6 +22,7 @@ test("routes collinear traffic and moves an occupied DERP marker", async ({
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toHaveAttribute("data-ready", "true");
   await expect(graph).toHaveAttribute("data-routed-edges", /direct-long:main/);
+  await expect(graph).toHaveAttribute("data-edge-crossing-count", "0");
   await expect
     .poll(async () =>
       virtualPosition(await graph.getAttribute("data-virtual-positions")),
@@ -39,6 +40,7 @@ test("routes collinear traffic and moves an occupied DERP marker", async ({
 
   await page.reload();
   await expect(graph).toHaveAttribute("data-ready", "true");
+  await expect(graph).toHaveAttribute("data-edge-crossing-count", "0");
   expect(
     virtualPosition(await graph.getAttribute("data-virtual-positions")),
   ).toEqual(initialVirtualPosition);
@@ -64,6 +66,7 @@ test("keeps obstacle routing readable at 320px", async ({ page }, testInfo) => {
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toHaveAttribute("data-ready", "true");
   await expect(graph).toHaveAttribute("data-routed-edges", /direct-long:main/);
+  await expect(graph).toHaveAttribute("data-edge-crossing-count", "0");
   expect(browserErrors).toEqual([]);
 
   await page.screenshot({

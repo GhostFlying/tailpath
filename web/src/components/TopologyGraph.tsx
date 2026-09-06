@@ -830,7 +830,10 @@ function deriveVirtualPositions(cy: Core) {
   const occupied = cy
     .nodes("[persistable]")
     .map((node) => paddedNodeBounds(node, obstaclePadding));
-  const canonicalEdges: Array<{ source: Point; target: Point }> = [];
+  const canonicalEdges: Array<{
+    source: Point & { id: string };
+    target: Point & { id: string };
+  }> = [];
   if (cy.edges().length <= maximumObstacleRoutingEdges) {
     cy.edges().forEach((edge) => {
       if (
@@ -838,8 +841,8 @@ function deriveVirtualPositions(cy: Core) {
         edge.target().data("persistable")
       ) {
         canonicalEdges.push({
-          source: edge.source().position(),
-          target: edge.target().position(),
+          source: { id: edge.source().id(), ...edge.source().position() },
+          target: { id: edge.target().id(), ...edge.target().position() },
         });
       }
     });
@@ -889,6 +892,14 @@ function deriveVirtualPositions(cy: Core) {
         !occupied.some((obstacle) => boundsOverlap(bounds, obstacle)) &&
         !canonicalEdges.some((edge) =>
           segmentIntersectsBounds(edge.source, edge.target, bounds),
+        ) &&
+        !neighbors.some((neighbor) =>
+          canonicalEdges.some(
+            (edge) =>
+              edge.source.id !== neighbor.id &&
+              edge.target.id !== neighbor.id &&
+              segmentsCross(neighbor, candidate, edge.source, edge.target),
+          ),
         )
       ) {
         occupied.push(bounds);
@@ -916,6 +927,12 @@ interface Bounds {
   y1: number;
   x2: number;
   y2: number;
+}
+
+interface RoutedPath {
+  logicalEdgeID: string;
+  nodeIDs: ReadonlySet<string>;
+  points: Point[];
 }
 
 function virtualOffsetAxis(
@@ -960,6 +977,7 @@ function routeEdgesAroundObstacles(cy: Core) {
   );
   cy.edges().forEach((edge) => {
     edge.scratch("tailpathObstacleRouted", false);
+    edge.removeScratch("tailpathRoute");
   });
   // Dense graphs favor bounded render cost; the default filtered Live view is
   // where obstacle routing materially improves readability.
@@ -973,30 +991,67 @@ function routeEdgesAroundObstacles(cy: Core) {
     id: node.id(),
     bounds: paddedNodeBounds(node, obstaclePadding),
   }));
-  cy.edges().forEach((edge) => {
+  const routedPaths: RoutedPath[] = [];
+  const edges = cy.edges().sort((left, right) => {
+    const leftVirtual =
+      Number(!left.source().data("persistable")) +
+      Number(!left.target().data("persistable"));
+    const rightVirtual =
+      Number(!right.source().data("persistable")) +
+      Number(!right.target().data("persistable"));
+    return leftVirtual - rightVirtual || left.id().localeCompare(right.id());
+  });
+  edges.forEach((edge) => {
     const source = edge.source().position();
     const target = edge.target().position();
+    const nodeIDs = new Set([edge.source().id(), edge.target().id()]);
+    const logicalEdgeID = String(edge.data("logicalEdgeId"));
+    const unrelatedPaths = routedPaths.filter(
+      (path) =>
+        path.logicalEdgeID !== logicalEdgeID &&
+        ![...nodeIDs].some((id) => path.nodeIDs.has(id)),
+    );
     const obstacles = nodes
       .filter(
         (node) =>
           node.id !== edge.source().id() && node.id !== edge.target().id(),
       )
       .map((node) => node.bounds);
-    if (
-      !obstacles.some((bounds) =>
-        segmentIntersectsBounds(source, target, bounds),
-      )
-    ) {
+    const straightPoints = [source, target];
+    const intersectsObstacle = obstacles.some((bounds) =>
+      segmentIntersectsBounds(source, target, bounds),
+    );
+    const intersectsPath = unrelatedPaths.some((path) =>
+      pathsCross(straightPoints, path.points),
+    );
+    if (!intersectsObstacle && !intersectsPath) {
+      const path = { logicalEdgeID, nodeIDs, points: straightPoints };
+      routedPaths.push(path);
+      edge.scratch("tailpathRoute", path);
       return;
     }
-    const route = findClearCurve(source, target, obstacles, edge.id());
-    if (!route) return;
+    const route = findClearCurve(
+      source,
+      target,
+      obstacles,
+      unrelatedPaths,
+      edge.id(),
+    );
+    if (!route) {
+      const path = { logicalEdgeID, nodeIDs, points: straightPoints };
+      routedPaths.push(path);
+      edge.scratch("tailpathRoute", path);
+      return;
+    }
     edge.style({
       "curve-style": "unbundled-bezier",
       "control-point-weights": route.weight,
       "control-point-distances": route.distance,
     });
     edge.scratch("tailpathObstacleRouted", true);
+    const path = { logicalEdgeID, nodeIDs, points: route.points };
+    routedPaths.push(path);
+    edge.scratch("tailpathRoute", path);
   });
 }
 
@@ -1004,6 +1059,7 @@ function findClearCurve(
   source: Point,
   target: Point,
   obstacles: Bounds[],
+  occupiedPaths: RoutedPath[],
   id: string,
 ) {
   const dx = target.x - source.x;
@@ -1035,10 +1091,12 @@ function findClearCurve(
     for (const side of [preferredSide, -preferredSide]) {
       for (const weight of weights) {
         const distance = magnitude * side;
+        const points = curvePoints(source, target, weight, distance);
         if (
-          !curveIntersectsBounds(source, target, weight, distance, obstacles)
+          !pointsIntersectBounds(points, obstacles) &&
+          !occupiedPaths.some((path) => pathsCross(points, path.points))
         ) {
-          return { weight, distance };
+          return { weight, distance, points };
         }
       }
     }
@@ -1046,12 +1104,11 @@ function findClearCurve(
   return null;
 }
 
-function curveIntersectsBounds(
+function curvePoints(
   source: Point,
   target: Point,
   weight: number,
   distance: number,
-  obstacles: Bounds[],
 ) {
   const dx = target.x - source.x;
   const dy = target.y - source.y;
@@ -1060,7 +1117,7 @@ function curveIntersectsBounds(
     x: source.x + dx * weight - (dy / length) * distance,
     y: source.y + dy * weight + (dx / length) * distance,
   };
-  let previous = source;
+  const points = [source];
   for (let index = 1; index <= routeSampleCount; index += 1) {
     const progress = index / routeSampleCount;
     const inverse = 1 - progress;
@@ -1074,16 +1131,56 @@ function curveIntersectsBounds(
         2 * inverse * progress * control.y +
         progress * progress * target.y,
     };
+    points.push(current);
+  }
+  return points;
+}
+
+function pointsIntersectBounds(points: Point[], obstacles: Bounds[]) {
+  for (let index = 1; index < points.length; index += 1) {
     if (
       obstacles.some((bounds) =>
-        segmentIntersectsBounds(previous, current, bounds),
+        segmentIntersectsBounds(points[index - 1], points[index], bounds),
       )
     ) {
       return true;
     }
-    previous = current;
   }
   return false;
+}
+
+function pathsCross(left: Point[], right: Point[]) {
+  for (let leftIndex = 1; leftIndex < left.length; leftIndex += 1) {
+    for (let rightIndex = 1; rightIndex < right.length; rightIndex += 1) {
+      if (
+        segmentsCross(
+          left[leftIndex - 1],
+          left[leftIndex],
+          right[rightIndex - 1],
+          right[rightIndex],
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function segmentsCross(a: Point, b: Point, c: Point, d: Point) {
+  const abC = crossProduct(a, b, c);
+  const abD = crossProduct(a, b, d);
+  const cdA = crossProduct(c, d, a);
+  const cdB = crossProduct(c, d, b);
+  const epsilon = 1e-6;
+  return (
+    ((abC > epsilon && abD < -epsilon) || (abC < -epsilon && abD > epsilon)) &&
+    ((cdA > epsilon && cdB < -epsilon) || (cdA < -epsilon && cdB > epsilon))
+  );
+}
+
+function crossProduct(a: Point, b: Point, point: Point) {
+  return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
 }
 
 function segmentIntersectsBounds(start: Point, end: Point, bounds: Bounds) {
@@ -1138,6 +1235,7 @@ function updateGraphDiagnostics(
     x: number;
     y: number;
   }> = [];
+  const routes: RoutedPath[] = [];
   cy.nodes("[persistable]").forEach((node) => {
     const position = node.position();
     positions.push(
@@ -1150,6 +1248,8 @@ function updateGraphDiagnostics(
       `${edge.id()}:${Number(edge.data("trafficWidth")).toFixed(4)}:${String(edge.data("label"))}`,
     );
     if (edge.scratch("tailpathObstacleRouted")) routedEdges.push(edge.id());
+    const route = edge.scratch("tailpathRoute") as RoutedPath | undefined;
+    if (route) routes.push(route);
     const midpoint = edge.midpoint();
     edgeHitTargets.push({
       source: edge.source().id(),
@@ -1177,8 +1277,27 @@ function updateGraphDiagnostics(
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
   element.dataset.edgeHitTargets = JSON.stringify(edgeHitTargets);
   element.dataset.routedEdges = routedEdges.join("|");
+  element.dataset.edgeCrossingCount = String(countRouteCrossings(routes));
   element.dataset.virtualPositions = virtualPositions.join("|");
   element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
+}
+
+function countRouteCrossings(routes: RoutedPath[]) {
+  let count = 0;
+  for (let left = 0; left < routes.length; left += 1) {
+    for (let right = left + 1; right < routes.length; right += 1) {
+      const leftRoute = routes[left];
+      const rightRoute = routes[right];
+      if (
+        leftRoute.logicalEdgeID === rightRoute.logicalEdgeID ||
+        [...leftRoute.nodeIDs].some((id) => rightRoute.nodeIDs.has(id))
+      ) {
+        continue;
+      }
+      if (pathsCross(leftRoute.points, rightRoute.points)) count += 1;
+    }
+  }
+  return count;
 }
 
 function stableHash(value: string): number {
