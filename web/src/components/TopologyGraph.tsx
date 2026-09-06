@@ -36,6 +36,12 @@ interface Props {
 const automaticCoseNodeLimit = 100;
 const sparseGraphNodeLimit = 12;
 const maximumSparseZoom = 1.25;
+const obstaclePadding = 14;
+const virtualCandidateStep = 48;
+const maximumVirtualCandidateSteps = 6;
+const routeSampleCount = 48;
+const maximumObstacleRoutingNodes = 64;
+const maximumObstacleRoutingEdges = 128;
 
 const styles: StylesheetCSS[] = [
   {
@@ -230,6 +236,7 @@ export function TopologyGraph(props: Props) {
   const focusPending = useRef(true);
   const renderedTopologyAt = useRef<string | null>(null);
   const renderedVisibility = useRef<string | null>(null);
+  const renderedGeometry = useRef<string | null>(null);
   const topologyNodeIDs = useRef<string[]>([]);
   const renderedFingerprints = useRef(new Map<string, string>());
   const cachedPositions = useRef(
@@ -255,6 +262,7 @@ export function TopologyGraph(props: Props) {
     focusPending.current = true;
     renderedTopologyAt.current = null;
     renderedVisibility.current = null;
+    renderedGeometry.current = null;
     renderedFingerprints.current.clear();
     const cy = cytoscape({
       container: container.current,
@@ -287,7 +295,11 @@ export function TopologyGraph(props: Props) {
         props.onSelectNode(null);
       }
     });
-    cy.on("free", "node[persistable]", () => persistPositionsNow(cy));
+    cy.on("free", "node[persistable]", () => {
+      deriveVirtualPositions(cy);
+      routeEdgesAroundObstacles(cy);
+      persistPositionsNow(cy);
+    });
     cy.on("pan zoom", () =>
       updateGraphDiagnostics(cy, container.current, layoutRuns.current),
     );
@@ -312,6 +324,9 @@ export function TopologyGraph(props: Props) {
     captureCurrentPositions(cy, cachedPositions.current);
     topologyNodeIDs.current = props.topology.nodes.map((node) => node.id);
     const preparedElements = elements.map(withMeasuredIdealLength);
+    const geometry = geometryFingerprint(preparedElements);
+    const geometryChanged = renderedGeometry.current !== geometry;
+    renderedGeometry.current = geometry;
     const previousCanonicalIDs = new Set(
       cy.nodes("[persistable]").map((node) => node.id()),
     );
@@ -402,6 +417,9 @@ export function TopologyGraph(props: Props) {
     }
     if (structureChanged) enforceSparseEdgeClearance(cy, movableNodeIDs);
     deriveVirtualPositions(cy);
+    if (geometryChanged || newCanonicalNodes.length > 0) {
+      routeEdgesAroundObstacles(cy);
+    }
     initialized.current = true;
     if (!firstRender && !shouldFocusTopology) {
       cy.zoom(viewport.zoom);
@@ -416,6 +434,10 @@ export function TopologyGraph(props: Props) {
         )
           return;
         cy.resize();
+        if (geometryChanged || newCanonicalNodes.length > 0) {
+          deriveVirtualPositions(cy);
+          routeEdgesAroundObstacles(cy);
+        }
         if (shouldFocusTopology) {
           focusGraph(cy, graphPadding());
           focusPending.current = false;
@@ -507,6 +529,7 @@ export function TopologyGraph(props: Props) {
     }).run();
     enforceSparseEdgeClearance(cy);
     deriveVirtualPositions(cy);
+    routeEdgesAroundObstacles(cy);
     focusGraph(cy, graphPadding());
     persistPositionsNow(cy);
   }
@@ -578,6 +601,18 @@ function updateElementIfChanged(
 
 function elementFingerprint(definition: ElementDefinition): string {
   return JSON.stringify([definition.data ?? {}, definition.classes ?? ""]);
+}
+
+function geometryFingerprint(definitions: ElementDefinition[]): string {
+  return definitions
+    .map((definition) => {
+      const data = definition.data ?? {};
+      return definition.group === "edges"
+        ? `e:${String(data.id)}:${String(data.source)}:${String(data.target)}`
+        : `n:${String(data.id)}:${String(data.label)}:${String(data.kind)}`;
+    })
+    .sort()
+    .join("|");
 }
 
 function sameElementData(left: unknown, right: unknown): boolean {
@@ -792,23 +827,285 @@ function knownNeighborPositions(
 }
 
 function deriveVirtualPositions(cy: Core) {
-  cy.nodes().forEach((node) => {
-    if (node.data("persistable")) return;
-    const neighbors: Array<{ x: number; y: number }> = [];
-    node.neighborhood("node").forEach((neighbor) => {
-      if (neighbor.isNode()) neighbors.push(neighbor.position());
+  const occupied = cy
+    .nodes("[persistable]")
+    .map((node) => paddedNodeBounds(node, obstaclePadding));
+  const canonicalEdges: Array<{ source: Point; target: Point }> = [];
+  if (cy.edges().length <= maximumObstacleRoutingEdges) {
+    cy.edges().forEach((edge) => {
+      if (
+        edge.source().data("persistable") &&
+        edge.target().data("persistable")
+      ) {
+        canonicalEdges.push({
+          source: edge.source().position(),
+          target: edge.target().position(),
+        });
+      }
     });
+  }
+  const virtualNodes = cy
+    .nodes()
+    .filter((node) => !node.data("persistable"))
+    .sort((left, right) => left.id().localeCompare(right.id()));
+  virtualNodes.forEach((node) => {
+    const neighbors: Array<Point & { id: string }> = [];
+    node.neighborhood("node").forEach((neighbor) => {
+      if (neighbor.isNode()) {
+        neighbors.push({ id: neighbor.id(), ...neighbor.position() });
+      }
+    });
+    neighbors.sort((left, right) => left.id.localeCompare(right.id));
     if (neighbors.length === 0) return;
-    node.position(
-      neighbors.reduce(
-        (sum, position) => ({
-          x: sum.x + position.x / neighbors.length,
-          y: sum.y + position.y / neighbors.length,
-        }),
-        { x: 0, y: 0 },
-      ),
+    const origin = neighbors.reduce(
+      (sum, position) => ({
+        x: sum.x + position.x / neighbors.length,
+        y: sum.y + position.y / neighbors.length,
+      }),
+      { x: 0, y: 0 },
     );
+    const axis = virtualOffsetAxis(neighbors, node.id());
+    const tangent = { x: axis.y, y: -axis.x };
+    const preferredSide = stableHash(node.id()) % 2 === 0 ? 1 : -1;
+    const candidates = [origin];
+    for (let step = 1; step <= maximumVirtualCandidateSteps; step += 1) {
+      for (const side of [preferredSide, -preferredSide]) {
+        for (const lean of [0, 0.65, -0.65]) {
+          const direction = normalizePoint({
+            x: axis.x * side + tangent.x * lean,
+            y: axis.y * side + tangent.y * lean,
+          });
+          candidates.push({
+            x: origin.x + direction.x * virtualCandidateStep * step,
+            y: origin.y + direction.y * virtualCandidateStep * step,
+          });
+        }
+      }
+    }
+    for (const candidate of candidates) {
+      node.position(candidate);
+      const bounds = paddedNodeBounds(node, obstaclePadding);
+      if (
+        !occupied.some((obstacle) => boundsOverlap(bounds, obstacle)) &&
+        !canonicalEdges.some((edge) =>
+          segmentIntersectsBounds(edge.source, edge.target, bounds),
+        )
+      ) {
+        occupied.push(bounds);
+        return;
+      }
+    }
+    occupied.push(paddedNodeBounds(node, obstaclePadding));
   });
+}
+
+function normalizePoint(point: Point) {
+  const length = Math.hypot(point.x, point.y);
+  return length > 0.001
+    ? { x: point.x / length, y: point.y / length }
+    : { x: 1, y: 0 };
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Bounds {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function virtualOffsetAxis(
+  neighbors: Array<Point & { id: string }>,
+  id: string,
+) {
+  if (neighbors.length >= 2) {
+    const dx = neighbors[neighbors.length - 1].x - neighbors[0].x;
+    const dy = neighbors[neighbors.length - 1].y - neighbors[0].y;
+    const length = Math.hypot(dx, dy);
+    if (length > 0.001) return { x: -dy / length, y: dx / length };
+  }
+  const angle = (stableHash(id) % 360) * (Math.PI / 180);
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function paddedNodeBounds(node: NodeSingular, padding: number): Bounds {
+  const bounds = node.boundingBox({
+    includeLabels: true,
+    includeOverlays: false,
+  });
+  return {
+    x1: bounds.x1 - padding,
+    y1: bounds.y1 - padding,
+    x2: bounds.x2 + padding,
+    y2: bounds.y2 + padding,
+  };
+}
+
+function boundsOverlap(left: Bounds, right: Bounds) {
+  return !(
+    left.x2 < right.x1 ||
+    left.x1 > right.x2 ||
+    left.y2 < right.y1 ||
+    left.y1 > right.y2
+  );
+}
+
+function routeEdgesAroundObstacles(cy: Core) {
+  cy.edges().removeStyle(
+    "curve-style control-point-distances control-point-weights",
+  );
+  cy.edges().forEach((edge) => {
+    edge.scratch("tailpathObstacleRouted", false);
+  });
+  // Dense graphs favor bounded render cost; the default filtered Live view is
+  // where obstacle routing materially improves readability.
+  if (
+    cy.nodes().length > maximumObstacleRoutingNodes ||
+    cy.edges().length > maximumObstacleRoutingEdges
+  ) {
+    return;
+  }
+  const nodes = cy.nodes().map((node) => ({
+    id: node.id(),
+    bounds: paddedNodeBounds(node, obstaclePadding),
+  }));
+  cy.edges().forEach((edge) => {
+    const source = edge.source().position();
+    const target = edge.target().position();
+    const obstacles = nodes
+      .filter(
+        (node) =>
+          node.id !== edge.source().id() && node.id !== edge.target().id(),
+      )
+      .map((node) => node.bounds);
+    if (
+      !obstacles.some((bounds) =>
+        segmentIntersectsBounds(source, target, bounds),
+      )
+    ) {
+      return;
+    }
+    const route = findClearCurve(source, target, obstacles, edge.id());
+    if (!route) return;
+    edge.style({
+      "curve-style": "unbundled-bezier",
+      "control-point-weights": route.weight,
+      "control-point-distances": route.distance,
+    });
+    edge.scratch("tailpathObstacleRouted", true);
+  });
+}
+
+function findClearCurve(
+  source: Point,
+  target: Point,
+  obstacles: Bounds[],
+  id: string,
+) {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 0.001) return null;
+  const collisionWeights = obstacles
+    .filter((bounds) => segmentIntersectsBounds(source, target, bounds))
+    .map((bounds) => {
+      const center = {
+        x: (bounds.x1 + bounds.x2) / 2,
+        y: (bounds.y1 + bounds.y2) / 2,
+      };
+      return Math.max(
+        0.15,
+        Math.min(
+          0.85,
+          ((center.x - source.x) * dx + (center.y - source.y) * dy) /
+            (length * length),
+        ),
+      );
+    });
+  const weights = [...new Set([...collisionWeights, 0.5])].sort(
+    (left, right) => Math.abs(left - 0.5) - Math.abs(right - 0.5),
+  );
+  const preferredSide = stableHash(id) % 2 === 0 ? 1 : -1;
+  const maximumDistance = Math.max(384, length * 0.8);
+  for (let magnitude = 64; magnitude <= maximumDistance; magnitude += 32) {
+    for (const side of [preferredSide, -preferredSide]) {
+      for (const weight of weights) {
+        const distance = magnitude * side;
+        if (
+          !curveIntersectsBounds(source, target, weight, distance, obstacles)
+        ) {
+          return { weight, distance };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function curveIntersectsBounds(
+  source: Point,
+  target: Point,
+  weight: number,
+  distance: number,
+  obstacles: Bounds[],
+) {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.hypot(dx, dy);
+  const control = {
+    x: source.x + dx * weight - (dy / length) * distance,
+    y: source.y + dy * weight + (dx / length) * distance,
+  };
+  let previous = source;
+  for (let index = 1; index <= routeSampleCount; index += 1) {
+    const progress = index / routeSampleCount;
+    const inverse = 1 - progress;
+    const current = {
+      x:
+        inverse * inverse * source.x +
+        2 * inverse * progress * control.x +
+        progress * progress * target.x,
+      y:
+        inverse * inverse * source.y +
+        2 * inverse * progress * control.y +
+        progress * progress * target.y,
+    };
+    if (
+      obstacles.some((bounds) =>
+        segmentIntersectsBounds(previous, current, bounds),
+      )
+    ) {
+      return true;
+    }
+    previous = current;
+  }
+  return false;
+}
+
+function segmentIntersectsBounds(start: Point, end: Point, bounds: Bounds) {
+  let minimum = 0;
+  let maximum = 1;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  for (const [origin, delta, lower, upper] of [
+    [start.x, dx, bounds.x1, bounds.x2],
+    [start.y, dy, bounds.y1, bounds.y2],
+  ]) {
+    if (Math.abs(delta) < 1e-9) {
+      if (origin < lower || origin > upper) return false;
+      continue;
+    }
+    const first = (lower - origin) / delta;
+    const second = (upper - origin) / delta;
+    minimum = Math.max(minimum, Math.min(first, second));
+    maximum = Math.min(maximum, Math.max(first, second));
+    if (minimum > maximum) return false;
+  }
+  return true;
 }
 
 function updateGraphDiagnostics(
@@ -833,6 +1130,14 @@ function updateGraphDiagnostics(
   });
   const positions: string[] = [];
   const edgeRates: string[] = [];
+  const virtualPositions: string[] = [];
+  const routedEdges: string[] = [];
+  const edgeHitTargets: Array<{
+    source: string;
+    target: string;
+    x: number;
+    y: number;
+  }> = [];
   cy.nodes("[persistable]").forEach((node) => {
     const position = node.position();
     positions.push(
@@ -844,8 +1149,25 @@ function updateGraphDiagnostics(
     edgeRates.push(
       `${edge.id()}:${Number(edge.data("trafficWidth")).toFixed(4)}:${String(edge.data("label"))}`,
     );
+    if (edge.scratch("tailpathObstacleRouted")) routedEdges.push(edge.id());
+    const midpoint = edge.midpoint();
+    edgeHitTargets.push({
+      source: edge.source().id(),
+      target: edge.target().id(),
+      x: Number(midpoint.x.toFixed(2)),
+      y: Number(midpoint.y.toFixed(2)),
+    });
+  });
+  cy.nodes().forEach((node) => {
+    if (node.data("persistable")) return;
+    const position = node.position();
+    virtualPositions.push(
+      `${node.id()}:${position.x.toFixed(2)},${position.y.toFixed(2)}`,
+    );
   });
   edgeRates.sort();
+  routedEdges.sort();
+  virtualPositions.sort();
   const pan = cy.pan();
   element.dataset.deviceNodeCount = String(deviceNodes.length);
   element.dataset.deviceNodesSquare = String(deviceNodesSquare);
@@ -853,6 +1175,9 @@ function updateGraphDiagnostics(
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
+  element.dataset.edgeHitTargets = JSON.stringify(edgeHitTargets);
+  element.dataset.routedEdges = routedEdges.join("|");
+  element.dataset.virtualPositions = virtualPositions.join("|");
   element.dataset.viewport = `${cy.zoom().toFixed(4)}:${pan.x.toFixed(2)},${pan.y.toFixed(2)}`;
 }
 
