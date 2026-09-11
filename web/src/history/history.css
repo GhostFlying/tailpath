@@ -1456,3 +1456,109 @@
     animation: none;
   }
 }
+
+/* Identity and traffic metadata retain separate tracks at every width. */
+.history-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.history-shell > .topbar,
+.history-filters {
+  flex: none;
+}
+.history-filters {
+  height: auto;
+  min-height: 74px;
+  flex-wrap: wrap;
+  padding-block: 10px;
+}
+.history-workspace {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.history-row-identity,
+.history-row-metadata {
+  min-width: 0;
+}
+.history-row-identity strong {
+  font-size: 14px;
+}
+.history-row-identity small,
+.history-row-metadata > time,
+.history-row-totals {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.history-row-totals {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.history-detail-content {
+  overflow-wrap: anywhere;
+}
+.history-back-button,
+.provenance-title > button {
+  width: 44px;
+  height: 44px;
+}
+@media (max-width: 620px) {
+  .history-filters {
+    min-height: 64px;
+    grid-template-columns: 78px minmax(0, 1fr) 112px;
+  }
+  .history-mobile-window select,
+  .history-path-filter select,
+  .history-node-filter > label {
+    height: 44px;
+  }
+  .history-node-filter input {
+    font-size: 16px;
+  }
+  .history-row-metadata > time,
+  .history-row-totals {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .history-detail-content {
+    padding-bottom: max(34px, env(safe-area-inset-bottom));
+  }
+  .history-edge-row {
+    grid-template-columns: 32px minmax(0, 1fr) 94px 18px;
+    gap: 10px;
+    padding-inline: 12px;
+  }
+}
+@media (max-width: 359px) {
+  .history-filters {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+  .history-path-filter {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .history-edge-row {
+    grid-template-columns: 32px minmax(0, 1fr) 18px;
+    grid-template-rows: auto auto;
+    row-gap: 8px;
+  }
+  .history-row-platform {
+    grid-row: 1 / 3;
+  }
+  .history-row-identity {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .history-row-metadata {
+    grid-column: 2;
+    grid-row: 2;
+    justify-items: start;
+    grid-template-columns: auto auto;
+    gap: 12px;
+  }
+  .history-row-chevron {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+}

@@ -222,3 +222,7 @@ clipping. Chromium focused checks passed; full make check, scale, responsive
 workspace completion and WebKit remain tracked in the active plan. Real iOS
 has not been verified. The 8ms scheduler yields between work items; existing
 bounded obstacle-routing calls remain atomic and require scale validation.
+
+Stage two implements shared 44px touch controls, narrow identity/metadata rows,
+whole-control filter wrapping, safe-area padding and visual-viewport keyboard
+insets. Independent 320/390px workspace checks and existing route tests pass.

@@ -71,3 +71,7 @@ Follow the [systematic layout contract](layout-rules.md) ([中文版](layout-rul
   and collection times. Color is never the only conflict signal.
 - Validate long hostnames, narrow screens, zoom, touch, empty data, conflicts,
   and relay expansion with Playwright screenshots.
+
+- Shared touch controls reserve independent 44px hit regions. At 320px,
+  History and Devices move traffic/status below identity; filters wrap as whole
+  controls. The mobile inspector responds to visual-viewport keyboard insets.

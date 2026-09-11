@@ -884,3 +884,122 @@
     animation: none;
   }
 }
+
+/* The directory uses the same readable identity and touch budgets as History. */
+.devices-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.devices-shell > .topbar,
+.devices-filters {
+  flex: none;
+}
+.devices-filters {
+  height: auto;
+  min-height: 70px;
+  flex-wrap: wrap;
+  padding-block: 10px;
+}
+.devices-workspace {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.device-identity strong {
+  font-size: 14px;
+}
+.device-cell,
+.device-platform,
+.device-ip,
+.device-control,
+.device-identity small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.device-detail-list dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.devices-search,
+.devices-select {
+  min-height: 44px;
+}
+.devices-select select {
+  height: 42px;
+}
+.device-mobile-header button,
+.device-inspector-close,
+.copy-value button {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 620px) {
+  .devices-filters {
+    min-height: 116px;
+  }
+  .devices-search input {
+    font-size: 16px;
+  }
+  .device-row {
+    grid-template-rows: repeat(3, minmax(22px, auto));
+  }
+  .device-platform,
+  .device-ip,
+  .device-control,
+  .device-tags small {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .devices-shell.has-detail .device-inspector {
+    padding-bottom: max(34px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 359px) {
+  .device-row {
+    grid-template-columns: 32px minmax(0, 1fr) 18px;
+    grid-template-rows: auto auto auto auto;
+    gap: 8px;
+  }
+  .device-identity > svg {
+    grid-row: 1 / 5;
+  }
+  .device-identity > span {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .device-identity strong {
+    font-size: 14px;
+  }
+  .device-platform {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .device-ip {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .device-control {
+    grid-column: 2;
+    grid-row: 4;
+  }
+  .device-tags {
+    grid-column: 2;
+    grid-row: 5;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .device-chevron {
+    grid-column: 3;
+    grid-row: 1 / 5;
+  }
+}
+
+.devices-select,
+.devices-search {
+  min-height: 46px;
+}
+.devices-select select,
+.devices-search input {
+  height: 44px;
+}
