@@ -19,6 +19,7 @@
 - [v0.5 Devices API dogfood](runbooks/v0.5-devices-dogfood.zh-CN.md)
 - [v0.5 Devices API dogfood 结果](evidence/v0.5-devices-dogfood.md)
 - [UI 风格指南](styleguide.md)
+- [系统性排版规则](layout-rules.zh-CN.md)
 - [路线图](roadmap.md)
 - [架构决策](adr/README.md)
 - [实施计划](plans/README.md)

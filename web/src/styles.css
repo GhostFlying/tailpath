@@ -1041,3 +1041,142 @@ button {
     box-shadow: 0 -12px 28px rgb(32 42 48 / 12%);
   }
 }
+
+/* The graph and legend own separate measured rows; text never borrows canvas space. */
+.graph-stage {
+  display: grid;
+  grid-template-rows: minmax(240px, 1fr) auto;
+  min-height: 0;
+}
+.graph-viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 240px;
+}
+.graph-viewport .topology-canvas {
+  position: absolute;
+  inset: 0;
+}
+.graph-legend {
+  position: static;
+  height: auto;
+  min-height: 48px;
+  pointer-events: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.legend-section > strong {
+  font-size: 11px;
+}
+.legend-toggle {
+  display: none;
+}
+.graph-controls button {
+  width: 44px;
+  height: 44px;
+}
+.graph-detail-status {
+  position: absolute;
+  bottom: 4px;
+  left: 8px;
+  right: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgb(255 255 255 / 94%);
+  pointer-events: none;
+}
+.graph-detail-status:empty {
+  display: none;
+}
+.graph-objects {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  max-width: min(300px, calc(100% - 120px));
+  background: #fff;
+  border: 1px solid #cbd2d6;
+  color: #273239;
+  font-size: 12px;
+}
+.graph-objects summary {
+  min-height: 44px;
+  padding: 12px 8px;
+  cursor: pointer;
+}
+.graph-object-list {
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+}
+.graph-object-list button {
+  min-height: 44px;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid #d8dde0;
+  background: #fff;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.graph-object-list button:focus-visible,
+.graph-objects summary:focus-visible {
+  outline: 2px solid #16877a;
+  outline-offset: -2px;
+}
+@media (max-width: 620px) {
+  .graph-stage {
+    height: auto;
+    min-height: 0;
+    flex: 1;
+  }
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .filters {
+    height: auto;
+    min-height: 60px;
+    flex-basis: auto;
+    flex-wrap: wrap;
+  }
+  .graph-legend {
+    height: auto;
+    align-content: start;
+  }
+  .legend-section {
+    flex-wrap: wrap;
+  }
+}
+@media (max-height: 700px) {
+  .graph-legend:not(.expanded) .legend-secondary {
+    display: none;
+  }
+  .legend-toggle {
+    display: block;
+    min-height: 44px;
+    background: #fff;
+    color: inherit;
+    border: 1px solid #cbd2d6;
+    padding: 8px;
+  }
+}
+
+@media (max-height: 700px) {
+  html,
+  body,
+  #root {
+    overflow: auto;
+    min-height: 100%;
+  }
+  .app-shell {
+    min-height: 740px;
+    height: 100dvh;
+  }
+  .graph-stage {
+    grid-template-rows: minmax(420px, 1fr) auto;
+  }
+  .graph-viewport {
+    min-height: 420px;
+  }
+}
