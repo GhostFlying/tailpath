@@ -420,9 +420,9 @@ test("renders the live fixture topology without overlap", async ({
   const graphBox = await graph.boundingBox();
   if (!graphBox) throw new Error("graph has no bounding box");
   const beforePan = await graph.getAttribute("data-viewport");
-  await page.mouse.move(graphBox.x + 30, graphBox.y + 30);
+  await page.mouse.move(graphBox.x + 8, graphBox.y + 90);
   await page.mouse.down();
-  await page.mouse.move(graphBox.x + 90, graphBox.y + 80, { steps: 4 });
+  await page.mouse.move(graphBox.x + 78, graphBox.y + 150, { steps: 4 });
   await page.mouse.up();
   await expect
     .poll(() => graph.getAttribute("data-viewport"))
