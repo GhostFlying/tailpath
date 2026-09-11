@@ -80,7 +80,10 @@ performance guarantees. Detailed geometry diagnostics are opt-in build output.
 Reproduction: make check; TAILPATH_SCALE_E2E=1 ./scripts/e2e.sh;
 TAILPATH_RELAY_SCALE_E2E=1 ./scripts/e2e.sh;
 VITE_LAYOUT_DIAGNOSTICS=1 TAILPATH_LAYOUT_E2E=1 ./scripts/e2e.sh.
-Install Chromium and WebKit via Playwright in the dev container first. Use fresh
+Install Chromium and WebKit via Playwright in the dev container first.
+The layout gate uses one worker: four concurrent WebKit jobs on shared CI
+exceeded the settled-state deadline despite passing locally. Assertion and
+performance deadlines are unchanged. Use fresh
 fixture processes for mutations; scale runs should be isolated from other tests.
 
 ## Next step
