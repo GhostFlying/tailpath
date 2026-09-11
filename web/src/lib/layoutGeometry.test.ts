@@ -99,3 +99,15 @@ describe("screen-space layout", () => {
     expect(shorten("smallbox", 160, measure)).toBe("smallbox");
   });
 });
+
+it("bounds indexing work for extreme but finite cached positions", () => {
+  const index = new SpatialIndex<{
+    id: string;
+    bounds: ReturnType<typeof centered>;
+  }>();
+  index.add({ id: "far", bounds: centered({ x: 1e100, y: -1e100 }, 20, 20) });
+  index.add({ id: "near", bounds: centered({ x: 0, y: 0 }, 20, 20) });
+  expect(
+    index.query(centered({ x: 0, y: 0 }, 5, 5)).map((item) => item.id),
+  ).toEqual(["near"]);
+});

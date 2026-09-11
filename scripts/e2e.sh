@@ -76,6 +76,8 @@ if test "${TAILPATH_SCALE_E2E:-0}" = "1"; then
   TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e scale.spec.ts
 elif test "${TAILPATH_RELAY_SCALE_E2E:-0}" = "1"; then
   TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e relay-scale.spec.ts
+elif test "${TAILPATH_LAYOUT_E2E:-0}" = "1"; then
+  TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e layout.spec.ts responsive.spec.ts topology-obstacles.spec.ts
 else
   TAILPATH_E2E_BASE_URL="http://127.0.0.1:$api_port" pnpm --dir web test:e2e
 fi

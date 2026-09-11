@@ -48,7 +48,12 @@ function overlap(a: Rect, b: Rect, gap = 0) {
     a.y2 > b.y1 - gap
   );
 }
-async function fixture(page: Page, cached = true) {
+async function fixture(
+  page: Page,
+  cached = true,
+  labels = names,
+  traffic = { rate: 13312, revision: 0 },
+) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   if (cached)
@@ -72,11 +77,11 @@ async function fixture(page: Page, cached = true) {
   await page.route("**/api/v1/topology", (route) =>
     route.fulfill({
       json: {
-        generatedAt: at,
+        generatedAt: traffic.revision ? "2026-09-12T00:00:02Z" : at,
         nodes: positions.map(([id], i) => ({
           id,
           stableNodeId: id,
-          hostname: names[i],
+          hostname: labels[i],
           os: i < 2 ? "android" : "linux",
           observable: i > 1,
           online: true,
@@ -95,7 +100,7 @@ async function fixture(page: Page, cached = true) {
           target,
           path: kind === "derp" ? { kind, derpRegion: "hgh-custom" } : { kind },
           state: "active",
-          aToBBytesPerSecond: 13312,
+          aToBBytesPerSecond: traffic.rate,
           bToABytesPerSecond: 200,
           lastActive: at,
           observations: [],
@@ -194,4 +199,51 @@ test("cold synthetic layout keeps canonical bodies and supports relayout", async
     path: info.outputPath("synthetic-cold-layout.png"),
     fullPage: true,
   });
+});
+
+test("long Unicode identities remain inspectable after fonts and rate changes", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const labels = [
+    "生产环境-东京-手机-01",
+    "production-same-prefix-device-abcdefghijklmnop-01",
+    "production-same-prefix-device-abcdefghijklmnop-02",
+    "桌面工作站-日本",
+    "开发服务器-上海",
+    "家庭网关-长名称",
+  ];
+  const traffic = { rate: 20, revision: 0 };
+  const errors = await fixture(page, true, labels, traffic);
+  await page.goto("/");
+  await settled(page);
+  const graph = page.getByLabel("Live Tailnet topology");
+  const positions = await graph.getAttribute("data-layout-positions");
+  const viewport = await graph.getAttribute("data-viewport");
+  const signature = await graph.getAttribute("data-edge-rate-signature");
+  traffic.rate = 123456789;
+  traffic.revision++;
+  await expect
+    .poll(() => graph.getAttribute("data-edge-rate-signature"), {
+      timeout: 10000,
+    })
+    .not.toBe(signature);
+  await page.evaluate(() =>
+    document.fonts.dispatchEvent(new Event("loadingdone")),
+  );
+  await settled(page);
+  expect(await graph.getAttribute("data-layout-positions")).toBe(positions);
+  expect(await graph.getAttribute("data-viewport")).toBe(viewport);
+  const list = page.getByText("Graph objects", { exact: true });
+  await list.focus();
+  await page.keyboard.press("Enter");
+  const button = page.getByRole("button", { name: labels[2], exact: true });
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Topology details")).toContainText(labels[2]);
+  await page.screenshot({
+    path: info.outputPath("synthetic-long-identity-selected.png"),
+    fullPage: true,
+  });
+  expect(errors).toEqual([]);
 });

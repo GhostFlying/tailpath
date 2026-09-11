@@ -121,7 +121,7 @@
 }
 
 .devices-summary small {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .devices-summary-sync {
@@ -141,7 +141,7 @@
   background: #fff9e8;
   padding: 0 20px;
   color: #765900;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .devices-table {
@@ -167,7 +167,7 @@
   border-bottom: 1px solid var(--devices-border);
   padding: 0 18px;
   color: #77838a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -209,7 +209,7 @@
 .device-cell {
   min-width: 0;
   color: #344149;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .device-identity {
@@ -251,7 +251,7 @@
   min-width: 0;
   overflow: hidden;
   color: #738087;
-  font-size: 9px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -292,7 +292,7 @@
   background: #fafbfb;
   padding: 3px 6px;
   color: #425159;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .device-last-seen {
@@ -366,7 +366,7 @@
   align-items: center;
   gap: 7px;
   color: #5f6c73;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .device-control-state.connected {
@@ -383,7 +383,7 @@
   background: #fff9e8;
   padding: 0 22px;
   color: #765900;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .device-detail-list {
@@ -402,7 +402,7 @@
 
 .device-detail-list dt {
   color: #6d7980;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .device-detail-list dd {
@@ -411,18 +411,18 @@
   gap: 6px;
   margin: 0;
   color: #253239;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .device-detail-list dd small {
   color: #758188;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .device-detail-list code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: 12px;
   user-select: text;
 }
 
@@ -469,7 +469,7 @@
 .device-conflicts h2 {
   margin: 0 0 9px;
   color: #6d7980;
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 
@@ -479,7 +479,7 @@
   border-left: 3px solid #bd7b00;
   border-bottom: 1px solid #edf0f1;
   padding: 8px 0 8px 10px;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .device-conflict-row strong {
@@ -507,7 +507,7 @@
   margin: 22px 0 0;
   padding: 16px 0 0;
   color: #667279;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -527,7 +527,7 @@
   margin-top: 18px;
   background: #ffffff;
   color: #1d655d;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -562,7 +562,7 @@
 
 .devices-workspace-state span:not(.loading-ring) {
   max-width: 340px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -571,7 +571,7 @@
   border: 1px solid #aeb7bc;
   background: #ffffff;
   padding: 0 14px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -643,7 +643,7 @@
   }
 
   .devices-summary-sync {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .devices-table-head {
@@ -697,7 +697,7 @@
   .device-platform {
     grid-row: 2;
     display: block;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .device-platform svg {
@@ -706,7 +706,7 @@
 
   .device-ip {
     grid-row: 3;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .device-tags {
@@ -722,7 +722,7 @@
     background: transparent;
     padding: 0;
     color: #667279;
-    font-size: 10px;
+    font-size: 12px;
     white-space: nowrap;
   }
 
@@ -734,7 +734,7 @@
     grid-template-columns: 9px minmax(0, 1fr);
     gap: 6px;
     color: #546169;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .device-control small {
@@ -859,7 +859,7 @@
     min-height: 54px;
     margin-inline: -18px;
     padding: 16px 18px 0;
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 

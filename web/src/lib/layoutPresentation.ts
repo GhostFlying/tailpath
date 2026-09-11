@@ -139,6 +139,7 @@ export function createLayoutPresentation(
           Number(b.selected()) - Number(a.selected()) ||
           a.id().localeCompare(b.id()),
       );
+    if (nodes.length > 80) mode = "overview";
     const important = new Set(
       cy
         .elements(":selected")
@@ -157,35 +158,64 @@ export function createLayoutPresentation(
       texts.set(node.id(), text);
       duplicates.set(text, (duplicates.get(text) ?? 0) + 1);
     }
-    for (const node of nodes) {
-      let text = texts.get(node.id())!;
-      if ((duplicates.get(text) ?? 0) > 1) {
-        const suffix = ` ·${node.id().slice(-6)}`;
-        text =
-          shorten(text, layoutTokens.nameWidth - measure(suffix, 12), (s) =>
-            measure(s, 12),
-          ) + suffix;
-      }
-      node.style({
-        label: text,
-        "font-size": 12 / zoom,
-        "text-wrap": "none",
-        "text-opacity": 1,
-        "text-background-padding": `${3 / zoom}px`,
-      });
-      if (node.hasClass("derp")) {
+    cy.startBatch();
+    try {
+      for (const node of nodes) {
+        let text = texts.get(node.id())!;
+        if (!node.hasClass("path-marker") && (duplicates.get(text) ?? 0) > 1) {
+          const suffix = ` ·${node.id().slice(-6)}`;
+          text =
+            shorten(text, layoutTokens.nameWidth - measure(suffix, 12), (s) =>
+              measure(s, 12),
+            ) + suffix;
+        }
         node.style({
-          width:
-            Math.min(layoutTokens.relayWidth, measure(text, 12) + 24) / zoom,
-          height: 34 / zoom,
-          "text-valign": "center",
-          "text-halign": "center",
-          "text-margin-x": 0,
-          "text-margin-y": 0,
+          label: text,
+          "font-size": 12 / zoom,
+          "text-wrap": "none",
+          "text-opacity": 1,
+          "text-background-padding": `${3 / zoom}px`,
         });
+        if (
+          mode === "overview" &&
+          nodes.length > 12 &&
+          !important.has(node.id()) &&
+          !node.hasClass("path-marker")
+        )
+          node.style("text-opacity", 0);
+        if (node.hasClass("derp")) {
+          node.style({
+            width:
+              Math.min(layoutTokens.relayWidth, measure(text, 12) + 24) / zoom,
+            height: 34 / zoom,
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-margin-x": 0,
+            "text-margin-y": 0,
+          });
+        }
+        if (
+          node.hasClass("derp") &&
+          mode === "overview" &&
+          nodes.length > 12 &&
+          !important.has(node.id())
+        ) {
+          node.style({
+            width: 18 / zoom,
+            height: 14 / zoom,
+            "text-opacity": 0,
+          });
+          hidden++;
+        }
+        if (node.hasClass("path-marker"))
+          node.style({
+            "font-size": 12 / zoom,
+            width: 18 / zoom,
+            height: 18 / zoom,
+          });
       }
-      if (node.hasClass("path-marker")) node.style({ "font-size": 12 / zoom });
-      yield;
+    } finally {
+      cy.endBatch();
     }
     // Existing bounded routing also places virtual relays against measured labels.
     options.reroute(true);
@@ -199,51 +229,58 @@ export function createLayoutPresentation(
         a.id().localeCompare(b.id()),
     );
     let visibleNames = 0;
-    for (const node of ordered) {
-      if (node.hasClass("derp") || node.hasClass("path-marker")) continue;
-      if (
-        !important.has(node.id()) &&
-        ((mode === "overview" && nodes.length > 12) || visibleNames >= 80)
-      ) {
-        node.style("text-opacity", 0);
-        hidden++;
-        yield;
-        continue;
+    cy.startBatch();
+    try {
+      for (const node of ordered) {
+        if (node.hasClass("derp") || node.hasClass("path-marker")) continue;
+        if (
+          !important.has(node.id()) &&
+          ((mode === "overview" && nodes.length > 12) || visibleNames >= 80)
+        ) {
+          node.style("text-opacity", 0);
+          hidden++;
+          continue;
+        }
+        const text = String(node.style("label"));
+        const request = {
+          id: `name:${node.id()}`,
+          owner: node.id(),
+          body: body(node),
+          width: measure(text, 12) + 8,
+          height: 22,
+          previous: anchors.get(node.id()),
+          priority: important.has(node.id()) ? 0 : 1,
+        };
+        const placement = placeLabel(request, occupied, blocked);
+        if (!placement) {
+          node.style("text-opacity", 0);
+          hidden++;
+          continue;
+        }
+        const p = center(placement.bounds),
+          origin = node.renderedPosition();
+        node.style({
+          "text-valign": "center",
+          "text-halign": "center",
+          "text-margin-x": (p.x - origin.x) / zoom,
+          "text-margin-y": (p.y - origin.y) / zoom,
+        });
+        occupied.add({ id: request.id, bounds: placement.bounds });
+        nextAnchors.set(node.id(), placement.anchor);
+        visibleNames++;
       }
-      const text = String(node.style("label"));
-      const request = {
-        id: `name:${node.id()}`,
-        owner: node.id(),
-        body: body(node),
-        width: measure(text, 12) + 8,
-        height: 22,
-        previous: anchors.get(node.id()),
-        priority: important.has(node.id()) ? 0 : 1,
-      };
-      const placement = placeLabel(request, occupied, blocked);
-      if (!placement) {
-        node.style("text-opacity", 0);
-        hidden++;
-        yield;
-        continue;
-      }
-      const p = center(placement.bounds),
-        origin = node.renderedPosition();
-      node.style({
-        "text-valign": "center",
-        "text-halign": "center",
-        "text-margin-x": (p.x - origin.x) / zoom,
-        "text-margin-y": (p.y - origin.y) / zoom,
-      });
-      occupied.add({ id: request.id, bounds: expand(labelBounds(node), 1) });
-      nextAnchors.set(node.id(), placement.anchor);
-      visibleNames++;
-      yield;
+    } finally {
+      cy.endBatch();
     }
     anchors = nextAnchors;
     // Re-evaluate routes against final name anchors before placing rate labels.
     options.reroute(false);
-    const routes: Route[] = cy.edges().map((e) => ({
+    const needsRoutes = mode !== "overview" || cy.edges(":selected").length > 0;
+    const routes: Route[] = (
+      needsRoutes || import.meta.env.VITE_LAYOUT_DIAGNOSTICS === "1"
+        ? cy.edges()
+        : cy.collection()
+    ).map((e) => ({
       id: e.id(),
       logical: String(e.data("logicalEdgeId")),
       points: renderedPath(cy, e),
@@ -252,7 +289,7 @@ export function createLayoutPresentation(
     const routeIndex = new SpatialIndex<
       Occupant & { route: Route; a: Point; b: Point }
     >();
-    for (const route of routes)
+    for (const route of needsRoutes ? routes : [])
       for (let i = 1; i < route.points.length; i++) {
         const a = route.points[i - 1],
           b = route.points[i];
@@ -273,6 +310,13 @@ export function createLayoutPresentation(
         });
       }
     const routeMap = new Map(routes.map((r) => [r.id, r]));
+    cy.batch(() =>
+      cy.edges().style({
+        "font-size": 11 / zoom,
+        "text-background-padding": `${3 / zoom}px`,
+        "text-opacity": 0,
+      }),
+    );
     const shown = new Set<string>();
     for (const edge of cy
       .edges()
@@ -283,11 +327,6 @@ export function createLayoutPresentation(
       )) {
       const text = String(edge.data("label") ?? ""),
         logical = String(edge.data("logicalEdgeId"));
-      edge.style({
-        "font-size": 11 / zoom,
-        "text-background-padding": `${3 / zoom}px`,
-        "text-opacity": 0,
-      });
       if (!text || edge.hasClass("recent")) continue;
       if (shown.has(logical)) continue;
       shown.add(logical);

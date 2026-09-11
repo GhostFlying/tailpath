@@ -53,31 +53,43 @@ must not regress. Browser timings and late fonts require settled diagnostics.
 
 ## Current state
 
-Stage one implemented and focused checks passed. Existing routing and Devices
-behavior preserved. Three-pass Fit freezes virtual positions; 420px short-screen
-graph minimum avoids shrinking names into unreadable or clipped content.
-
-## Next step
-
-Stage two focused checks complete; commit responsive work and begin full gates.
+All three implementation stages are complete in a dependent draft PR stack.
+Canonical positions, cache format, API and passive observation remain unchanged.
+The final browser gate exposed and fixed a Cytoscape attribute/resize feedback
+loop in WebKit, initial Fit scheduling, hidden-label Fit bounds and dense graph
+style invalidation. Atomic style batches and overview geometry reuse preserve
+the existing scale thresholds. Unknown markers are symbols, not device names.
 
 ## Verification
 
-Dev-container TypeScript/build and 70 unit tests passed. Synthetic geometry and
-existing obstacle browser checks: 15 passed, 1 desktop-only skip. Five viewports,
-cold/cache, Fit, Relayout, object selection and clipping covered. Screenshots
-inspected; original clipping found and fixed. Full gates pending. Primary
-checkout edits are preserved.
+Canonical dev container: make check passed (Go checks, 71 frontend unit tests,
+type/build/format checks and 52 browser cases; 30 inapplicable cases skipped).
+Dedicated layout gate: 21 Chromium and 21 WebKit cases, with one desktop-only
+skip per engine. Covers five viewports, cold/cache, Fit, Relayout, selection,
+Unicode names, late font events, rate updates, responsive workspaces and routes.
+Browser plugin not available; regular Playwright used. Synthetic screenshots
+visually inspected. Real iOS and hardware keyboard behavior remain unverified.
+
+Production-build scale: 250 canonical nodes / 1,000 logical edges / 505 rendered
+nodes. Desktop cold ready 4,455ms, cached 5,160ms, API response 134ms and visible
+rate update 454ms. Mobile cold 4,608ms, cached 4,450ms. Both cases passed; desktop
+thresholds remain 5,000ms cold and 500ms update. Separate 1,000-session Peer Relay
+scale: desktop and mobile passed. Timings are local measurements, not hardware
+performance guarantees. Detailed geometry diagnostics are opt-in build output.
+
+Reproduction: make check; TAILPATH_SCALE_E2E=1 ./scripts/e2e.sh;
+TAILPATH_RELAY_SCALE_E2E=1 ./scripts/e2e.sh;
+VITE_LAYOUT_DIAGNOSTICS=1 TAILPATH_LAYOUT_E2E=1 ./scripts/e2e.sh.
+Install Chromium and WebKit via Playwright in the dev container first. Use fresh
+fixture processes for mutations; scale runs should be isolated from other tests.
+
+## Next step
+
+Complete CI and human review of the dependent PR stack. No automatic merge or
+release. Primary checkout edits from the planning session remain preserved.
 
 ## Completion summary
 
-Pending all three stages and required validation.
-
-
-### Stage two verification
-
-Navigation, History and Devices browser tests: 26 passed, 10 inapplicable
-project cases skipped. Four independent 320/390px cross-workspace geometry
-checks passed after correcting select inner hit height to 44px. Two object-list
-selection regressions passed after deferring its hidden DOM. Type/build passed.
-Synthetic History and Devices narrow screenshots visually inspected.
+Implemented geometry/presentation, responsive workspace rules, bilingual docs,
+independent browser gates and CI artifact upload. The plan stays active until
+review and merge; implementation does not depend on changing runtime APIs.

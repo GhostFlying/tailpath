@@ -14,7 +14,7 @@
       "pnpm": "10.15.0"
     }
   },
-  "postCreateCommand": "make bootstrap && pnpm --dir web exec playwright install --with-deps chromium",
+  "postCreateCommand": "make bootstrap && pnpm --dir web exec playwright install --with-deps chromium webkit",
   "forwardPorts": [5173, 8080],
   "customizations": {
     "vscode": {
