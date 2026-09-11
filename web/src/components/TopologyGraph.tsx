@@ -237,6 +237,7 @@ export function TopologyGraph(props: Props) {
   const graph = useRef<Core | null>(null);
   const fitPasses = useRef(0);
   const fitting = useRef(false);
+  const fitPanAdjusted = useRef(false);
   const presentation = useRef<ReturnType<
     typeof createLayoutPresentation
   > | null>(null);
@@ -297,12 +298,20 @@ export function TopologyGraph(props: Props) {
         routeEdgesAroundObstacles(cy);
       },
       onComplete: (next) => {
+        if (focusPending.current && cy.nodes().length > 0) return;
         if (fitPasses.current > 0) {
           fitting.current = true;
           fitPasses.current--;
           focusGraph(cy, graphPadding());
           presentation.current?.request();
           return;
+        }
+        if (fitting.current && !fitPanAdjusted.current) {
+          fitPanAdjusted.current = true;
+          if (clampFitPan(cy)) {
+            presentation.current?.request();
+            return;
+          }
         }
         fitting.current = false;
         if (container.current) container.current.dataset.ready = "true";
@@ -317,15 +326,22 @@ export function TopologyGraph(props: Props) {
       },
     });
     const refreshPresentation = () => presentation.current?.request();
-    cy.on("zoom resize free select unselect", refreshPresentation);
+    // Cytoscape also emits resize for diagnostic attribute mutations. Observe
+    // actual DOM dimensions below instead, avoiding a self-sustaining redraw loop.
+    cy.on("zoom free select unselect", refreshPresentation);
     const resize = new ResizeObserver(() => {
       cy.resize();
       refreshPresentation();
     });
     resize.observe(container.current);
+    let observedInspector: Element | null = null;
     const observeInspector = () => {
       const inspector = document.querySelector(".inspector");
-      if (inspector) resize.observe(inspector);
+      if (inspector !== observedInspector) {
+        if (observedInspector) resize.unobserve(observedInspector);
+        if (inspector) resize.observe(inspector);
+        observedInspector = inspector;
+      }
       refreshPresentation();
     };
     const panels = new MutationObserver(observeInspector);
@@ -333,9 +349,13 @@ export function TopologyGraph(props: Props) {
       panels.observe(container.current.closest(".workspace")!, {
         childList: true,
       });
+    let visualViewportKey = "";
     const visualViewportChanged = () => {
       const viewport = window.visualViewport;
       if (viewport) {
+        const key = `${viewport.width.toFixed(1)}:${viewport.height.toFixed(1)}:${viewport.offsetTop.toFixed(1)}`;
+        if (key === visualViewportKey) return;
+        visualViewportKey = key;
         document.documentElement.style.setProperty(
           "--visual-viewport-height",
           `${viewport.height}px`,
@@ -414,7 +434,6 @@ export function TopologyGraph(props: Props) {
   useEffect(() => {
     const cy = graph.current;
     if (!cy) return;
-    const epoch = ++renderEpoch.current;
     const firstRender = !initialized.current;
     const topologyChanged =
       renderedTopologyAt.current !== props.topology.generatedAt;
@@ -426,9 +445,22 @@ export function TopologyGraph(props: Props) {
     captureCurrentPositions(cy, cachedPositions.current);
     topologyNodeIDs.current = props.topology.nodes.map((node) => node.id);
     const preparedElements = elements.map(withMeasuredIdealLength);
+    if (
+      !firstRender &&
+      preparedElements.length === renderedFingerprints.current.size &&
+      preparedElements.every(
+        (element) =>
+          renderedFingerprints.current.get(String(element.data?.id)) ===
+          elementFingerprint(element),
+      )
+    ) {
+      return;
+    }
+
     const geometry = geometryFingerprint(preparedElements);
     const geometryChanged = renderedGeometry.current !== geometry;
     renderedGeometry.current = geometry;
+    const epoch = ++renderEpoch.current;
     const previousCanonicalIDs = new Set(
       cy.nodes("[persistable]").map((node) => node.id()),
     );
@@ -462,6 +494,7 @@ export function TopologyGraph(props: Props) {
     const newCanonicalNodes: NodeSingular[] = [];
     const knownNodeIDs = new Set<string>();
     const nextFingerprints = new Map<string, string>();
+    cy.startBatch();
     for (const definition of preparedElements) {
       const id = String(definition.data?.id);
       const fingerprint = elementFingerprint(definition);
@@ -487,9 +520,10 @@ export function TopologyGraph(props: Props) {
         }
       }
     }
+    cy.endBatch();
     renderedFingerprints.current = nextFingerprints;
     seedNewNodes(cy, newCanonicalNodes, knownNodeIDs);
-    deriveVirtualPositions(cy);
+    if (geometryChanged) deriveVirtualPositions(cy);
     if (container.current) container.current.dataset.ready = "false";
     const movableNodeIDs = new Set(newCanonicalNodes.map((node) => node.id()));
     if (newCanonicalNodes.length > 0) {
@@ -521,14 +555,29 @@ export function TopologyGraph(props: Props) {
       enforceSparseEdgeClearance(cy, movableNodeIDs);
       enforceFootprintClearance(cy, movableNodeIDs);
     }
-    deriveVirtualPositions(cy);
+    if (geometryChanged) deriveVirtualPositions(cy);
     if (geometryChanged || newCanonicalNodes.length > 0) {
       routeEdgesAroundObstacles(cy);
     }
     initialized.current = true;
     if (!firstRender && !shouldFocusTopology) {
-      cy.zoom(viewport.zoom);
-      cy.pan(viewport.pan);
+      if (cy.zoom() !== viewport.zoom) cy.zoom(viewport.zoom);
+      const pan = cy.pan();
+      if (pan.x !== viewport.pan.x || pan.y !== viewport.pan.y)
+        cy.pan(viewport.pan);
+    }
+    if (
+      !geometryChanged &&
+      !shouldFocusTopology &&
+      newCanonicalNodes.length === 0
+    ) {
+      updateGraphDiagnostics(cy, container.current, layoutRuns.current, false);
+      // Overview has no unselected rate labels to place. Data/class changes
+      // already render through Cytoscape; keep the settled geometry intact.
+      if (cy.nodes().length > 80 && cy.elements(":selected").length === 0) {
+        if (container.current) container.current.dataset.ready = "true";
+      } else presentation.current?.request();
+      return;
     }
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -544,7 +593,8 @@ export function TopologyGraph(props: Props) {
           routeEdgesAroundObstacles(cy);
         }
         if (shouldFocusTopology) {
-          fitPasses.current = 3;
+          fitPasses.current = cy.nodes().length > 80 ? 1 : 3;
+          fitPanAdjusted.current = false;
           focusGraph(cy, graphPadding());
           focusPending.current = false;
         }
@@ -606,8 +656,9 @@ export function TopologyGraph(props: Props) {
   }
 
   function fitGraph() {
-    fitPasses.current = 3;
     const cy = graph.current;
+    fitPasses.current = cy && cy.nodes().length > 80 ? 1 : 3;
+    fitPanAdjusted.current = false;
     if (!cy || cy.nodes().length === 0) return;
     focusGraph(cy, graphPadding());
     presentation.current?.request();
@@ -615,8 +666,9 @@ export function TopologyGraph(props: Props) {
   }
 
   function relayoutGraph() {
-    fitPasses.current = 3;
     const cy = graph.current;
+    fitPasses.current = cy && cy.nodes().length > 80 ? 1 : 3;
+    fitPanAdjusted.current = false;
     if (!cy || cy.nodes().length === 0) return;
     clearLayoutCache(
       typeof window === "undefined" ? undefined : window.localStorage,
@@ -668,7 +720,9 @@ export function TopologyGraph(props: Props) {
           ? `${summary.hidden} labels hidden · Zoom or select to inspect`
           : ""}
         {summary.collisions > 0
-          ? " · Some saved positions are crowded. Use Relayout to spread nodes."
+          ? summary.mode === "overview"
+            ? " · Crowded view. Filter or select a neighborhood."
+            : " · Some positions are crowded. Use Relayout to spread nodes."
           : ""}
       </div>
       <details
@@ -975,10 +1029,51 @@ function enforceFootprintClearance(cy: Core, movable?: ReadonlySet<string>) {
   }
 }
 
+function clampFitPan(cy: Core) {
+  const boxes = cy.nodes().map((node) =>
+    node.renderedBoundingBox({
+      includeLabels: Number(node.style("text-opacity")) > 0,
+      includeOverlays: false,
+    }),
+  );
+  cy.edges().forEach((edge) => {
+    if (Number(edge.style("text-opacity")) > 0 && String(edge.data("label")))
+      boxes.push(
+        edge.renderedBoundingBox({
+          includeNodes: false,
+          includeEdges: false,
+          includeLabels: true,
+          includeOverlays: false,
+        }),
+      );
+  });
+  if (!boxes.length) return false;
+  const x1 = Math.min(...boxes.map((b) => b.x1)),
+    x2 = Math.max(...boxes.map((b) => b.x2));
+  const y1 = Math.min(...boxes.map((b) => b.y1)),
+    y2 = Math.max(...boxes.map((b) => b.y2));
+  const dx =
+    x1 < 16 ? 16 - x1 : x2 > cy.width() - 16 ? cy.width() - 16 - x2 : 0;
+  const dy =
+    y1 < 72 ? 72 - y1 : y2 > cy.height() - 40 ? cy.height() - 40 - y2 : 0;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return false;
+  const pan = cy.pan();
+  cy.pan({ x: pan.x + dx, y: pan.y + dy });
+  return true;
+}
+
 function focusGraph(cy: Core, padding: number) {
-  const bounds = cy
-    .elements()
-    .boundingBox({ includeLabels: true, includeOverlays: false });
+  const boxes = cy.elements().map((element) =>
+    element.boundingBox({
+      includeLabels: Number(element.style("text-opacity")) > 0,
+      includeOverlays: false,
+    }),
+  );
+  const x1 = Math.min(...boxes.map((b) => b.x1)),
+    x2 = Math.max(...boxes.map((b) => b.x2));
+  const y1 = Math.min(...boxes.map((b) => b.y1)),
+    y2 = Math.max(...boxes.map((b) => b.y2));
+  const bounds = { x1, x2, y1, y2, w: x2 - x1, h: y2 - y1 };
   if (bounds.w <= 0 || bounds.h <= 0) return;
   // Reserve controls above and the readable detail status below the topology.
   const top = 72,
@@ -1088,6 +1183,13 @@ function deriveVirtualPositions(cy: Core) {
       }),
       { x: 0, y: 0 },
     );
+    if (
+      cy.nodes().length > maximumObstacleRoutingNodes ||
+      cy.edges().length > maximumObstacleRoutingEdges
+    ) {
+      node.position(origin);
+      return;
+    }
     const axis = virtualOffsetAxis(neighbors, node.id());
     const tangent = { x: axis.y, y: -axis.x };
     const preferredSide = stableHash(node.id()) % 2 === 0 ? 1 : -1;
@@ -1173,7 +1275,7 @@ function virtualOffsetAxis(
 function paddedNodeBounds(node: NodeSingular, padding: number): Bounds {
   padding /= node.cy().zoom();
   const bounds = node.boundingBox({
-    includeLabels: true,
+    includeLabels: Number(node.style("text-opacity")) > 0,
     includeOverlays: false,
   });
   return {
@@ -1415,6 +1517,7 @@ function updateGraphDiagnostics(
   cy: Core,
   element: HTMLDivElement | null,
   runs: number,
+  measureGeometry = true,
 ) {
   if (!element) return;
   const deviceNodes = cy.nodes(".device-node");
@@ -1456,6 +1559,7 @@ function updateGraphDiagnostics(
     if (edge.scratch("tailpathObstacleRouted")) routedEdges.push(edge.id());
     const route = edge.scratch("tailpathRoute") as RoutedPath | undefined;
     if (route) routes.push(route);
+    if (!measureGeometry) return;
     const midpoint = edge.midpoint();
     edgeHitTargets.push({
       source: edge.source().id(),
@@ -1481,7 +1585,8 @@ function updateGraphDiagnostics(
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
-  element.dataset.edgeHitTargets = JSON.stringify(edgeHitTargets);
+  if (measureGeometry)
+    element.dataset.edgeHitTargets = JSON.stringify(edgeHitTargets);
   element.dataset.routedEdges = routedEdges.join("|");
   element.dataset.edgeCrossingCount = String(countRouteCrossings(routes));
   element.dataset.virtualPositions = virtualPositions.join("|");

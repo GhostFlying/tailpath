@@ -69,6 +69,7 @@ export class SpatialIndex<T extends { bounds: Rect }> {
       x2 = Math.floor(r.x2 / 96);
     const y1 = Math.floor(r.y1 / 96),
       y2 = Math.floor(r.y2 / 96);
+    if (![x1, x2, y1, y2].every(Number.isSafeInteger)) return null;
     if ((x2 - x1 + 1) * (y2 - y1 + 1) > 256) return null;
     const keys: string[] = [];
     for (let x = x1; x <= x2; x++)

@@ -212,16 +212,22 @@ Stage one adds screen-space geometry, measured text, eight stable name anchors,
 content-sized DERP pills, bounded presentation scheduling, detail hysteresis,
 object-list selection and complete-footprint separation for movable nodes.
 Existing obstacle routing now uses adaptive curve subdivision. Fit reserves
-controls/status, freezes virtual positions through three correction passes,
+controls/status, freezes virtual positions through at most three correction passes,
 and never changes canonical coordinates. Short screens allow scrolling to a
 420px graph region. Legend rows occupy their measured height.
 
 Geometry diagnostics are compiled only with VITE_LAYOUT_DIAGNOSTICS=1. The
 synthetic layout suite independently checks rendered label/body overlap and
-clipping. Chromium focused checks passed; full make check, scale, responsive
-workspace completion and WebKit remain tracked in the active plan. Real iOS
-has not been verified. The 8ms scheduler yields between work items; existing
-bounded obstacle-routing calls remain atomic and require scale validation.
+clipping. Chromium and WebKit cover five viewports, cold/cache, Fit, selection,
+Relayout, late fonts and changing rates. Real iOS has not been verified. The
+8ms scheduler yields between work items; style batches and bounded routing are
+atomic, so this is a scheduling budget rather than a hard frame-time guarantee.
+
+Graphs above 80 rendered nodes use overview presentation: retain every object
+and connection, suppress optional names/rates, and recover details by selection
+or the object list. Dense virtual markers use neighbor centroids and one Fit
+correction. Rate/status-only updates preserve settled geometry. Unknown-path
+symbols retain their semantic label without device-name disambiguation.
 
 Stage two implements shared 44px touch controls, narrow identity/metadata rows,
 whole-control filter wrapping, safe-area padding and visual-viewport keyboard

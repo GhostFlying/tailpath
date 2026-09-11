@@ -149,7 +149,7 @@
 
 .history-suggestions span {
   color: var(--history-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .history-path-filter select,
@@ -189,7 +189,7 @@
   border-bottom: 1px solid var(--history-border);
   padding: 0 22px;
   color: #78848b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -277,7 +277,7 @@
 .history-row-identity small,
 .path-text {
   color: #7f8a91;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
 }
 .history-row-subline {
@@ -290,7 +290,7 @@
 .history-row-subline .identity-badge {
   min-height: 18px;
   padding: 1px 4px;
-  font-size: 8px;
+  font-size: 12px;
 }
 .history-row-subline .identity-badge:nth-of-type(2) {
   display: none;
@@ -314,7 +314,7 @@
 
 .history-row-metadata > time {
   color: #425159;
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -322,7 +322,7 @@
   display: grid;
   justify-items: end;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .history-row-totals span {
@@ -375,7 +375,7 @@
 .history-list-state span,
 .history-detail-state span {
   max-width: 320px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -386,7 +386,7 @@
   border: 1px solid #aeb7bc;
   background: #ffffff;
   padding: 0 14px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -428,7 +428,7 @@
 }
 
 .history-detail-empty span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .history-detail-content {
@@ -481,7 +481,7 @@
   gap: 6px;
   border-bottom: 1px solid var(--history-border);
   color: #667279;
-  font-size: 10px;
+  font-size: 12px;
 }
 .history-identity-pair > span:not(.identity-badge):nth-of-type(3) {
   margin-left: 8px;
@@ -530,7 +530,7 @@
 .history-section-heading > span {
   margin-left: auto;
   color: #6d7980;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -556,7 +556,7 @@
   align-items: flex-end;
   padding: 2px 0;
   color: #526067;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .traffic-svg-wrap {
@@ -641,7 +641,7 @@
   justify-content: space-between;
   align-items: end;
   color: #526067;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .traffic-tooltip {
@@ -657,7 +657,7 @@
   box-shadow: 0 5px 16px rgb(28 37 43 / 12%);
   padding: 8px;
   pointer-events: none;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .traffic-tooltip time {
@@ -684,7 +684,7 @@
   gap: 26px;
   margin: 9px 0 0 66px;
   color: #33444b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .traffic-direction-legend span {
@@ -714,7 +714,7 @@
   place-items: center;
   border: 1px dashed #d4dade;
   color: var(--history-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .path-timeline {
@@ -775,7 +775,7 @@
 }
 
 .timeline-time strong {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -792,14 +792,14 @@
 }
 
 .timeline-copy strong {
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .timeline-copy small,
 .timeline-observers {
   color: #667279;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .timeline-observers {
@@ -833,7 +833,7 @@
 
 .provenance-title > div span {
   color: #748087;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -846,7 +846,7 @@
 .provenance-title > .path-text {
   min-width: 0;
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   overflow-wrap: anywhere;
   text-align: right;
@@ -878,13 +878,13 @@
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid #e1e5e7;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .provenance-head {
   min-height: 32px;
   color: #77838a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -913,7 +913,7 @@
 
 .evidence-support,
 .evidence-conflict {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -937,7 +937,7 @@
   gap: 6px;
   padding: 3px 0 2px;
   color: #667279;
-  font-size: 9px;
+  font-size: 12px;
 }
 .history-relay-provenance code {
   color: #3e4b52;
@@ -1005,7 +1005,7 @@
 .history-truncation-note {
   margin: 20px 0 0;
   color: #7b878e;
-  font-size: 9px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -1133,13 +1133,13 @@
 
   .history-row-metadata > time {
     display: block;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
   }
 
   .history-row-totals {
     gap: 6px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .history-row-chevron {
@@ -1225,7 +1225,7 @@
     padding: 0 16px;
     gap: 8px;
     overflow-x: auto;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .history-section {
@@ -1254,11 +1254,11 @@
   }
 
   .traffic-y-labels {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .traffic-x-labels {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .traffic-direction-legend {
@@ -1266,7 +1266,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin: 10px 0 0;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .path-timeline {
@@ -1330,13 +1330,13 @@
   }
 
   .timeline-time strong {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .timeline-time small {
     display: block;
     color: #667279;
-    font-size: 9px;
+    font-size: 12px;
   }
 
   .timeline-copy {
@@ -1349,14 +1349,14 @@
   }
 
   .timeline-copy small {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .timeline-observers {
     grid-column: 4;
     grid-row: 1;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .path-timeline button > svg:last-child {
@@ -1377,11 +1377,11 @@
   .provenance-row {
     grid-template-columns: 1.15fr 1fr 0.8fr 0.8fr;
     gap: 6px;
-    font-size: 9px;
+    font-size: 12px;
   }
 
   .provenance-head {
-    font-size: 9px;
+    font-size: 12px;
   }
 
   .history-provenance-sheet .provenance-title {
@@ -1419,12 +1419,12 @@
   .history-provenance-sheet .provenance-row time {
     display: grid;
     gap: 3px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .history-provenance-sheet .provenance-row time::before {
     color: #7b878e;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -1442,7 +1442,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding-top: 5px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .history-provenance-sheet .history-relay-provenance > span:first-child,

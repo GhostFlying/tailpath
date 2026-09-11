@@ -212,13 +212,13 @@ button {
   display: flex;
   justify-content: space-between;
   color: #7b878e;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   margin: 22px 4px 8px;
 }
 .filter-heading small {
-  font-size: 10px;
+  font-size: 12px;
 }
 .path-filter {
   display: grid;
@@ -375,10 +375,10 @@ button {
   gap: 2px;
 }
 .runtime-summary strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 .runtime-summary span {
-  font-size: 10px;
+  font-size: 12px;
   color: #7b878e;
 }
 .runtime-summary .clock-warning {
@@ -449,7 +449,7 @@ button {
   background: rgb(255 255 255 / 94%);
   padding: 7px 12px;
   color: #5f6b72;
-  font-size: 10px;
+  font-size: 12px;
   pointer-events: none;
 }
 .legend-section {
@@ -463,7 +463,7 @@ button {
 }
 .legend-section > strong {
   color: #7b878e;
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 .legend-group {
@@ -549,7 +549,7 @@ button {
   padding: 2px 6px;
   color: #526067;
   background: #f7f9f9;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
@@ -650,7 +650,7 @@ button {
 .panel-kicker {
   margin: 0 42px 7px 0;
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #7b878e;
 }
@@ -687,7 +687,7 @@ button {
 }
 .state-badge {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
   padding: 3px 6px;
@@ -712,7 +712,7 @@ button {
 }
 .details-list dt {
   color: #7b878e;
-  font-size: 10px;
+  font-size: 12px;
   display: flex;
   gap: 5px;
   align-items: center;
@@ -723,7 +723,7 @@ button {
 .details-list dd {
   margin: 0;
   text-align: right;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -738,7 +738,7 @@ button {
   margin: 0 0 10px;
   color: #68747b;
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 12px;
 }
 .direction-row {
   height: 38px;
@@ -746,14 +746,14 @@ button {
   grid-template-columns: 20px 1fr auto;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 12px;
   border-bottom: 1px solid #edf0f1;
 }
 .direction-row svg {
   color: #16877a;
 }
 .direction-row strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 .evidence-row {
   min-height: 38px;
@@ -761,7 +761,7 @@ button {
   grid-template-columns: 20px 1fr auto;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   border-bottom: 1px solid #edf0f1;
 }
 .evidence-row:has(.relay-evidence-details) {
@@ -774,7 +774,7 @@ button {
   align-items: center;
   gap: 6px;
   color: #69757b;
-  font-size: 9px;
+  font-size: 12px;
 }
 .relay-evidence-details code {
   color: #3e4b52;
@@ -794,7 +794,7 @@ button {
   border-left: 3px solid #bd7b00;
   padding-left: 9px;
   color: #6d5a2c;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -808,7 +808,7 @@ button {
   gap: 6px;
   margin: 0 0 9px;
   color: #765900;
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 
@@ -823,7 +823,7 @@ button {
   border-left: 3px solid #bd7b00;
   border-bottom: 1px solid #edf0f1;
   padding: 9px 0 9px 10px;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .metadata-conflict-row > strong {
@@ -855,12 +855,12 @@ button {
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid #edf0f1;
-  font-size: 10px;
+  font-size: 12px;
 }
 .history-row small,
 .history-row time {
   color: #77838a;
-  font-size: 9px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -987,7 +987,7 @@ button {
     background: #ffffff;
     color: #273239;
     padding: 0 24px 0 8px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .filter-heading,
   .path-filter,
@@ -999,7 +999,7 @@ button {
     flex: none;
     gap: 6px;
     padding: 0 1px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .desktop-recent-label {
     display: none;
@@ -1066,7 +1066,7 @@ button {
   line-height: 1.4;
 }
 .legend-section > strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 .legend-toggle {
   display: none;
@@ -1250,7 +1250,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 14px;
   color: #fff;
 }
