@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Activity,
   CircleHelp,
@@ -7,8 +8,12 @@ import {
 } from "lucide-react";
 
 export function GraphLegend() {
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div className="graph-legend" aria-label="Topology legend">
+    <div
+      className={`graph-legend${expanded ? " expanded" : ""}`}
+      aria-label="Topology legend"
+    >
       <div className="legend-section">
         <strong>Path</strong>
         <div className="legend-group">
@@ -37,7 +42,7 @@ export function GraphLegend() {
           </span>
         </div>
       </div>
-      <div className="legend-section">
+      <div className="legend-section legend-secondary">
         <strong>Node telemetry</strong>
         <div className="legend-group node-legend">
           <span>
@@ -63,7 +68,7 @@ export function GraphLegend() {
           </span>
         </div>
       </div>
-      <div className="legend-section">
+      <div className="legend-section legend-secondary">
         <strong>Relay identity</strong>
         <div className="legend-group identity-legend">
           <span>
@@ -86,6 +91,14 @@ export function GraphLegend() {
           </span>
         </div>
       </div>
+      <button
+        className="legend-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        {expanded ? "Less legend" : "More legend"}
+      </button>
     </div>
   );
 }

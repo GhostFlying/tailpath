@@ -3,6 +3,8 @@
 Tailpath is an operational tool: quiet, dense, predictable, and optimized for
 repeated inspection rather than marketing presentation.
 
+Follow the [systematic layout contract](layout-rules.md) ([中文版](layout-rules.zh-CN.md)) for complete footprints, collision handling and regression gates.
+
 - Use CSS custom properties from the canonical web theme; do not add isolated
   raw colors when a semantic token exists.
 - Do not rely on color alone. Path kinds require explicit relay topology or a

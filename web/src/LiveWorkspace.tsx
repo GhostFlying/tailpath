@@ -138,44 +138,47 @@ export default function LiveWorkspace() {
         />
 
         <section className="graph-stage">
-          {topology ? (
-            <TopologyGraph
-              topology={topology}
-              pathFilter={pathFilter}
-              showRecent={showRecent}
-              query={query}
-              selectedEdgeId={selectedEdgeId}
-              selectedNodeId={selectedNodeId}
-              focusNodeId={focusNodeId}
-              onSelectEdge={setSelectedEdgeId}
-              onSelectNode={(nodeID) => {
-                setFocusNodeId(null);
-                setSelectedNodeId(nodeID);
-              }}
-            />
-          ) : null}
+          <div className="graph-viewport">
+            {topology ? (
+              <TopologyGraph
+                topology={topology}
+                pathFilter={pathFilter}
+                showRecent={showRecent}
+                query={query}
+                selectedEdgeId={selectedEdgeId}
+                selectedNodeId={selectedNodeId}
+                focusNodeId={focusNodeId}
+                onSelectEdge={setSelectedEdgeId}
+                onSelectNode={(nodeID) => {
+                  setFocusNodeId(null);
+                  setSelectedNodeId(nodeID);
+                }}
+              />
+            ) : null}
+
+            {!topology && !error ? (
+              <div className="center-state">
+                <span className="loading-ring" />
+                <strong>Loading topology</strong>
+              </div>
+            ) : null}
+            {error ? (
+              <div className="center-state error-state">
+                <CircleAlert size={24} />
+                <strong>Topology unavailable</strong>
+                <span>{error}</span>
+                <button onClick={() => void refresh()}>Retry</button>
+              </div>
+            ) : null}
+            {topology && emptyReason ? (
+              <div className="center-state">
+                <Waypoints size={26} />
+                <strong>{emptyTrafficCopy[emptyReason].title}</strong>
+                <span>{emptyTrafficCopy[emptyReason].detail}</span>
+              </div>
+            ) : null}
+          </div>
           {topology ? <GraphLegend /> : null}
-          {!topology && !error ? (
-            <div className="center-state">
-              <span className="loading-ring" />
-              <strong>Loading topology</strong>
-            </div>
-          ) : null}
-          {error ? (
-            <div className="center-state error-state">
-              <CircleAlert size={24} />
-              <strong>Topology unavailable</strong>
-              <span>{error}</span>
-              <button onClick={() => void refresh()}>Retry</button>
-            </div>
-          ) : null}
-          {topology && emptyReason ? (
-            <div className="center-state">
-              <Waypoints size={26} />
-              <strong>{emptyTrafficCopy[emptyReason].title}</strong>
-              <span>{emptyTrafficCopy[emptyReason].detail}</span>
-            </div>
-          ) : null}
         </section>
 
         {topology ? (

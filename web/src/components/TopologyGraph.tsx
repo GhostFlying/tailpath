@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { quadratic } from "../lib/layoutGeometry";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, RefreshCcw } from "lucide-react";
 import cytoscape, {
   type Core,
@@ -7,6 +8,11 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetCSS,
 } from "cytoscape";
+import {
+  createLayoutPresentation,
+  clearFontMeasurements,
+  type PresentationSummary,
+} from "../lib/layoutPresentation";
 import type { Topology } from "../api/types";
 import {
   buildElements,
@@ -39,7 +45,6 @@ const maximumSparseZoom = 1.25;
 const obstaclePadding = 14;
 const virtualCandidateStep = 48;
 const maximumVirtualCandidateSteps = 6;
-const routeSampleCount = 48;
 const maximumObstacleRoutingNodes = 64;
 const maximumObstacleRoutingEdges = 128;
 
@@ -230,6 +235,18 @@ const styles: StylesheetCSS[] = [
 export function TopologyGraph(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<Core | null>(null);
+  const fitPasses = useRef(0);
+  const fitting = useRef(false);
+  const presentation = useRef<ReturnType<
+    typeof createLayoutPresentation
+  > | null>(null);
+  const [summary, setSummary] = useState<PresentationSummary>({
+    mode: "detail",
+    hidden: 0,
+    collisions: 0,
+  });
+  const callbacks = useRef(props);
+  callbacks.current = props;
   const initialized = useRef(false);
   const layoutRuns = useRef(0);
   const renderEpoch = useRef(0);
@@ -268,31 +285,75 @@ export function TopologyGraph(props: Props) {
       container: container.current,
       elements: [],
       style: styles,
-      minZoom: 0.35,
+      minZoom: 0.1,
       maxZoom: 2.2,
       boxSelectionEnabled: false,
     });
     graph.current = cy;
+    presentation.current = createLayoutPresentation(cy, container.current, {
+      reroute: (moveVirtual) => {
+        if (moveVirtual && !fitting.current) deriveVirtualPositions(cy);
+        routeEdgesAroundObstacles(cy);
+      },
+      onComplete: (next) => {
+        if (fitPasses.current > 0) {
+          fitting.current = true;
+          fitPasses.current--;
+          focusGraph(cy, graphPadding());
+          presentation.current?.request();
+          return;
+        }
+        fitting.current = false;
+        if (container.current) container.current.dataset.ready = "true";
+        updateGraphDiagnostics(cy, container.current, layoutRuns.current);
+        setSummary((previous) =>
+          previous.mode === next.mode &&
+          previous.hidden === next.hidden &&
+          previous.collisions === next.collisions
+            ? previous
+            : next,
+        );
+      },
+    });
+    const refreshPresentation = () => presentation.current?.request();
+    cy.on("zoom resize free select unselect", refreshPresentation);
+    const resize = new ResizeObserver(() => {
+      cy.resize();
+      refreshPresentation();
+    });
+    resize.observe(container.current);
+    const inspector = document.querySelector(".inspector");
+    if (inspector) resize.observe(inspector);
+    const fontsChanged = () => {
+      clearFontMeasurements();
+      refreshPresentation();
+    };
+    document.fonts.addEventListener("loadingdone", fontsChanged);
+    void document.fonts.ready.then(() => {
+      if (!cy.destroyed()) fontsChanged();
+    });
     cy.on("tap", "edge", (event) => {
-      props.onSelectEdge(event.target.data("logicalEdgeId") as string);
-      props.onSelectNode(null);
+      callbacks.current.onSelectEdge(
+        event.target.data("logicalEdgeId") as string,
+      );
+      callbacks.current.onSelectNode(null);
     });
     cy.on("tap", "node", (event) => {
       const logicalEdgeID = event.target.data("logicalEdgeId") as
         | string
         | undefined;
       if (logicalEdgeID) {
-        props.onSelectEdge(logicalEdgeID);
-        props.onSelectNode(null);
+        callbacks.current.onSelectEdge(logicalEdgeID);
+        callbacks.current.onSelectNode(null);
         return;
       }
-      props.onSelectNode(event.target.id());
-      props.onSelectEdge(null);
+      callbacks.current.onSelectNode(event.target.id());
+      callbacks.current.onSelectEdge(null);
     });
     cy.on("tap", (event) => {
       if (event.target === cy) {
-        props.onSelectEdge(null);
-        props.onSelectNode(null);
+        callbacks.current.onSelectEdge(null);
+        callbacks.current.onSelectNode(null);
       }
     });
     cy.on("free", "node[persistable]", () => {
@@ -304,6 +365,10 @@ export function TopologyGraph(props: Props) {
       updateGraphDiagnostics(cy, container.current, layoutRuns.current),
     );
     return () => {
+      resize.disconnect();
+      document.fonts.removeEventListener("loadingdone", fontsChanged);
+      presentation.current?.dispose();
+      presentation.current = null;
       if (graph.current === cy) graph.current = null;
       cy.destroy();
     };
@@ -403,7 +468,7 @@ export function TopologyGraph(props: Props) {
         cy.layout({
           name: "cose",
           animate: false,
-          randomize: firstRender && knownNodeIDs.size === 0,
+          randomize: false,
           fit: false,
           padding: 64,
           nodeRepulsion: () => 180000,
@@ -415,7 +480,10 @@ export function TopologyGraph(props: Props) {
       }
       locked.forEach((node) => node.unlock());
     }
-    if (structureChanged) enforceSparseEdgeClearance(cy, movableNodeIDs);
+    if (structureChanged) {
+      enforceSparseEdgeClearance(cy, movableNodeIDs);
+      enforceFootprintClearance(cy, movableNodeIDs);
+    }
     deriveVirtualPositions(cy);
     if (geometryChanged || newCanonicalNodes.length > 0) {
       routeEdgesAroundObstacles(cy);
@@ -439,12 +507,13 @@ export function TopologyGraph(props: Props) {
           routeEdgesAroundObstacles(cy);
         }
         if (shouldFocusTopology) {
+          fitPasses.current = 3;
           focusGraph(cy, graphPadding());
           focusPending.current = false;
         }
         updateGraphDiagnostics(cy, container.current, layoutRuns.current);
         persistPositionsNow(cy);
-        if (container.current) container.current.dataset.ready = "true";
+        presentation.current?.request();
       }),
     );
   }, [elements]);
@@ -500,13 +569,16 @@ export function TopologyGraph(props: Props) {
   }
 
   function fitGraph() {
+    fitPasses.current = 3;
     const cy = graph.current;
     if (!cy || cy.nodes().length === 0) return;
     focusGraph(cy, graphPadding());
+    presentation.current?.request();
     updateGraphDiagnostics(cy, container.current, layoutRuns.current);
   }
 
   function relayoutGraph() {
+    fitPasses.current = 3;
     const cy = graph.current;
     if (!cy || cy.nodes().length === 0) return;
     clearLayoutCache(
@@ -528,10 +600,12 @@ export function TopologyGraph(props: Props) {
       componentSpacing: 120,
     }).run();
     enforceSparseEdgeClearance(cy);
+    enforceFootprintClearance(cy);
     deriveVirtualPositions(cy);
     routeEdgesAroundObstacles(cy);
     focusGraph(cy, graphPadding());
     persistPositionsNow(cy);
+    presentation.current?.request();
   }
 
   return (
@@ -552,6 +626,63 @@ export function TopologyGraph(props: Props) {
         }
         data-selected-node-id={props.selectedNodeId ?? ""}
       />
+      <div className="graph-detail-status" role="status">
+        {summary.hidden > 0
+          ? `${summary.hidden} labels hidden · Zoom or select to inspect`
+          : ""}
+        {summary.collisions > 0
+          ? " · Some saved positions are crowded. Use Relayout to spread nodes."
+          : ""}
+      </div>
+      <details
+        className="graph-objects"
+        onToggle={() => presentation.current?.request()}
+      >
+        <summary>Graph objects</summary>
+        <div className="graph-object-list" aria-label="Visible graph objects">
+          {elements
+            .filter((e) => e.group === "nodes")
+            .map((e) => (
+              <button
+                key={String(e.data?.id)}
+                type="button"
+                onClick={() => {
+                  if (e.data?.logicalEdgeId) {
+                    callbacks.current.onSelectEdge(
+                      String(e.data.logicalEdgeId),
+                    );
+                    callbacks.current.onSelectNode(null);
+                  } else {
+                    callbacks.current.onSelectNode(String(e.data?.id));
+                    callbacks.current.onSelectEdge(null);
+                  }
+                }}
+              >
+                {String(e.data?.label)}
+              </button>
+            ))}
+          {[
+            ...new Map(
+              elements
+                .filter((e) => e.group === "edges")
+                .map((e) => [String(e.data?.logicalEdgeId), e]),
+            ).entries(),
+          ].map(([id, e]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                callbacks.current.onSelectEdge(id);
+                callbacks.current.onSelectNode(null);
+              }}
+            >
+              {props.topology.edges.find((edge) => edge.id === id)?.source} →{" "}
+              {props.topology.edges.find((edge) => edge.id === id)?.target} ·{" "}
+              {String(e.data?.label || "Recent")}
+            </button>
+          ))}
+        </div>
+      </details>
       <div className="graph-controls" aria-label="Graph layout controls">
         <button
           type="button"
@@ -772,36 +903,84 @@ function enforceSparseEdgeClearance(
   }
 }
 
-function focusGraph(cy: Core, padding: number) {
-  if (cy.nodes("[persistable]").length > sparseGraphNodeLimit) {
-    cy.fit(cy.elements(), padding);
-    return;
+function enforceFootprintClearance(cy: Core, movable?: ReadonlySet<string>) {
+  if (cy.nodes("[persistable]").length > automaticCoseNodeLimit) return;
+  const nodes = cy
+    .nodes("[persistable]")
+    .sort((a, b) => a.id().localeCompare(b.id()));
+  for (let pass = 0; pass < 12; pass++) {
+    let changed = false;
+    for (let i = 0; i < nodes.length; i++)
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i],
+          b = nodes[j];
+        const am = !movable || movable.has(a.id()),
+          bm = !movable || movable.has(b.id());
+        if (!am && !bm) continue;
+        const ab = paddedNodeBounds(a, 6),
+          bb = paddedNodeBounds(b, 6);
+        if (!boundsOverlap(ab, bb)) continue;
+        const dx = Math.min(ab.x2 - bb.x1, bb.x2 - ab.x1) + 1;
+        const dy = Math.min(ab.y2 - bb.y1, bb.y2 - ab.y1) + 1;
+        const axis = dx <= dy ? "x" : "y";
+        const sign = a.position(axis) <= b.position(axis) ? -1 : 1;
+        const shift = (axis === "x" ? dx : dy) / (am && bm ? 2 : 1);
+        if (am) a.position(axis, a.position(axis) + sign * shift);
+        if (bm) b.position(axis, b.position(axis) - sign * shift);
+        changed = true;
+      }
+    if (!changed) break;
   }
-  const bounds = cy.elements().boundingBox({
-    includeLabels: true,
-    includeOverlays: false,
-  });
+}
+
+function focusGraph(cy: Core, padding: number) {
+  const bounds = cy
+    .elements()
+    .boundingBox({ includeLabels: true, includeOverlays: false });
   if (bounds.w <= 0 || bounds.h <= 0) return;
-  const availableWidth = Math.max(1, cy.width() - padding * 2);
-  const availableHeight = Math.max(1, cy.height() - padding * 2);
+  // Reserve controls above and the readable detail status below the topology.
+  const top = 72,
+    bottom = 40;
+  let right = padding;
+  const containerBounds = cy.container()?.getBoundingClientRect();
+  const inspector = document
+    .querySelector(".inspector")
+    ?.getBoundingClientRect();
+  let availableBottom = cy.height() - bottom;
+  if (
+    containerBounds &&
+    inspector &&
+    inspector.left < containerBounds.right &&
+    inspector.bottom > containerBounds.top
+  ) {
+    if (window.innerWidth <= 620)
+      availableBottom = Math.min(
+        availableBottom,
+        inspector.top - containerBounds.top - padding,
+      );
+    else
+      right = Math.max(right, containerBounds.right - inspector.left + padding);
+  }
+  const width = Math.max(1, cy.width() - padding - right);
+  const height = Math.max(1, availableBottom - top);
   const zoom = Math.max(
     cy.minZoom(),
     Math.min(
       cy.maxZoom(),
       maximumSparseZoom,
-      availableWidth / bounds.w,
-      availableHeight / bounds.h,
+      width / bounds.w,
+      height / bounds.h,
     ),
   );
   cy.zoom(zoom);
   cy.pan({
-    x: cy.width() / 2 - ((bounds.x1 + bounds.x2) / 2) * zoom,
-    y: cy.height() / 2 - ((bounds.y1 + bounds.y2) / 2) * zoom,
+    x: padding + width / 2 - ((bounds.x1 + bounds.x2) / 2) * zoom,
+    y: top + height / 2 - ((bounds.y1 + bounds.y2) / 2) * zoom,
   });
 }
 
 function graphPadding() {
-  return window.innerWidth <= 620 ? 28 : 72;
+  return 16;
 }
 
 function knownNeighborPositions(
@@ -870,7 +1049,7 @@ function deriveVirtualPositions(cy: Core) {
     const axis = virtualOffsetAxis(neighbors, node.id());
     const tangent = { x: axis.y, y: -axis.x };
     const preferredSide = stableHash(node.id()) % 2 === 0 ? 1 : -1;
-    const candidates = [origin];
+    const candidates = [node.position(), origin];
     for (let step = 1; step <= maximumVirtualCandidateSteps; step += 1) {
       for (const side of [preferredSide, -preferredSide]) {
         for (const lean of [0, 0.65, -0.65]) {
@@ -950,6 +1129,7 @@ function virtualOffsetAxis(
 }
 
 function paddedNodeBounds(node: NodeSingular, padding: number): Bounds {
+  padding /= node.cy().zoom();
   const bounds = node.boundingBox({
     includeLabels: true,
     includeOverlays: false,
@@ -1117,23 +1297,7 @@ function curvePoints(
     x: source.x + dx * weight - (dy / length) * distance,
     y: source.y + dy * weight + (dx / length) * distance,
   };
-  const points = [source];
-  for (let index = 1; index <= routeSampleCount; index += 1) {
-    const progress = index / routeSampleCount;
-    const inverse = 1 - progress;
-    const current = {
-      x:
-        inverse * inverse * source.x +
-        2 * inverse * progress * control.x +
-        progress * progress * target.x,
-      y:
-        inverse * inverse * source.y +
-        2 * inverse * progress * control.y +
-        progress * progress * target.y,
-    };
-    points.push(current);
-  }
-  return points;
+  return quadratic(source, control, target, 0.25);
 }
 
 function pointsIntersectBounds(points: Point[], obstacles: Bounds[]) {

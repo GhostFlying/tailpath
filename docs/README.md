@@ -19,6 +19,7 @@
 - [v0.5 Devices API dogfood](runbooks/v0.5-devices-dogfood.md)
 - [v0.5 Devices API dogfood ledger](evidence/v0.5-devices-dogfood.md)
 - [UI style guide](styleguide.md)
+- [Systematic layout rules](layout-rules.md)
 - [Roadmap](roadmap.md)
 - [Architecture decisions](adr/README.md)
 - [Implementation plans](plans/README.md)
