@@ -59,7 +59,7 @@ graph minimum avoids shrinking names into unreadable or clipped content.
 
 ## Next step
 
-Commit stage one and open draft PR; implement responsive shared workspace rules.
+Stage two focused checks complete; commit responsive work and begin full gates.
 
 ## Verification
 
@@ -72,3 +72,12 @@ checkout edits are preserved.
 ## Completion summary
 
 Pending all three stages and required validation.
+
+
+### Stage two verification
+
+Navigation, History and Devices browser tests: 26 passed, 10 inapplicable
+project cases skipped. Four independent 320/390px cross-workspace geometry
+checks passed after correcting select inner hit height to 44px. Two object-list
+selection regressions passed after deferring its hidden DOM. Type/build passed.
+Synthetic History and Devices narrow screenshots visually inspected.

@@ -1180,3 +1180,157 @@ button {
     min-height: 420px;
   }
 }
+
+/* Shared readable chrome and independent touch hit regions. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --touch-size: 44px;
+}
+.app-shell,
+.history-shell,
+.devices-shell {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.workspace-tabs a {
+  min-width: var(--touch-size);
+  justify-content: center;
+}
+.icon-button {
+  width: var(--touch-size);
+  height: var(--touch-size);
+  flex: none;
+}
+.inspector {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  overflow-wrap: anywhere;
+}
+.inspector h2 {
+  padding-right: 36px;
+}
+.recent-option button[role="switch"],
+.recent-option button[role="switch"][aria-checked="true"] {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border-radius: 0;
+}
+.recent-option button[role="switch"]::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  width: 40px;
+  height: 20px;
+  border-radius: 12px;
+  background: #8b969d;
+}
+.recent-option button[role="switch"][aria-checked="true"]::before {
+  background: #16877a;
+}
+.recent-option button[role="switch"] > span {
+  top: 14px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+}
+.recent-option button[role="switch"][aria-checked="true"] > span {
+  transform: translateX(20px);
+}
+.live-state > span {
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+.live-state > span::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 14px;
+  color: #fff;
+}
+.live-state.live > span::after,
+.live-state.reachable > span::after {
+  content: "✓";
+}
+.live-state.connecting > span::after,
+.live-state.reconnecting > span::after {
+  content: "…";
+  color: #1c252b;
+}
+.live-state.error > span::after {
+  content: "!";
+}
+@media (max-width: 620px) {
+  .topbar {
+    flex: none;
+    padding-inline: max(10px, env(safe-area-inset-left));
+  }
+  .workspace-tabs,
+  .topbar.has-devices .workspace-tabs {
+    grid-template-columns: repeat(2, max-content);
+    gap: 4px;
+    margin-right: 8px;
+  }
+  .topbar.has-devices .workspace-tabs {
+    grid-template-columns: repeat(3, max-content);
+  }
+  .workspace-tabs a {
+    min-height: 44px;
+    padding-inline: 6px;
+  }
+  .search-box {
+    width: 44px;
+    height: 44px;
+  }
+  .mobile-search-button {
+    width: 44px;
+    height: 44px;
+  }
+  .search-box.mobile-open {
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .search-box.mobile-open input {
+    min-width: 0;
+    width: 100%;
+    height: 44px;
+    font-size: 16px;
+  }
+  .mobile-path-select {
+    min-width: 120px;
+  }
+  .mobile-path-select select {
+    height: 44px;
+    font-size: 14px;
+  }
+  .recent-option {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .live-state > span {
+    width: 14px;
+    height: 14px;
+  }
+  .inspector {
+    position: fixed;
+    max-height: min(64dvh, calc(var(--visual-viewport-height, 100dvh) - 44px));
+    bottom: var(--keyboard-inset, 0px);
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 359px) {
+  .topbar.has-devices .brand strong {
+    display: none;
+  }
+}
+
+.brand {
+  min-width: 44px;
+  min-height: 44px;
+}

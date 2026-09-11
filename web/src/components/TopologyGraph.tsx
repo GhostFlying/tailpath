@@ -240,6 +240,7 @@ export function TopologyGraph(props: Props) {
   const presentation = useRef<ReturnType<
     typeof createLayoutPresentation
   > | null>(null);
+  const [objectsOpen, setObjectsOpen] = useState(false);
   const [summary, setSummary] = useState<PresentationSummary>({
     mode: "detail",
     hidden: 0,
@@ -322,8 +323,33 @@ export function TopologyGraph(props: Props) {
       refreshPresentation();
     });
     resize.observe(container.current);
-    const inspector = document.querySelector(".inspector");
-    if (inspector) resize.observe(inspector);
+    const observeInspector = () => {
+      const inspector = document.querySelector(".inspector");
+      if (inspector) resize.observe(inspector);
+      refreshPresentation();
+    };
+    const panels = new MutationObserver(observeInspector);
+    if (container.current.closest(".workspace"))
+      panels.observe(container.current.closest(".workspace")!, {
+        childList: true,
+      });
+    const visualViewportChanged = () => {
+      const viewport = window.visualViewport;
+      if (viewport) {
+        document.documentElement.style.setProperty(
+          "--visual-viewport-height",
+          `${viewport.height}px`,
+        );
+        document.documentElement.style.setProperty(
+          "--keyboard-inset",
+          `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`,
+        );
+      }
+      refreshPresentation();
+    };
+    window.visualViewport?.addEventListener("resize", visualViewportChanged);
+    window.visualViewport?.addEventListener("scroll", visualViewportChanged);
+    visualViewportChanged();
     const fontsChanged = () => {
       clearFontMeasurements();
       refreshPresentation();
@@ -365,7 +391,18 @@ export function TopologyGraph(props: Props) {
       updateGraphDiagnostics(cy, container.current, layoutRuns.current),
     );
     return () => {
+      panels.disconnect();
       resize.disconnect();
+      window.visualViewport?.removeEventListener(
+        "resize",
+        visualViewportChanged,
+      );
+      window.visualViewport?.removeEventListener(
+        "scroll",
+        visualViewportChanged,
+      );
+      document.documentElement.style.removeProperty("--visual-viewport-height");
+      document.documentElement.style.removeProperty("--keyboard-inset");
       document.fonts.removeEventListener("loadingdone", fontsChanged);
       presentation.current?.dispose();
       presentation.current = null;
@@ -636,52 +673,57 @@ export function TopologyGraph(props: Props) {
       </div>
       <details
         className="graph-objects"
-        onToggle={() => presentation.current?.request()}
+        onToggle={(event) => {
+          setObjectsOpen(event.currentTarget.open);
+          presentation.current?.request();
+        }}
       >
         <summary>Graph objects</summary>
-        <div className="graph-object-list" aria-label="Visible graph objects">
-          {elements
-            .filter((e) => e.group === "nodes")
-            .map((e) => (
+        {objectsOpen ? (
+          <div className="graph-object-list" aria-label="Visible graph objects">
+            {elements
+              .filter((e) => e.group === "nodes")
+              .map((e) => (
+                <button
+                  key={String(e.data?.id)}
+                  type="button"
+                  onClick={() => {
+                    if (e.data?.logicalEdgeId) {
+                      callbacks.current.onSelectEdge(
+                        String(e.data.logicalEdgeId),
+                      );
+                      callbacks.current.onSelectNode(null);
+                    } else {
+                      callbacks.current.onSelectNode(String(e.data?.id));
+                      callbacks.current.onSelectEdge(null);
+                    }
+                  }}
+                >
+                  {String(e.data?.label)}
+                </button>
+              ))}
+            {[
+              ...new Map(
+                elements
+                  .filter((e) => e.group === "edges")
+                  .map((e) => [String(e.data?.logicalEdgeId), e]),
+              ).entries(),
+            ].map(([id, e]) => (
               <button
-                key={String(e.data?.id)}
+                key={id}
                 type="button"
                 onClick={() => {
-                  if (e.data?.logicalEdgeId) {
-                    callbacks.current.onSelectEdge(
-                      String(e.data.logicalEdgeId),
-                    );
-                    callbacks.current.onSelectNode(null);
-                  } else {
-                    callbacks.current.onSelectNode(String(e.data?.id));
-                    callbacks.current.onSelectEdge(null);
-                  }
+                  callbacks.current.onSelectEdge(id);
+                  callbacks.current.onSelectNode(null);
                 }}
               >
-                {String(e.data?.label)}
+                {props.topology.edges.find((edge) => edge.id === id)?.source} →{" "}
+                {props.topology.edges.find((edge) => edge.id === id)?.target} ·{" "}
+                {String(e.data?.label || "Recent")}
               </button>
             ))}
-          {[
-            ...new Map(
-              elements
-                .filter((e) => e.group === "edges")
-                .map((e) => [String(e.data?.logicalEdgeId), e]),
-            ).entries(),
-          ].map(([id, e]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => {
-                callbacks.current.onSelectEdge(id);
-                callbacks.current.onSelectNode(null);
-              }}
-            >
-              {props.topology.edges.find((edge) => edge.id === id)?.source} →{" "}
-              {props.topology.edges.find((edge) => edge.id === id)?.target} ·{" "}
-              {String(e.data?.label || "Recent")}
-            </button>
-          ))}
-        </div>
+          </div>
+        ) : null}
       </details>
       <div className="graph-controls" aria-label="Graph layout controls">
         <button
