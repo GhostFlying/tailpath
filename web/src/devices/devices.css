@@ -133,7 +133,7 @@
 }
 
 .devices-stale-banner {
-  min-height: 38px;
+  min-height: var(--touch-size);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -374,7 +374,7 @@
 }
 
 .device-conflict-summary {
-  min-height: 38px;
+  min-height: var(--touch-size);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -518,7 +518,7 @@
 
 .view-live-button {
   width: 100%;
-  min-height: 38px;
+  min-height: var(--touch-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -567,7 +567,8 @@
 }
 
 .devices-workspace-state button {
-  min-height: 32px;
+  min-width: var(--touch-size);
+  min-height: var(--touch-size);
   border: 1px solid #aeb7bc;
   background: #ffffff;
   padding: 0 14px;

@@ -377,6 +377,11 @@ test("shows bounded empty and error states", async ({ page }, testInfo) => {
 test("keeps pagination in the URL", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("desktop"));
   await page.goto("/history");
+  const actionBounds = await page
+    .getByRole("button", { name: /Next page/ })
+    .boundingBox();
+  expect(actionBounds!.width).toBeGreaterThanOrEqual(44);
+  expect(actionBounds!.height).toBeGreaterThanOrEqual(44);
   await page.getByRole("button", { name: /Next page/ }).click();
   await expect(page).toHaveURL(/cursor=page-2/);
 });

@@ -53,7 +53,7 @@ must not regress. Browser timings and late fonts require settled diagnostics.
 
 ## Current state
 
-All three implementation stages are complete in a dependent draft PR stack.
+All three implementation stages are complete in a dependent PR stack.
 Canonical positions, cache format, API and passive observation remain unchanged.
 The final browser gate exposed and fixed a Cytoscape attribute/resize feedback
 loop in WebKit, initial Fit scheduling, hidden-label Fit bounds and dense graph
@@ -96,3 +96,12 @@ release. Primary checkout edits from the planning session remain preserved.
 Implemented geometry/presentation, responsive workspace rules, bilingual docs,
 independent browser gates and CI artifact upload. The plan stays active until
 review and merge; implementation does not depend on changing runtime APIs.
+
+## Authorized merge and deployment
+
+The user authorized sequential merges and local deployment on 2026-09-12.
+The automated review finding for 44px Retry, Next page and View in Live actions
+is fixed. Production build/type/format checks passed; focused Chromium browser
+checks passed 31 cases (9 inapplicable skips), including error recovery and
+rendered action bounds. PRs 180 and 181 are merged; finish PR 182 and deploy.
+Retain the existing deployment volume/identity and previous image/config.
