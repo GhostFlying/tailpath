@@ -600,7 +600,8 @@ button {
 .center-state button {
   border: 1px solid #aeb7bc;
   background: #ffffff;
-  height: 32px;
+  min-width: var(--touch-size);
+  height: var(--touch-size);
   padding: 0 16px;
   cursor: pointer;
 }

@@ -82,3 +82,29 @@ for (const width of [320, 390]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("mobile retry actions meet the touch target and recover", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  for (const [path, api] of [
+    ["/", "**/api/v1/topology"],
+    ["/history", "**/api/v1/history/edges?**"],
+    ["/devices", "**/api/v1/devices"],
+  ]) {
+    await page.route(api, (route) =>
+      route.fulfill({ status: 503, body: "unavailable" }),
+    );
+    await page.goto(path);
+    const retry = page
+      .getByRole("button", { name: "Retry", exact: true })
+      .first();
+    await expect(retry).toBeVisible();
+    const bounds = await retry.boundingBox();
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    await page.unroute(api);
+    await retry.click();
+    await expect(retry).toBeHidden();
+  }
+});

@@ -264,6 +264,11 @@ test("shows conflict provenance and focuses a currently visible node in Live", a
     page.getByRole("button", { name: "View in Live" }),
   ).toBeVisible();
 
+  const actionBounds = await page
+    .getByRole("button", { name: "View in Live" })
+    .boundingBox();
+  expect(actionBounds!.width).toBeGreaterThanOrEqual(44);
+  expect(actionBounds!.height).toBeGreaterThanOrEqual(44);
   await page.getByRole("button", { name: "View in Live" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByLabel("Topology details")).toContainText(

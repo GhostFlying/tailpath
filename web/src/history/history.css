@@ -382,7 +382,8 @@
 .history-list-state button,
 .history-detail-state button,
 .history-next-page {
-  min-height: 32px;
+  min-width: var(--touch-size);
+  min-height: var(--touch-size);
   border: 1px solid #aeb7bc;
   background: #ffffff;
   padding: 0 14px;
@@ -392,7 +393,7 @@
 
 .history-next-page {
   flex: none;
-  height: 42px;
+  height: var(--touch-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -882,7 +883,8 @@
 }
 
 .provenance-head {
-  min-height: 32px;
+  min-width: var(--touch-size);
+  min-height: var(--touch-size);
   color: #77838a;
   font-size: 12px;
   font-weight: 700;
