@@ -1325,10 +1325,14 @@ function virtualOffsetAxis(
   return { x: Math.cos(angle), y: Math.sin(angle) };
 }
 
-function paddedNodeBounds(node: NodeSingular, padding: number): Bounds {
+function paddedNodeBounds(
+  node: NodeSingular,
+  padding: number,
+  includeLabels = Number(node.style("text-opacity")) > 0,
+): Bounds {
   padding /= node.cy().zoom();
   const bounds = node.boundingBox({
-    includeLabels: Number(node.style("text-opacity")) > 0,
+    includeLabels,
     includeOverlays: false,
   });
   return {
@@ -1367,6 +1371,7 @@ function routeEdgesAroundObstacles(cy: Core) {
   const nodes = cy.nodes().map((node) => ({
     id: node.id(),
     bounds: paddedNodeBounds(node, obstaclePadding),
+    bodyBounds: paddedNodeBounds(node, obstaclePadding, false),
   }));
   const routedPaths: RoutedPath[] = [];
   const edges = cy.edges().sort((left, right) => {
@@ -1406,6 +1411,12 @@ function routeEdgesAroundObstacles(cy: Core) {
           node.id !== edge.source().id() && node.id !== edge.target().id(),
       )
       .map((node) => node.bounds);
+    const bodyObstacles = nodes
+      .filter(
+        (node) =>
+          node.id !== edge.source().id() && node.id !== edge.target().id(),
+      )
+      .map((node) => node.bodyBounds);
     const straightPoints = [source, target];
     const intersectsObstacle = obstacles.some((bounds) =>
       segmentIntersectsBounds(source, target, bounds),
@@ -1419,13 +1430,16 @@ function routeEdgesAroundObstacles(cy: Core) {
       edge.scratch("tailpathRoute", path);
       return;
     }
-    const route = findClearCurve(
-      source,
-      target,
-      obstacles,
-      unrelatedPaths,
-      edge.id(),
-    );
+    const route =
+      findClearCurve(source, target, obstacles, unrelatedPaths, edge.id()) ??
+      findClearCurve(
+        source,
+        target,
+        bodyObstacles,
+        unrelatedPaths,
+        edge.id(),
+      ) ??
+      findClearCurve(source, target, bodyObstacles, [], edge.id());
     if (!route) {
       const path = { logicalEdgeID, nodeIDs, points: straightPoints };
       routedPaths.push(path);
