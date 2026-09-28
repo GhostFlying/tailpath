@@ -1,4 +1,5 @@
 import type {
+  DirectionalPathState,
   EdgeHistory,
   PathEvent,
   PathKind,
@@ -37,6 +38,19 @@ export interface PathTimelineItem {
   conflicts: PathEvent["conflicts"];
   observations: PathEvent["observations"];
   anchored: boolean;
+}
+
+export interface DirectionalTimelineSegment {
+  id: string;
+  observedAt: string;
+  from: string;
+  to: string;
+  durationMs: number;
+  event: PathEvent;
+  aToB?: DirectionalPathState;
+  bToA?: DirectionalPathState;
+  anchored: boolean;
+  noEvidence: boolean;
 }
 
 export function trafficGeometry(
@@ -149,6 +163,86 @@ export function buildPathTimeline(history: EdgeHistory): PathTimelineItem[] {
   return chronological.reverse();
 }
 
+export function buildDirectionalTimeline(
+  history: EdgeHistory,
+): DirectionalTimelineSegment[] {
+  const events: Array<{
+    event: PathEvent;
+    anchored: boolean;
+    noEvidence: boolean;
+  }> = [];
+  if (history.pathAnchor) {
+    events.push({
+      event: history.pathAnchor,
+      anchored: true,
+      noEvidence: false,
+    });
+  } else if (history.pathEvents.length) {
+    events.push({
+      event: {
+        observedAt: history.from,
+        path: { kind: "unknown" },
+        conflicts: [],
+        observations: [],
+        directions: [],
+      },
+      anchored: true,
+      noEvidence: true,
+    });
+  }
+  events.push(
+    ...history.pathEvents.map((event) => ({
+      event,
+      anchored: false,
+      noEvidence: false,
+    })),
+  );
+  if (!events.length) return [];
+  const ordered = events.sort(
+    (left, right) =>
+      new Date(left.event.observedAt).getTime() -
+      new Date(right.event.observedAt).getTime(),
+  );
+  return ordered.map(({ event, anchored, noEvidence }, index) => {
+    const from = anchored
+      ? history.from
+      : clampTime(event.observedAt, history.from, history.to);
+    const to = ordered[index + 1]
+      ? clampTime(ordered[index + 1].event.observedAt, history.from, history.to)
+      : history.to;
+    const directions = event.directions ?? [];
+    return {
+      id: `${event.observedAt}:${index}`,
+      observedAt: event.observedAt,
+      from,
+      to,
+      durationMs: Math.max(
+        0,
+        new Date(to).getTime() - new Date(from).getTime(),
+      ),
+      event,
+      aToB: directions.find(
+        (direction) =>
+          direction.fromNodeId === history.source.id &&
+          direction.toNodeId === history.target.id,
+      ),
+      bToA: directions.find(
+        (direction) =>
+          direction.fromNodeId === history.target.id &&
+          direction.toNodeId === history.source.id,
+      ),
+      anchored,
+      noEvidence,
+    };
+  });
+}
+
+export function hasDirectionalHistory(history: EdgeHistory): boolean {
+  return [history.pathAnchor, ...history.pathEvents].some(
+    (event) => (event?.directions?.length ?? 0) > 0,
+  );
+}
+
 export function pathEvidenceKey(path: PathEvent["path"]): string {
   switch (path.kind) {
     case "direct":
@@ -156,7 +250,13 @@ export function pathEvidenceKey(path: PathEvent["path"]): string {
     case "derp":
       return `derp:${path.derpRegion?.trim().toLowerCase() || "unknown"}`;
     case "peer_relay":
-      return `peer_relay:${path.peerRelayStableNodeId?.trim() || "unknown"}`;
+      return `peer_relay:${
+        path.peerRelayStableNodeId?.trim() ||
+        path.peerRelayEndpoint?.trim() ||
+        (path.peerRelayVni !== undefined
+          ? `vni:${path.peerRelayVni}`
+          : "unknown")
+      }`;
     default:
       return "unknown";
   }
@@ -173,6 +273,15 @@ export function pathColor(kind: PathKind): string {
     default:
       return "#7f8a91";
   }
+}
+
+function clampTime(value: string, from: string, to: string) {
+  const timestamp = new Date(value).getTime();
+  const start = new Date(from).getTime();
+  const end = new Date(to).getTime();
+  if (timestamp <= start) return from;
+  if (timestamp >= end) return to;
+  return value;
 }
 
 function emptyTrafficGeometry(): TrafficGeometry {

@@ -5,8 +5,8 @@ import {
   CircleAlert,
   Waypoints,
 } from "lucide-react";
-import { memo, useMemo } from "react";
-import type { EdgeHistory, HistoryWindow } from "../api/types";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { EdgeHistory, HistoryWindow, PathObservation } from "../api/types";
 import { formatAgo, formatBytes, pathLabel } from "../lib/format";
 import { IdentityBadge } from "../lib/identity";
 import { DirectionalTrafficChart } from "./DirectionalTrafficChart";
@@ -17,6 +17,9 @@ const windows: HistoryWindow[] = ["15m", "1h", "6h", "24h", "7d"];
 interface Props {
   history: EdgeHistory | null;
   loading: boolean;
+  pathsLoading: boolean;
+  pathEventsLoaded: number;
+  pathEventsComplete: boolean;
   error: string | null;
   window: HistoryWindow;
   onBack: () => void;
@@ -28,6 +31,9 @@ interface Props {
 export const HistoryDetail = memo(function HistoryDetail({
   history,
   loading,
+  pathsLoading,
+  pathEventsLoaded,
+  pathEventsComplete,
   error,
   window,
   onBack,
@@ -35,6 +41,8 @@ export const HistoryDetail = memo(function HistoryDetail({
   onWindowChange,
   mobile,
 }: Props) {
+  const [selectedPathAt, setSelectedPathAt] = useState<string>();
+  useEffect(() => setSelectedPathAt(undefined), [history?.edgeId, window]);
   const totals = useMemo(() => {
     let aToB = 0;
     let bToA = 0;
@@ -44,9 +52,11 @@ export const HistoryDetail = memo(function HistoryDetail({
     }
     return { aToB, bToA };
   }, [history?.traffic]);
-  const lastPath = history
-    ? (history.pathEvents.at(-1)?.path ?? history.pathAnchor?.path)
+  const lastEvent = history
+    ? (history.pathEvents.at(-1) ?? history.pathAnchor)
     : undefined;
+  const lastPath = lastEvent?.path;
+  const lastPathSummary = summarizeLastPath(lastEvent);
   const lastTraffic = history?.lastTrafficAt;
 
   return (
@@ -126,8 +136,10 @@ export const HistoryDetail = memo(function HistoryDetail({
             <>
               <div className="history-detail-summary">
                 <span>Last path</span>
-                <strong className={`path-text ${lastPath?.kind ?? "unknown"}`}>
-                  {lastPath ? pathLabel(lastPath) : "Unknown"}
+                <strong
+                  className={`path-text ${lastPathSummary.asymmetric ? "asymmetric" : (lastPath?.kind ?? "unknown")}`}
+                >
+                  {lastPathSummary.label}
                 </strong>
                 <i />
                 <span>Last traffic</span>
@@ -147,8 +159,18 @@ export const HistoryDetail = memo(function HistoryDetail({
                   <ArrowDown size={14} /> {formatBytes(totals.bToA)}
                 </span>
               </div>
-              <DirectionalTrafficChart history={history} />
-              <PathTimeline history={history} mobile={mobile} />
+              <DirectionalTrafficChart
+                history={history}
+                selectedAt={selectedPathAt}
+              />
+              <PathTimeline
+                history={history}
+                mobile={mobile}
+                loading={pathsLoading}
+                loaded={pathEventsLoaded}
+                complete={pathEventsComplete}
+                onSelectTime={setSelectedPathAt}
+              />
               {history.trafficTruncated || history.pathEventsTruncated ? (
                 <p className="history-truncation-note">
                   Latest retained points shown
@@ -161,3 +183,33 @@ export const HistoryDetail = memo(function HistoryDetail({
     </article>
   );
 });
+
+function summarizeLastPath(event: EdgeHistory["pathAnchor"] | undefined) {
+  const directions = event?.directions ?? [];
+  if (directions.length === 2) {
+    const keys = directions.map(
+      (direction) =>
+        `${historyPathKey(direction.primaryPath)}|${direction.fallbackPath ? historyPathKey(direction.fallbackPath) : "none"}`,
+    );
+    if (keys[0] !== keys[1]) {
+      return { label: "Asymmetric paths", asymmetric: true };
+    }
+    return {
+      label: pathLabel(directions[0].primaryPath),
+      asymmetric: false,
+    };
+  }
+  return {
+    label: event ? pathLabel(event.path) : "Unknown",
+    asymmetric: false,
+  };
+}
+
+function historyPathKey(path: PathObservation) {
+  if (path.kind === "direct") return "direct";
+  if (path.kind === "derp") return `derp:${path.derpRegion ?? "unknown"}`;
+  if (path.kind === "peer_relay") {
+    return `peer-relay:${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? path.peerRelayVni ?? "unknown"}`;
+  }
+  return "unknown";
+}
