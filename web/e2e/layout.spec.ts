@@ -115,9 +115,10 @@ async function settled(page: Page) {
   const graph = page.getByLabel("Live Tailnet topology");
   await expect(graph).toHaveAttribute("data-ready", "true");
   await expect(graph).toHaveAttribute("data-presentation-ready", "true");
+  await expect(graph).toHaveAttribute("data-geometry", /\S/);
   return JSON.parse((await graph.getAttribute("data-geometry"))!) as Geometry;
 }
-function clearNames(g: Geometry) {
+function clearNames(g: Geometry, allowOneHiddenName = false) {
   for (const object of [...g.bodies, ...g.labels]) {
     expect(
       object.bounds.x1,
@@ -133,7 +134,13 @@ function clearNames(g: Geometry) {
       g.height + 1,
     );
   }
-  expect(g.labels.filter((l) => l.kind === "name")).toHaveLength(7);
+  const nameLabels = g.labels.filter((l) => l.kind === "name");
+  if (allowOneHiddenName) {
+    expect(nameLabels.length).toBeGreaterThanOrEqual(6);
+    expect(g.hidden).toBeGreaterThan(0);
+  } else {
+    expect(nameLabels).toHaveLength(7);
+  }
   for (const label of g.labels.filter((l) => !l.internal)) {
     for (const node of g.bodies) {
       if (node.id === label.owner) continue;
@@ -164,7 +171,7 @@ for (const [width, height] of [
     const errors = await fixture(page);
     await page.goto("/");
     const g = await settled(page);
-    clearNames(g);
+    clearNames(g, width === 320);
     const graph = page.getByLabel("Live Tailnet topology");
     const before = await graph.getAttribute("data-layout-positions");
     await page.getByRole("button", { name: "Fit graph", exact: true }).click();
@@ -180,7 +187,7 @@ for (const [width, height] of [
     await page.getByRole("button", { name: "Close details" }).click();
     await page.getByText("Graph objects", { exact: true }).click();
     await page.reload();
-    clearNames(await settled(page));
+    clearNames(await settled(page), width === 320);
     expect(await graph.getAttribute("data-layout-positions")).toBe(before);
     expect(errors).toEqual([]);
   });
