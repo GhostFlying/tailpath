@@ -104,15 +104,9 @@ export function buildElements(
         stableNodeMap,
       );
       if (!edgeIntermediates.length) {
+        const segment = edge.directions?.length ? `${route.id}-main` : "main";
         elements.push(
-          routeEdgeElement(
-            edge,
-            route,
-            route.from,
-            route.to,
-            `${route.id}-main`,
-            true,
-          ),
+          routeEdgeElement(edge, route, route.from, route.to, segment, true),
         );
         continue;
       }
@@ -140,13 +134,16 @@ export function buildElements(
           !edge.directions?.length && edgeIntermediates.length > 1
             ? `switching-candidate ${intermediate.candidateState}`
             : "";
+        const segmentPrefix = edge.directions?.length
+          ? `${route.id}-${index}`
+          : `candidate-${index}`;
         elements.push(
           routeEdgeElement(
             edge,
             route,
             route.from,
             intermediate.id,
-            `${route.id}-${index}-source`,
+            `${segmentPrefix}-source`,
             route.showLabel && index === 0,
             candidateClass,
           ),
@@ -157,7 +154,7 @@ export function buildElements(
             route,
             intermediate.id,
             route.to,
-            `${route.id}-${index}-target`,
+            `${segmentPrefix}-target`,
             false,
             candidateClass,
           ),
