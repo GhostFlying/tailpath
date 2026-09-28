@@ -504,6 +504,19 @@ button {
   border-top-style: dashed;
   opacity: 0.5;
 }
+.legend-activity.fallback {
+  border-top-color: #bd7b00;
+  border-top-style: dashed;
+}
+.legend-activity.fallback::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 5px solid #bd7b00;
+}
 .legend-runtime-badge,
 .legend-clock,
 .legend-device {
@@ -685,6 +698,192 @@ button {
 }
 .path-banner.peer_relay svg {
   color: #a4488e;
+}
+.directional-status {
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #dce1e3;
+  border-bottom: 1px solid #dce1e3;
+  margin: 0 -22px;
+  padding: 9px 22px;
+  background: #f8faf9;
+}
+.directional-status-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c8d7d4;
+  color: #167d72;
+  background: #edf7f5;
+  font-size: 17px;
+  font-weight: 800;
+}
+.directional-status > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.directional-status strong {
+  color: #243137;
+  font-size: 12px;
+}
+.directional-status small {
+  color: #68757b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.direction-path-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.direction-path-card {
+  border: 1px solid #d8dee1;
+  border-left: 3px solid #7f8a91;
+  background: #ffffff;
+}
+.direction-path-card.direct {
+  border-left-color: #16877a;
+}
+.direction-path-card.derp {
+  border-left-color: #bd7b00;
+}
+.direction-path-card.peer_relay {
+  border-left-color: #a4488e;
+}
+.direction-path-card > header {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #e5e9eb;
+  padding: 8px 10px;
+  background: #fafbfb;
+}
+.direction-endpoints {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #4f5c63;
+  font-size: 11px;
+}
+.direction-endpoints strong {
+  min-width: 0;
+  color: #253138;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.direction-endpoints svg {
+  flex: none;
+  color: #6e7a80;
+}
+.direction-path-card > header > b {
+  flex: none;
+  color: #263239;
+  font-size: 11px;
+}
+.direction-primary,
+.direction-fallback {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px;
+}
+.direction-primary > span:first-child,
+.direction-fallback > span:first-child {
+  grid-column: 1 / -1;
+  color: #758188;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.direction-primary > strong,
+.direction-fallback > strong {
+  color: #27343a;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.direction-primary > small,
+.direction-fallback > code {
+  grid-column: 1 / -1;
+  color: #68747b;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.direction-fallback {
+  border-top: 1px dashed #d8bf83;
+  background: #fffaf0;
+}
+.direction-fallback > strong {
+  color: #805600;
+}
+.evidence-badge {
+  justify-self: end;
+  border: 1px solid #b8c8c5;
+  padding: 2px 5px;
+  color: #29675f;
+  background: #f0f8f6;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.evidence-badge.inferred {
+  border-color: #d8bf83;
+  color: #805600;
+  background: #fff8e7;
+}
+.evidence-badge.legacy {
+  border-color: #c9ced1;
+  color: #69757b;
+  background: #f4f6f7;
+}
+.direction-observer {
+  display: block;
+  border-top: 1px solid #edf0f1;
+  padding: 7px 10px;
+  color: #77838a;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.direction-unknown {
+  display: grid;
+  gap: 3px;
+  padding: 13px 10px;
+  color: #707c82;
+  font-size: 11px;
+}
+.direction-unknown strong {
+  color: #46535a;
+}
+.fallback-explanation {
+  border-left: 3px solid #bd7b00;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  color: #695a34;
+  background: #fffaf0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.directional-summary {
+  margin-top: 8px;
+}
+.evidence-empty {
+  margin: 0;
+  border-top: 1px solid #edf0f1;
+  padding: 9px 0;
+  color: #7a868c;
+  font-size: 11px;
 }
 .path-state {
   display: inline-flex;

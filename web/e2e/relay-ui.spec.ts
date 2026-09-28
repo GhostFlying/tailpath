@@ -217,6 +217,61 @@ test("renders all fresh relay candidates while switching", async ({
   });
 });
 
+test("expands asymmetric live paths and keeps fallback traffic single-counted", async ({
+  page,
+}, testInfo) => {
+  await page.unroute("**/api/v1/topology");
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: directionalTopology() }),
+  );
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await expect(graph).toHaveAttribute("data-edge-count", "1");
+  await expect(graph).toHaveAttribute("data-node-count", "4");
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+
+  const inspector = page.getByLabel("Topology details");
+  await expect(inspector).toContainText("Asymmetric paths");
+  await expect(inspector).toContainText("r4se-istoreos");
+  await expect(inspector).toContainText("smallbox");
+  await expect(inspector).toContainText("Peer Relay");
+  await expect(inspector).toContainText("DERP fallback");
+  await expect(inspector).toContainText("Inferred");
+  await expect(inspector).toContainText("Direct");
+  await expect(inspector).toContainText("Observed");
+  await expect(inspector).toContainText("VNI 4293");
+  await expect(inspector).toContainText("Endpoint path evidence");
+  await expect(inspector).toContainText("Relay identity evidence");
+  await expect(inspector).not.toContainText("Switching");
+  await expect(inspector.locator(".direction-path-card")).toHaveCount(2);
+  await expect(inspector.locator(".direction-fallback")).toHaveCount(1);
+  await expect(inspector.getByText("16.2 MB/s", { exact: true })).toHaveCount(
+    1,
+  );
+
+  const overflow = await page.evaluate(() => ({
+    page: document.documentElement.scrollWidth - window.innerWidth,
+    inspector: (() => {
+      const element = document.querySelector<HTMLElement>(".inspector");
+      return element ? element.scrollWidth - element.clientWidth : 0;
+    })(),
+  }));
+  expect(overflow.page).toBeLessThanOrEqual(1);
+  expect(overflow.inspector).toBeLessThanOrEqual(1);
+  expect(consoleErrors).toEqual([]);
+
+  await page.screenshot({
+    path: testInfo.outputPath(`directional-live-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+});
+
 test("keeps a dense switching timeline readable", async ({
   page,
 }, testInfo) => {
@@ -429,6 +484,93 @@ function switchingTopology() {
           },
         ],
         conflicts: [pendingRelayPath],
+      },
+    ],
+    observers: [],
+  };
+}
+
+function directionalTopology() {
+  const fallback = { kind: "derp", derpRegion: "hkg" } as const;
+  const direct = {
+    kind: "direct",
+    directEndpoint: "198.51.100.51:41641",
+  } as const;
+  return {
+    generatedAt: observedAt,
+    nodes: [
+      topologyNode("client-a", "client-a-stable", "r4se-istoreos", "resolved"),
+      topologyNode("client-b", "client-b-stable", "smallbox", "resolved"),
+      topologyNode(
+        "relay-node",
+        "relay-stable",
+        "aliyun-hangzhou-relay",
+        "resolved",
+      ),
+    ],
+    edges: [
+      {
+        id: "client-a--client-b",
+        source: "client-a",
+        target: "client-b",
+        path: relayPath,
+        pathState: "stable",
+        directions: [
+          {
+            fromNodeId: "client-a",
+            toNodeId: "client-b",
+            primaryPath: { ...relayPath, peerRelayVni: 4293 },
+            fallbackPath: fallback,
+            evidence: "inferred",
+            inferenceRule: "tailscale-status-fallback-v1",
+            observerId: "client-a",
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+          {
+            fromNodeId: "client-b",
+            toNodeId: "client-a",
+            primaryPath: direct,
+            evidence: "observed",
+            observerId: "client-b",
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+        ],
+        state: "active",
+        aToBBytesPerSecond: 16_200_000,
+        bToABytesPerSecond: 1_140_000,
+        lastActive: observedAt,
+        observations: [
+          {
+            observerId: "client-a",
+            path: { ...relayPath, peerRelayVni: 4293 },
+            fallbackPath: fallback,
+            pathEvidence: "inferred",
+            pathInferenceRule: "tailscale-status-fallback-v1",
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+          {
+            observerId: "client-b",
+            path: direct,
+            pathEvidence: "observed",
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+          {
+            observerId: "relay-node",
+            path: relayPath,
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+            relaySession,
+          },
+        ],
       },
     ],
     observers: [],

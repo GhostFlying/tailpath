@@ -187,6 +187,26 @@ const styles: StylesheetCSS[] = [
     css: { "source-arrow-shape": "triangle" },
   },
   {
+    selector: "edge.directional-route",
+    css: { "target-arrow-shape": "triangle" },
+  },
+  {
+    selector: "edge.directional-route.route-a",
+    css: {
+      "curve-style": "unbundled-bezier",
+      "control-point-distances": 28,
+      "control-point-weights": 0.5,
+    },
+  },
+  {
+    selector: "edge.directional-route.route-b",
+    css: {
+      "curve-style": "unbundled-bezier",
+      "control-point-distances": -28,
+      "control-point-weights": 0.5,
+    },
+  },
+  {
     selector: "edge.direct",
     css: {
       "line-color": "#16877a",
@@ -225,6 +245,23 @@ const styles: StylesheetCSS[] = [
       "source-arrow-color": "#7f8a91",
       "target-arrow-color": "#7f8a91",
     },
+  },
+  {
+    selector: "edge.fallback-route",
+    css: {
+      width: 1.5,
+      "line-style": "dashed",
+      "line-color": "#bd7b00",
+      "source-arrow-color": "#bd7b00",
+      "target-arrow-color": "#bd7b00",
+      "target-arrow-shape": "triangle",
+      "line-opacity": 0.78,
+      "arrow-scale": 0.62,
+    },
+  },
+  {
+    selector: "edge.fallback-route:not(.directional-route)",
+    css: { "source-arrow-shape": "triangle" },
   },
   {
     selector: "edge.recent",

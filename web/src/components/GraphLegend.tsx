@@ -40,6 +40,9 @@ export function GraphLegend() {
           <span>
             <i className="legend-activity recent" /> Recent
           </span>
+          <span>
+            <i className="legend-activity fallback" /> DERP fallback
+          </span>
         </div>
       </div>
       <div className="legend-section legend-secondary">

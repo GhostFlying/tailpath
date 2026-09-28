@@ -1,5 +1,6 @@
 import type { ElementDefinition } from "cytoscape";
 import type {
+  DirectionalPathState,
   PathCandidate,
   PathKind,
   PathObservation,
@@ -32,6 +33,18 @@ interface BuildOptions {
   query: string;
 }
 
+interface RenderedRoute {
+  id: string;
+  from: string;
+  to: string;
+  path: PathObservation;
+  rate: number;
+  showLabel: boolean;
+  directional: boolean;
+  fallback: boolean;
+  curveClass?: "route-a" | "route-b";
+}
+
 export function buildElements(
   topology: Topology,
   options: BuildOptions,
@@ -45,10 +58,15 @@ export function buildElements(
       node.stableNodeId ? [[node.stableNodeId, node] as const] : [],
     ),
   );
+  const routes = new Map(
+    visibleEdges.map((edge) => [edge.id, routesFor(edge)]),
+  );
   const intermediates = new Map(
     visibleEdges.map((edge) => [
       edge.id,
-      intermediatesFor(edge, stableNodeMap),
+      (routes.get(edge.id) ?? []).flatMap((route) =>
+        intermediatesForRoute(edge, route, stableNodeMap),
+      ),
     ]),
   );
   const relevantNodeIDs = visibleTopologyNodeIDs(
@@ -79,53 +97,73 @@ export function buildElements(
   );
 
   for (const edge of visibleEdges) {
-    const edgeIntermediates = intermediates.get(edge.id) ?? [];
-    if (!edgeIntermediates.length) {
-      elements.push(edgeElement(edge, edge.source, edge.target, "main", true));
-      continue;
-    }
-    edgeIntermediates.forEach((intermediate, index) => {
-      if (!nodeMap.has(intermediate.id) && !virtualNodes.has(intermediate.id)) {
-        elements.push({
-          group: "nodes",
-          data: {
-            id: intermediate.id,
-            label: intermediate.label,
-            kind: intermediate.kind,
-            logicalEdgeId: intermediate.logicalEdgeId,
-            candidateState: intermediate.candidateState,
-          },
-          classes: `${intermediate.classes} ${
-            activeIntermediateIDs.has(intermediate.id) ? "active" : "recent"
-          }`,
-        });
-        virtualNodes.add(intermediate.id);
+    for (const route of routes.get(edge.id) ?? []) {
+      const edgeIntermediates = intermediatesForRoute(
+        edge,
+        route,
+        stableNodeMap,
+      );
+      if (!edgeIntermediates.length) {
+        elements.push(
+          routeEdgeElement(
+            edge,
+            route,
+            route.from,
+            route.to,
+            `${route.id}-main`,
+            true,
+          ),
+        );
+        continue;
       }
-      const candidateClass =
-        edgeIntermediates.length > 1
-          ? `switching-candidate ${intermediate.candidateState}`
-          : "";
-      elements.push(
-        edgeElement(
-          edge,
-          edge.source,
-          intermediate.id,
-          `candidate-${index}-source`,
-          index === 0,
-          candidateClass,
-        ),
-      );
-      elements.push(
-        edgeElement(
-          edge,
-          intermediate.id,
-          edge.target,
-          `candidate-${index}-target`,
-          false,
-          candidateClass,
-        ),
-      );
-    });
+      edgeIntermediates.forEach((intermediate, index) => {
+        if (
+          !nodeMap.has(intermediate.id) &&
+          !virtualNodes.has(intermediate.id)
+        ) {
+          elements.push({
+            group: "nodes",
+            data: {
+              id: intermediate.id,
+              label: intermediate.label,
+              kind: intermediate.kind,
+              logicalEdgeId: intermediate.logicalEdgeId,
+              candidateState: intermediate.candidateState,
+            },
+            classes: `${intermediate.classes} ${
+              activeIntermediateIDs.has(intermediate.id) ? "active" : "recent"
+            }`,
+          });
+          virtualNodes.add(intermediate.id);
+        }
+        const candidateClass =
+          !edge.directions?.length && edgeIntermediates.length > 1
+            ? `switching-candidate ${intermediate.candidateState}`
+            : "";
+        elements.push(
+          routeEdgeElement(
+            edge,
+            route,
+            route.from,
+            intermediate.id,
+            `${route.id}-${index}-source`,
+            route.showLabel && index === 0,
+            candidateClass,
+          ),
+        );
+        elements.push(
+          routeEdgeElement(
+            edge,
+            route,
+            intermediate.id,
+            route.to,
+            `${route.id}-${index}-target`,
+            false,
+            candidateClass,
+          ),
+        );
+      });
+    }
   }
   return elements;
 }
@@ -147,8 +185,14 @@ export function visibleTopologyNodeIDs(
     ),
   );
   for (const edge of visibleEdges) {
-    for (const intermediate of intermediatesFor(edge, nodesByStableID)) {
-      if (intermediate.nodeID) result.add(intermediate.nodeID);
+    for (const route of routesFor(edge)) {
+      for (const intermediate of intermediatesForRoute(
+        edge,
+        route,
+        nodesByStableID,
+      )) {
+        if (intermediate.nodeID) result.add(intermediate.nodeID);
+      }
     }
   }
   return result;
@@ -255,23 +299,30 @@ interface PathIntermediate {
   candidateState?: "identified" | "pending";
 }
 
-function intermediatesFor(
+function intermediatesForRoute(
   edge: TopologyEdge,
+  route: RenderedRoute,
   nodesByStableID: Map<string, TopologyNode>,
 ): PathIntermediate[] {
-  if (edge.path.kind === "derp") {
-    const region = edge.path.derpRegion || "unknown";
+  const path = route.path;
+  const routeSuffix = route.directional || route.fallback ? `:${route.id}` : "";
+  if (path.kind === "derp") {
+    const region = path.derpRegion || "unknown";
     return [
       {
-        id: `derp:${region}`,
-        label: `DERP ${region}`,
+        id: `derp:${region}${routeSuffix}`,
+        label: route.fallback ? `DERP fallback · ${region}` : `DERP ${region}`,
         kind: "derp",
-        classes: "relay-node derp",
+        classes: `relay-node derp ${route.fallback ? "fallback-node" : ""}`,
+        logicalEdgeId: routeSuffix ? edge.id : undefined,
       },
     ];
   }
-  if (edge.path.kind === "peer_relay") {
-    return peerRelayCandidates(edge).map((candidate) => {
+  if (path.kind === "peer_relay") {
+    const candidates = edge.directions?.length
+      ? [{ path, lastObservedAt: edge.lastActive, observerCount: 1 }]
+      : peerRelayCandidates(edge);
+    return candidates.map((candidate) => {
       const stableID = candidate.path.peerRelayStableNodeId;
       const node = stableID ? nodesByStableID.get(stableID) : undefined;
       const key = peerRelayCandidateKey(candidate.path);
@@ -281,7 +332,7 @@ function intermediatesFor(
           node?.id ||
           (stableID
             ? `peer-relay:${stableID}`
-            : `peer-relay:${edge.id}:${encodeURIComponent(key)}`),
+            : `peer-relay:${edge.id}:${encodeURIComponent(key)}${routeSuffix}`),
         label: node
           ? nodeLabel(node)
           : unresolvedPeerRelayLabel(candidate.path),
@@ -293,10 +344,10 @@ function intermediatesFor(
       };
     });
   }
-  if (edge.path.kind === "unknown") {
+  if (path.kind === "unknown") {
     return [
       {
-        id: `unknown-marker:${edge.id}`,
+        id: `unknown-marker:${edge.id}${routeSuffix}`,
         label: "?",
         kind: "unknown",
         classes: "path-marker unknown-marker",
@@ -305,6 +356,128 @@ function intermediatesFor(
     ];
   }
   return [];
+}
+
+export function edgeDirections(edge: TopologyEdge): DirectionalPathState[] {
+  return [...(edge.directions ?? [])].sort((left, right) => {
+    if (left.fromNodeId === edge.source && right.fromNodeId !== edge.source)
+      return -1;
+    if (right.fromNodeId === edge.source && left.fromNodeId !== edge.source)
+      return 1;
+    return `${left.fromNodeId}:${left.toNodeId}`.localeCompare(
+      `${right.fromNodeId}:${right.toNodeId}`,
+    );
+  });
+}
+
+export function edgeIsAsymmetric(edge: TopologyEdge): boolean {
+  const directions = edgeDirections(edge);
+  return (
+    directions.length === 2 &&
+    directionPathKey(directions[0]) !== directionPathKey(directions[1])
+  );
+}
+
+export function edgePathKinds(edge: TopologyEdge): Set<PathKind> {
+  const directions = edgeDirections(edge);
+  if (!directions.length) return new Set([edge.path.kind]);
+  return new Set(
+    directions.flatMap((direction) => [
+      direction.primaryPath.kind,
+      ...(direction.fallbackPath ? [direction.fallbackPath.kind] : []),
+    ]),
+  );
+}
+
+function directionPathKey(direction: DirectionalPathState): string {
+  return `${logicalPathKey(direction.primaryPath)}|${
+    direction.fallbackPath ? logicalPathKey(direction.fallbackPath) : "none"
+  }`;
+}
+
+function logicalPathKey(path: PathObservation): string {
+  switch (path.kind) {
+    case "direct":
+      return "direct";
+    case "derp":
+      return `derp:${(path.derpRegion || "unknown").toLowerCase()}`;
+    case "peer_relay":
+      return `peer-relay:${peerRelayCandidateKey(path)}`;
+    default:
+      return "unknown";
+  }
+}
+
+function routesFor(edge: TopologyEdge): RenderedRoute[] {
+  const directions = edgeDirections(edge);
+  if (!directions.length) {
+    return [
+      {
+        id: "legacy",
+        from: edge.source,
+        to: edge.target,
+        path: edge.path,
+        rate: edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
+        showLabel: true,
+        directional: false,
+        fallback: false,
+      },
+    ];
+  }
+  const asymmetric = edgeIsAsymmetric(edge);
+  if (!asymmetric) {
+    const direction = directions[0];
+    const routes: RenderedRoute[] = [
+      {
+        id: "combined-primary",
+        from: direction.fromNodeId,
+        to: direction.toNodeId,
+        path: direction.primaryPath,
+        rate: edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
+        showLabel: true,
+        directional: directions.length === 1,
+        fallback: false,
+      },
+    ];
+    if (direction.fallbackPath) {
+      routes.push({
+        ...routes[0],
+        id: "combined-fallback",
+        path: direction.fallbackPath,
+        rate: 0,
+        showLabel: false,
+        fallback: true,
+      });
+    }
+    return routes;
+  }
+  return directions.flatMap((direction, index) => {
+    const fromSource = direction.fromNodeId === edge.source;
+    const primary: RenderedRoute = {
+      id: `direction-${index}-primary`,
+      from: direction.fromNodeId,
+      to: direction.toNodeId,
+      path: direction.primaryPath,
+      rate: fromSource ? edge.aToBBytesPerSecond : edge.bToABytesPerSecond,
+      showLabel: true,
+      directional: true,
+      fallback: false,
+      curveClass: index === 0 ? "route-a" : "route-b",
+    };
+    return direction.fallbackPath
+      ? [
+          primary,
+          {
+            ...primary,
+            id: `direction-${index}-fallback`,
+            path: direction.fallbackPath,
+            rate: 0,
+            showLabel: false,
+            fallback: true,
+          },
+        ]
+      : [primary];
+  });
 }
 
 export function peerRelayCandidates(edge: TopologyEdge): PathCandidate[] {
@@ -339,17 +512,17 @@ export function peerRelayCandidateKey(path: PathObservation): string {
   return "unknown";
 }
 
-function edgeElement(
+function routeEdgeElement(
   edge: TopologyEdge,
+  route: RenderedRoute,
   source: string,
   target: string,
   segment: string,
   showLabel: boolean,
   candidateClass = "",
 ): ElementDefinition {
-  const totalRate = edge.aToBBytesPerSecond + edge.bToABytesPerSecond;
   const isActive = edge.state === "active";
-  const label = isActive && showLabel ? formatCompactRate(totalRate) : "";
+  const label = isActive && showLabel ? formatCompactRate(route.rate) : "";
   return {
     group: "edges",
     data: {
@@ -359,14 +532,22 @@ function edgeElement(
       logicalEdgeId: edge.id,
       label,
       idealLength: edgeIdealLength(label),
-      trafficWidth: isActive ? trafficWidth(totalRate) : minimumTrafficWidth,
+      trafficWidth:
+        isActive && !route.fallback
+          ? trafficWidth(route.rate)
+          : minimumTrafficWidth,
     },
     classes: [
-      edge.path.kind,
+      route.path.kind,
       edge.state,
       candidateClass,
-      isActive && edge.aToBBytesPerSecond > 0 ? "flow-forward" : "",
-      isActive && edge.bToABytesPerSecond > 0 ? "flow-reverse" : "",
+      route.directional ? "directional-route" : "",
+      route.curveClass ?? "",
+      route.fallback ? "fallback-route" : "",
+      isActive && route.rate > 0 ? "flow-forward" : "",
+      isActive && !route.directional && edge.bToABytesPerSecond > 0
+        ? "flow-reverse"
+        : "",
     ].join(" "),
   };
 }
@@ -399,7 +580,7 @@ export function edgeIsVisible(
 ): boolean {
   return (
     !edge.systemTelemetry &&
-    (pathFilter === "all" || edge.path.kind === pathFilter) &&
+    (pathFilter === "all" || edgePathKinds(edge).has(pathFilter)) &&
     (showRecent || edge.state === "active")
   );
 }
@@ -418,7 +599,7 @@ export function emptyTrafficReason(
   if (
     userTrafficEdges.length > 0 &&
     pathFilter !== "all" &&
-    !userTrafficEdges.some((edge) => edge.path.kind === pathFilter)
+    !userTrafficEdges.some((edge) => edgePathKinds(edge).has(pathFilter))
   ) {
     return "no-match";
   }
