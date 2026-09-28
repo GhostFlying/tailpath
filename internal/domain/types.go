@@ -83,14 +83,15 @@ const (
 )
 
 type NodeIdentity struct {
-	StableNodeID string   `json:"stableNodeId"`
-	NodeID       string   `json:"nodeId,omitempty"`
-	NodeKey      string   `json:"nodeKey,omitempty"`
-	DiscoKey     string   `json:"discoKey,omitempty"`
-	Hostname     string   `json:"hostname"`
-	DNSName      string   `json:"dnsName,omitempty"`
-	OS           string   `json:"os,omitempty"`
-	TailscaleIPs []string `json:"tailscaleIps,omitempty"`
+	StableNodeID    string   `json:"stableNodeId"`
+	NodeID          string   `json:"nodeId,omitempty"`
+	NodeKey         string   `json:"nodeKey,omitempty"`
+	DiscoKey        string   `json:"discoKey,omitempty"`
+	Hostname        string   `json:"hostname"`
+	DNSName         string   `json:"dnsName,omitempty"`
+	OS              string   `json:"os,omitempty"`
+	TailscaleIPs    []string `json:"tailscaleIps,omitempty"`
+	PublicEndpoints []string `json:"publicEndpoints,omitempty"`
 }
 
 func (n NodeIdentity) CanonicalID() string {
@@ -142,12 +143,15 @@ type PathObservation struct {
 	DirectEndpoint        string   `json:"directEndpoint,omitempty"`
 	DERPRegion            string   `json:"derpRegion,omitempty"`
 	PeerRelayStableNodeID string   `json:"peerRelayStableNodeId,omitempty"`
+	PeerRelayEndpoint     string   `json:"peerRelayEndpoint,omitempty"`
+	PeerRelayResolution   string   `json:"peerRelayResolution,omitempty"`
 	PeerRelayVNI          *int64   `json:"peerRelayVni,omitempty"`
 }
 
 func (p PathObservation) Equal(other PathObservation) bool {
 	return p.Kind == other.Kind && p.DirectEndpoint == other.DirectEndpoint &&
 		p.DERPRegion == other.DERPRegion && p.PeerRelayStableNodeID == other.PeerRelayStableNodeID &&
+		p.PeerRelayEndpoint == other.PeerRelayEndpoint && p.PeerRelayResolution == other.PeerRelayResolution &&
 		equalOptionalInt64(p.PeerRelayVNI, other.PeerRelayVNI)
 }
 
@@ -382,6 +386,8 @@ type TopologyEdge struct {
 	LastActive         time.Time               `json:"lastActive"`
 	Observations       []ObservationProvenance `json:"observations"`
 	Conflicts          []PathObservation       `json:"conflicts,omitempty"`
+	PathState          PathState               `json:"pathState"`
+	PathCandidates     []PathCandidate         `json:"pathCandidates"`
 }
 
 type ObserverState struct {
@@ -409,10 +415,12 @@ type TrafficBucket struct {
 }
 
 type PathEvent struct {
-	ObservedAt   time.Time               `json:"observedAt"`
-	Path         PathObservation         `json:"path"`
-	Conflicts    []PathObservation       `json:"conflicts"`
-	Observations []ObservationProvenance `json:"observations"`
+	ObservedAt     time.Time               `json:"observedAt"`
+	Path           PathObservation         `json:"path"`
+	Conflicts      []PathObservation       `json:"conflicts"`
+	Observations   []ObservationProvenance `json:"observations"`
+	PathState      PathState               `json:"pathState"`
+	PathCandidates []PathCandidate         `json:"pathCandidates"`
 }
 
 type AcceptedTraffic struct {

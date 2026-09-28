@@ -101,22 +101,23 @@ pair; VNI-only and conflicting evidence remain anonymous instead of guessing.
 Scoped client IDs never enter the global alias index, and canonical merges
 atomically rewrite scoped references, current edges, and redirects.
 
-The storage boundary independently sanitizes relay journals and checkpoints.
-It removes underlay endpoint fields, replaces journaled short disco values with
-a constant presence marker, and re-encodes typed path provenance containing
-only relay identity, VNI, session ID, and resolution status. Existing logical
+The storage boundary preserves normalized public endpoint and selected Peer
+Relay `ip:port` evidence in journals, checkpoints, and path transitions. It
+still replaces journaled short disco values with a constant presence marker
+and removes those values from checkpoints and API projections. Existing logical
 edge mappings apply scoped-node redirects before rollup and query, so relay
 fallback traffic and anchors remain attached to the surviving endpoint pair.
 
 Path state is a sticky primary plus a deterministic set of conflicting fresh
 evidence. A supported primary remains selected regardless of cross-observer
 receipt order; after it expires, endpoint observations outrank relay-side
-observations and canonical node IDs break ties. Transitions are written only
-when the normalized primary/conflict set changes. Direct endpoints, relay VNI,
-session ID, and sample time remain provenance details, while DERP region and
-Peer Relay StableNodeID identify distinct paths. A known Peer Relay node is
-retained in the visible topology for as long as fresh edge provenance refers to
-it.
+observations and canonical node IDs break ties. Peer Relay evidence uses the
+StableNodeID when known, otherwise selected endpoint, then VNI. A unique public
+IP owner in one fresh observer snapshot can enrich a selected relay endpoint
+even when the normal Tailscale and relay service ports differ; shared-IP
+ownership stays unresolved. More than one fresh relay candidate is exposed as
+`switching`. Live and History carry each candidate's path, observation time,
+and observer count while traffic remains on the logical relationship only.
 
 Restart restores current reporter sequences, observer-owned inventory
 generations and memberships, reporter-to-observer ownership, identity aliases,

@@ -32,6 +32,8 @@ export interface PathTimelineItem {
   to: string;
   durationMs: number;
   path: PathEvent["path"];
+  pathState: PathEvent["pathState"];
+  pathCandidates: PathEvent["pathCandidates"];
   conflicts: PathEvent["conflicts"];
   observations: PathEvent["observations"];
   anchored: boolean;
@@ -137,6 +139,8 @@ export function buildPathTimeline(history: EdgeHistory): PathTimelineItem[] {
         new Date(to).getTime() - new Date(from).getTime(),
       ),
       path: event.path,
+      pathState: event.pathState,
+      pathCandidates: event.pathCandidates,
       conflicts: event.conflicts,
       observations: event.observations,
       anchored,

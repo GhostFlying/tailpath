@@ -1116,6 +1116,7 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 
 func cloneIdentity(identity NodeIdentity) NodeIdentity {
 	identity.TailscaleIPs = append([]string(nil), identity.TailscaleIPs...)
+	identity.PublicEndpoints = append([]string(nil), identity.PublicEndpoints...)
 	return identity
 }
 
@@ -1135,6 +1136,7 @@ func snapshotInventoryHash(snapshot Snapshot) string {
 	}
 	for index := range identities {
 		sort.Strings(identities[index].TailscaleIPs)
+		sort.Strings(identities[index].PublicEndpoints)
 	}
 	sort.Slice(identities, func(i, j int) bool {
 		return identities[i].IdentityKey() < identities[j].IdentityKey()

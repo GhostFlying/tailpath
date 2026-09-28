@@ -60,14 +60,15 @@ const (
 )
 
 type NodeIdentity struct {
-	StableNodeID string   `json:"stableNodeId"`
-	NodeID       string   `json:"nodeId,omitempty"`
-	NodeKey      string   `json:"nodeKey,omitempty"`
-	DiscoKey     string   `json:"discoKey,omitempty"`
-	Hostname     string   `json:"hostname"`
-	DNSName      string   `json:"dnsName,omitempty"`
-	OS           string   `json:"os,omitempty"`
-	TailscaleIPs []string `json:"tailscaleIps,omitempty"`
+	StableNodeID    string   `json:"stableNodeId"`
+	NodeID          string   `json:"nodeId,omitempty"`
+	NodeKey         string   `json:"nodeKey,omitempty"`
+	DiscoKey        string   `json:"discoKey,omitempty"`
+	Hostname        string   `json:"hostname"`
+	DNSName         string   `json:"dnsName,omitempty"`
+	OS              string   `json:"os,omitempty"`
+	TailscaleIPs    []string `json:"tailscaleIps,omitempty"`
+	PublicEndpoints []string `json:"publicEndpoints,omitempty"`
 }
 
 func (n NodeIdentity) CanonicalID() string {
@@ -119,12 +120,15 @@ type Path struct {
 	DirectEndpoint        string   `json:"directEndpoint,omitempty"`
 	DERPRegion            string   `json:"derpRegion,omitempty"`
 	PeerRelayStableNodeID string   `json:"peerRelayStableNodeId,omitempty"`
+	PeerRelayEndpoint     string   `json:"peerRelayEndpoint,omitempty"`
+	PeerRelayResolution   string   `json:"peerRelayResolution,omitempty"`
 	PeerRelayVNI          *int64   `json:"peerRelayVni,omitempty"`
 }
 
 func (p Path) Equal(other Path) bool {
 	return p.Kind == other.Kind && p.DirectEndpoint == other.DirectEndpoint &&
 		p.DERPRegion == other.DERPRegion && p.PeerRelayStableNodeID == other.PeerRelayStableNodeID &&
+		p.PeerRelayEndpoint == other.PeerRelayEndpoint && p.PeerRelayResolution == other.PeerRelayResolution &&
 		(p.PeerRelayVNI == nil && other.PeerRelayVNI == nil ||
 			p.PeerRelayVNI != nil && other.PeerRelayVNI != nil && *p.PeerRelayVNI == *other.PeerRelayVNI)
 }

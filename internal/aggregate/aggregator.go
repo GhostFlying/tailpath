@@ -623,7 +623,7 @@ func (a *Aggregator) applyRelaySessionLocked(
 	vni := session.VNI
 	path := domain.PathObservation{
 		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: session.Relay.StableNodeID,
-		PeerRelayVNI: &vni,
+		PeerRelayResolution: "relay_session", PeerRelayVNI: &vni,
 	}
 	observation := edgeObservation{
 		ObserverID: relayID, Path: path, CollectedAt: collectedAt, ReceivedAt: receivedAt,
@@ -1316,6 +1316,10 @@ func mergeIdentity(current, update domain.NodeIdentity) domain.NodeIdentity {
 		current.TailscaleIPs = append([]string(nil), update.TailscaleIPs...)
 		sort.Strings(current.TailscaleIPs)
 	}
+	if len(update.PublicEndpoints) > 0 {
+		current.PublicEndpoints = append([]string(nil), update.PublicEndpoints...)
+		sort.Strings(current.PublicEndpoints)
+	}
 	return current
 }
 
@@ -1458,6 +1462,7 @@ func (a *Aggregator) nodeIdentityStatusLocked(id string, node *nodeState, now ti
 func (a *Aggregator) effectiveNodeIdentityLocked(nodeID string, node *nodeState) (domain.NodeIdentity, *domain.DirectoryEnrichment) {
 	identity := node.Identity
 	identity.TailscaleIPs = append([]string{}, node.Identity.TailscaleIPs...)
+	identity.PublicEndpoints = append([]string{}, node.Identity.PublicEndpoints...)
 	device, collectedAt, ok := a.directoryDeviceForNodeLocked(nodeID)
 	if !ok {
 		return identity, nil
@@ -1535,6 +1540,7 @@ func (a *Aggregator) DeviceDirectory() domain.DeviceDirectory {
 		if !node.LastEvidence.IsZero() || !node.IdentityCollectedAt.IsZero() || node.Observable {
 			identity := node.Identity
 			identity.TailscaleIPs = append([]string{}, node.Identity.TailscaleIPs...)
+			identity.PublicEndpoints = append([]string{}, node.Identity.PublicEndpoints...)
 			lastEvidenceAt := node.LastEvidence
 			if lastEvidenceAt.IsZero() {
 				lastEvidenceAt = runtimeAt
@@ -1621,6 +1627,7 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 			result.Path.Kind = domain.PathUnknown
 		}
 	}
+	result.PathState, result.PathCandidates = domain.PathCandidates(result.Path, result.Conflicts, result.Observations)
 	sort.Slice(result.Observations, func(i, j int) bool {
 		return result.Observations[i].ObserverID < result.Observations[j].ObserverID
 	})
@@ -1803,6 +1810,7 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 	for id, node := range source.Nodes {
 		copy := *node
 		copy.Identity.TailscaleIPs = append([]string(nil), node.Identity.TailscaleIPs...)
+		copy.Identity.PublicEndpoints = append([]string(nil), node.Identity.PublicEndpoints...)
 		clone.Nodes[id] = &copy
 	}
 	for alias, id := range source.Aliases {

@@ -624,6 +624,7 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return nil, err
 		}
+		event.PathState, event.PathCandidates = domain.PathCandidates(event.Path, event.Conflicts, event.Observations)
 		if event.Observations == nil {
 			event.Observations = []domain.ObservationProvenance{}
 		}

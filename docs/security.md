@@ -21,14 +21,19 @@ identity with another service is an explicit degraded mode because aggregate
 peer counters cannot separate Tailpath traffic from business traffic.
 
 Tailpath never logs auth keys or complete report bodies. Public endpoints from
-ordinary direct-path observations, node identifiers, and traffic history remain
-in the local SQLite database. Peer Relay underlay endpoints are more narrowly
-scoped: they may be used during current report processing but are stripped
-before the report journal, checkpoint, path events, History, API output, and
-logs. Short disco hints are replaced by a constant presence marker in the raw
-report journal, preserving `partial` replay semantics without retaining the
-value; they are omitted from checkpoints and History. There is no outbound
-product telemetry.
+ordinary direct-path observations, node identifiers, traffic history, passive
+node endpoint candidates, and selected Peer Relay endpoints remain in the local
+SQLite database. Authenticated topology and History responses may expose these
+public `ip:port` values so switching evidence can be reconstructed accurately.
+Endpoints remain scoped evidence and never become global identity aliases.
+Short disco hints are replaced by a constant presence marker in the raw report
+journal, preserving `partial` replay semantics without retaining the value;
+they are omitted from checkpoints and History. Endpoint and disco values are
+never written to logs. There is no outbound product telemetry.
+
+The SQLite database, backups, authenticated API responses, and operator
+diagnostic exports therefore contain sensitive Tailnet network metadata and
+must use access and retention controls appropriate for traffic history.
 
 Reporters are responsible for generating opaque relay session and scoped
 client IDs that contain no endpoint, hostname, Tailnet suffix, or credential.

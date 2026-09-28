@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Clock3,
   Network,
+  RefreshCcw,
   RadioTower,
   TriangleAlert,
   X,
@@ -12,12 +13,14 @@ import { useEffect, useState } from "react";
 import { getEdgeHistory } from "../api/client";
 import type {
   EdgeHistory,
+  PathCandidate,
   Topology,
   TopologyEdge,
   TopologyNode,
 } from "../api/types";
 import { MetadataConflictList } from "./MetadataConflictList";
 import { formatAgo, formatRate, nodeLabel, pathLabel } from "../lib/format";
+import { peerRelayCandidateKey, peerRelayCandidates } from "../lib/graph";
 import { platformPresentation } from "../lib/platform";
 import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
 
@@ -59,6 +62,15 @@ function EdgeDetails({
   edge: TopologyEdge;
   history: EdgeHistory | null;
 }) {
+  const candidates = peerRelayCandidates(edge);
+  const switching = edge.pathState === "switching" || candidates.length > 1;
+  const firstCandidateKey = candidates[0]
+    ? peerRelayCandidateKey(candidates[0].path)
+    : "";
+  const [selectedCandidate, setSelectedCandidate] = useState(firstCandidateKey);
+  useEffect(() => {
+    setSelectedCandidate(firstCandidateKey);
+  }, [edge.id, edge.pathState, firstCandidateKey]);
   const source = topology.nodes.find((node) => node.id === edge.source);
   const target = topology.nodes.find((node) => node.id === edge.target);
   const relay = edge.path.peerRelayStableNodeId
@@ -76,8 +88,45 @@ function EdgeDetails({
       <div className={`path-banner ${edge.path.kind}`}>
         <Network size={17} />
         <strong>{pathLabel(edge.path)}</strong>
+        {switching ? (
+          <span className="path-state switching">
+            <RefreshCcw size={12} /> Switching
+          </span>
+        ) : null}
         <span className={`state-badge ${edge.state}`}>{edge.state}</span>
       </div>
+      {candidates.length ? (
+        <section className="candidate-section">
+          <div className="candidate-heading">
+            <h3>Path candidates</h3>
+            <span>{candidates.length} fresh</span>
+          </div>
+          <div className="candidate-list">
+            {candidates.map((candidate) => {
+              const key = peerRelayCandidateKey(candidate.path);
+              return (
+                <RelayCandidate
+                  key={key}
+                  topology={topology}
+                  candidate={candidate}
+                  selected={selectedCandidate === key}
+                  onSelect={() => setSelectedCandidate(key)}
+                />
+              );
+            })}
+          </div>
+          {switching ? (
+            <p className="switching-explanation">
+              <RefreshCcw size={14} />
+              <span>
+                <strong>Why Switching?</strong> Multiple relay candidates are
+                still fresh. Tailpath keeps each visible until its evidence
+                expires or observers converge.
+              </span>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
       <dl className="details-list">
         {edge.path.directEndpoint ? (
           <Detail label="Endpoint" value={edge.path.directEndpoint} />
@@ -90,6 +139,9 @@ function EdgeDetails({
             label="Relay node"
             value={relay ? nodeLabel(relay) : edge.path.peerRelayStableNodeId}
           />
+        ) : null}
+        {edge.path.peerRelayEndpoint ? (
+          <Detail label="Relay endpoint" value={edge.path.peerRelayEndpoint} />
         ) : null}
         {edge.path.peerRelayVni !== undefined ? (
           <Detail label="Relay VNI" value={String(edge.path.peerRelayVni)} />
@@ -110,6 +162,12 @@ function EdgeDetails({
           </span>
           <strong>{formatRate(edge.aToBBytesPerSecond)}</strong>
         </div>
+        {switching ? (
+          <p className="traffic-candidate-note">
+            Traffic belongs to this relationship and is not duplicated across
+            relay candidates.
+          </p>
+        ) : null}
         <div className="direction-row">
           <ArrowDownLeft size={17} />
           <span>
@@ -158,7 +216,7 @@ function EdgeDetails({
             </div>
           );
         })}
-        {edge.conflicts?.length ? (
+        {edge.conflicts?.some((path) => path.kind !== "peer_relay") ? (
           <p className="conflict-note">
             Conflicting path evidence is preserved in this edge.
           </p>
@@ -175,7 +233,11 @@ function EdgeDetails({
                 className="history-row"
                 key={`${event.observedAt}-${event.path.kind}-${index}`}
               >
-                <span>{pathLabel(event.path)}</span>
+                <span>
+                  {event.pathState === "switching"
+                    ? "Peer Relay · Switching"
+                    : pathLabel(event.path)}
+                </span>
                 <small>{event.observations.length} sources</small>
                 <time dateTime={event.observedAt}>
                   {formatAgo(event.observedAt)}
@@ -186,6 +248,99 @@ function EdgeDetails({
       ) : null}
     </>
   );
+}
+
+function RelayCandidate({
+  topology,
+  candidate,
+  selected,
+  onSelect,
+}: {
+  topology: Topology;
+  candidate: PathCandidate;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const stableID = candidate.path.peerRelayStableNodeId;
+  const relay = stableID
+    ? topology.nodes.find((node) => node.stableNodeId === stableID)
+    : undefined;
+  const label = relay ? nodeLabel(relay) : stableID || "Peer Relay";
+  const resolution = candidateResolution(candidate);
+  return (
+    <button
+      type="button"
+      className={`relay-candidate ${selected ? "selected" : ""}`}
+      aria-expanded={selected}
+      onClick={onSelect}
+    >
+      <span
+        className={`relay-candidate-icon ${stableID ? "known" : "pending"}`}
+      >
+        {stableID ? label.slice(0, 1).toUpperCase() : "?"}
+      </span>
+      <span className="relay-candidate-copy">
+        <strong>{label}</strong>
+        <small>
+          {candidate.path.peerRelayVni !== undefined
+            ? `VNI ${candidate.path.peerRelayVni}`
+            : "VNI unavailable"}
+          {candidate.observerCount > 0
+            ? ` · ${candidate.observerCount} observer${candidate.observerCount === 1 ? "" : "s"}`
+            : ""}
+        </small>
+        <span className={`candidate-resolution ${resolution.kind}`}>
+          {resolution.label}
+        </span>
+      </span>
+      <time dateTime={candidate.lastObservedAt}>
+        {formatAgo(candidate.lastObservedAt)}
+      </time>
+      {selected ? (
+        <span className="relay-candidate-detail">
+          {candidate.path.peerRelayEndpoint ? (
+            <span>
+              Endpoint <code>{candidate.path.peerRelayEndpoint}</code>
+            </span>
+          ) : null}
+          <span>{resolution.explanation}</span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function candidateResolution(candidate: PathCandidate) {
+  switch (candidate.path.peerRelayResolution) {
+    case "relay_session":
+    case "tailscale_ip":
+      return {
+        kind: "verified",
+        label: "Identity verified",
+        explanation:
+          "Authenticated relay evidence identifies this Tailnet node.",
+      };
+    case "endpoint_match":
+      return {
+        kind: "matched",
+        label: "Matched by endpoints",
+        explanation:
+          "A fresh public IP uniquely matches this relay candidate. The normal Tailscale and relay service ports may differ.",
+      };
+    default:
+      return candidate.path.peerRelayStableNodeId
+        ? {
+            kind: "verified",
+            label: "Identity verified",
+            explanation: "Relay evidence includes a stable Tailnet identity.",
+          }
+        : {
+            kind: "pending",
+            label: "Identity pending",
+            explanation:
+              "Observers agree on the relay endpoint, but no unique stable identity is available.",
+          };
+  }
 }
 
 function NodeDetails({

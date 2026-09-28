@@ -39,6 +39,15 @@ Follow the [systematic layout contract](layout-rules.md) ([中文版](layout-rul
 - Keep the path-specific color and shape for a resolved canonical Peer Relay,
   while rendering its reported platform icon inside that anatomy. Virtual or
   unresolved relay markers must not invent a platform icon.
+- When more than one Peer Relay candidate is fresh, render every candidate and
+  label the relationship `Switching`. Known candidates use their canonical
+  relay identity; unresolved candidates use an explicit `Peer Relay` marker
+  with identity-pending copy. Candidate styling and text must distinguish them
+  without duplicating the relationship's traffic label, width, or totals.
+- Live and History must show the endpoint, VNI, resolution method, freshness,
+  and observer count retained for a relay candidate. History renders the
+  candidate set recorded for that event rather than recomputing it from current
+  node metadata.
 - Runtime status reports known views as `N runtimes reporting`, adding
   `N reporting · M stale` only when previously known views expire. Do not use
   an `N of M` ratio without an explicit expected-runtime inventory.

@@ -865,6 +865,131 @@
   cursor: pointer;
 }
 
+.history-path-candidates {
+  margin: 0 0 20px;
+  border: 1px solid #d7dde0;
+  background: #fbfcfc;
+  padding: 13px;
+}
+
+.history-path-candidates > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-path-candidates > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.history-path-candidates h2 {
+  margin: 0;
+  color: #425159;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+}
+
+.history-path-candidates header span {
+  color: #748087;
+  font-size: 11px;
+}
+
+.history-switching-state {
+  border: 1px solid #d8bf83;
+  background: #fff8e7;
+  padding: 3px 7px;
+  color: #805600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.history-candidate-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.history-candidate-list article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  border: 1px solid #d9dfe2;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.history-candidate-list article.pending {
+  border-style: dashed;
+}
+
+.history-candidate-symbol {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #b79aaf;
+  background: #f8eef5;
+  color: #7b376c;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.history-candidate-list article.pending .history-candidate-symbol {
+  border-style: dashed;
+  background: #f4f6f7;
+  color: #6f7b82;
+}
+
+.history-candidate-list article > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.history-candidate-list article strong,
+.history-candidate-list article small,
+.history-candidate-list article code,
+.history-candidate-list article time {
+  overflow-wrap: anywhere;
+}
+
+.history-candidate-list article strong {
+  color: #34444c;
+  font-size: 12px;
+}
+
+.history-candidate-list article small,
+.history-candidate-list article time {
+  color: #748087;
+  font-size: 11px;
+}
+
+.history-candidate-list article code {
+  color: #4c5b62;
+  font-size: 11px;
+}
+
+.history-candidate-meta {
+  justify-items: end;
+  text-align: right;
+}
+
+.history-candidate-meta > span {
+  color: #287166;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.history-candidate-list article.pending .history-candidate-meta > span {
+  color: #855800;
+}
+
 .provenance-table {
   border: 1px solid #cbd2d6;
   background: #ffffff;

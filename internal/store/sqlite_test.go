@@ -61,7 +61,7 @@ func TestRecordIsIdempotentAndBuildsLogicalHistory(t *testing.T) {
 	}
 }
 
-func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
+func TestRecordPersistsRelayEndpointsAndRedactsDiscoHints(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "relay.db")
 	database, err := Open(path, 7*24*time.Hour)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 	}
 	vni := int64(7)
 	pathObservation := domain.PathObservation{
-		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni,
+		Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayEndpoint: "203.0.113.8:40000", PeerRelayVNI: &vni,
 	}
 	traffic := []domain.AcceptedTraffic{{
 		EdgeID: "n_left--n_right", SourceID: "n_left", TargetID: "n_right", ObserverID: "n_relay",
@@ -119,8 +119,8 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 		t.Fatalf("restored reports = %d, want one", len(reports))
 	}
 	stored := reports[0].Report.RelaySessions[0]
-	if stored.Source.Endpoint != "" || stored.Target.Endpoint != "" {
-		t.Fatalf("relay endpoints persisted: %#v", stored)
+	if stored.Source.Endpoint != endpointCanary || stored.Target.Endpoint != "[2001:db8::10]:41641" {
+		t.Fatalf("relay endpoints not restored: %#v", stored)
 	}
 	if stored.Source.DiscoShort != "present" || stored.Source.IdentityStatus() != domain.IdentityPartial {
 		t.Fatalf("sanitized relay hint lost presence semantics: %#v", stored.Source)
@@ -132,7 +132,7 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) ||
+	if !bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) ||
 		!bytes.Contains(restoredCheckpoint.Payload, []byte("n_relay")) {
 		t.Fatalf("checkpoint sanitization = %s", restoredCheckpoint.Payload)
 	}
@@ -149,6 +149,7 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 	}
 	event := history.PathEvents[0]
 	if event.Path.PeerRelayVNI == nil || *event.Path.PeerRelayVNI != vni || event.Path.PeerRelayStableNodeID != "relay" ||
+		event.Path.PeerRelayEndpoint != "203.0.113.8:40000" ||
 		len(event.Observations) != 1 || event.Observations[0].RelaySession == nil ||
 		event.Observations[0].RelaySession.SourceIdentityStatus != domain.IdentityPartial {
 		t.Fatalf("relay path provenance = %#v", event)
@@ -157,7 +158,7 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	restoredCheckpoint, err = database.RestoreCheckpoint(context.Background())
-	if err != nil || bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) {
+	if err != nil || !bytes.Contains(restoredCheckpoint.Payload, []byte(endpointCanary)) || bytes.Contains(restoredCheckpoint.Payload, []byte(discoCanary)) {
 		t.Fatalf("direct checkpoint sanitization = %s, err=%v", restoredCheckpoint.Payload, err)
 	}
 	if _, err := database.db.Exec(`PRAGMA wal_checkpoint(PASSIVE)`); err != nil {
@@ -171,8 +172,8 @@ func TestRecordStripsRelayUnderlayEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(payload, []byte(endpointCanary)) || bytes.Contains(payload, []byte(discoCanary)) {
-			t.Fatalf("relay canary persisted in %s", durablePath)
+		if !bytes.Contains(payload, []byte(endpointCanary)) || bytes.Contains(payload, []byte(discoCanary)) {
+			t.Fatalf("durable relay endpoint/disco contract failed in %s", durablePath)
 		}
 	}
 }

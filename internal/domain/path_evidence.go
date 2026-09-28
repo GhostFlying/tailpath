@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -24,10 +25,18 @@ func ReconcilePathEvidence(sourceID, targetID string, previous PathObservation, 
 		receivedAt time.Time
 	}
 	evidenceByKey := make(map[string]evidence)
+	stableIDByEndpoint := uniqueRelayStableIDsByEndpoint(observations)
 	for _, observation := range observations {
-		key := PathEvidenceKey(observation.Path)
+		path := observation.Path
+		if path.Kind == PathPeerRelay && path.PeerRelayStableNodeID == "" {
+			if stableID := stableIDByEndpoint[strings.TrimSpace(path.PeerRelayEndpoint)]; stableID != "" {
+				path.PeerRelayStableNodeID = stableID
+				path.PeerRelayResolution = "endpoint_match"
+			}
+		}
+		key := PathEvidenceKey(path)
 		candidate := evidence{
-			path: observation.Path, role: observerEvidenceRole(sourceID, targetID, observation.ObserverID),
+			path: path, role: observerEvidenceRole(sourceID, targetID, observation.ObserverID),
 			observerID: observation.ObserverID, receivedAt: observation.ReceivedAt,
 		}
 		current, exists := evidenceByKey[key]
@@ -88,10 +97,16 @@ func PathEvidenceKey(path PathObservation) string {
 		return string(PathDERP) + ":" + region
 	case PathPeerRelay:
 		stableID := strings.TrimSpace(path.PeerRelayStableNodeID)
-		if stableID == "" {
-			stableID = "unknown"
+		if stableID != "" {
+			return string(PathPeerRelay) + ":" + stableID
 		}
-		return string(PathPeerRelay) + ":" + stableID
+		if endpoint := strings.TrimSpace(path.PeerRelayEndpoint); endpoint != "" {
+			return string(PathPeerRelay) + ":endpoint:" + endpoint
+		}
+		if path.PeerRelayVNI != nil {
+			return string(PathPeerRelay) + ":vni:" + fmt.Sprint(*path.PeerRelayVNI)
+		}
+		return string(PathPeerRelay) + ":unknown"
 	default:
 		return string(PathUnknown)
 	}
@@ -132,6 +147,38 @@ func enrichEvidencePath(path, detail PathObservation) PathObservation {
 		}
 		if result.PeerRelayVNI == nil {
 			result.PeerRelayVNI = detail.PeerRelayVNI
+		}
+		if result.PeerRelayEndpoint == "" {
+			result.PeerRelayEndpoint = detail.PeerRelayEndpoint
+		}
+		if result.PeerRelayResolution == "" {
+			result.PeerRelayResolution = detail.PeerRelayResolution
+		}
+	}
+	return result
+}
+
+func uniqueRelayStableIDsByEndpoint(observations []ObservationProvenance) map[string]string {
+	candidates := make(map[string]map[string]struct{})
+	for _, observation := range observations {
+		path := observation.Path
+		endpoint := strings.TrimSpace(path.PeerRelayEndpoint)
+		stableID := strings.TrimSpace(path.PeerRelayStableNodeID)
+		if path.Kind != PathPeerRelay || endpoint == "" || stableID == "" {
+			continue
+		}
+		if candidates[endpoint] == nil {
+			candidates[endpoint] = make(map[string]struct{})
+		}
+		candidates[endpoint][stableID] = struct{}{}
+	}
+	result := make(map[string]string)
+	for endpoint, stableIDs := range candidates {
+		if len(stableIDs) != 1 {
+			continue
+		}
+		for stableID := range stableIDs {
+			result[endpoint] = stableID
 		}
 	}
 	return result

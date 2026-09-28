@@ -18,7 +18,12 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import type { EdgeHistory, HistoryNodeReference, PathKind } from "../api/types";
+import type {
+  EdgeHistory,
+  HistoryNodeReference,
+  PathCandidate,
+  PathKind,
+} from "../api/types";
 import { pathLabel } from "../lib/format";
 import { identityPresentation } from "../lib/identity";
 import {
@@ -97,7 +102,9 @@ export const PathTimeline = memo(function PathTimeline({
                 </span>
                 <span className="timeline-copy">
                   <strong>
-                    {displayPathLabel(item.path, nodes.byStableID)}
+                    {item.pathState === "switching"
+                      ? "Peer Relay · Switching"
+                      : displayPathLabel(item.path, nodes.byStableID)}
                   </strong>
                   <small>{formatDuration(item.durationMs)}</small>
                 </span>
@@ -185,6 +192,13 @@ function ProvenanceContent({
           </button>
         ) : null}
       </header>
+      {selected.pathCandidates?.length ? (
+        <HistoryPathCandidates
+          candidates={selected.pathCandidates}
+          switching={selected.pathState === "switching"}
+          nodes={nodes}
+        />
+      ) : null}
       <h2>Observed by</h2>
       {selected.observations.length === 0 ? (
         <div className="provenance-empty">No observer provenance retained</div>
@@ -244,6 +258,88 @@ function ProvenanceContent({
       )}
     </div>
   );
+}
+
+function HistoryPathCandidates({
+  candidates,
+  switching,
+  nodes,
+}: {
+  candidates: PathCandidate[];
+  switching: boolean;
+  nodes: HistoryNodeMaps;
+}) {
+  return (
+    <section
+      className="history-path-candidates"
+      aria-label="Historical path candidates"
+    >
+      <header>
+        <div>
+          <h2>Path candidates</h2>
+          <span>{candidates.length} preserved at this event</span>
+        </div>
+        {switching ? (
+          <strong className="history-switching-state">Switching</strong>
+        ) : null}
+      </header>
+      <div className="history-candidate-list">
+        {candidates.map((candidate, index) => {
+          const path = candidate.path;
+          const relay = path.peerRelayStableNodeId
+            ? nodes.byStableID.get(path.peerRelayStableNodeId)
+            : undefined;
+          const label =
+            relay?.label ?? path.peerRelayStableNodeId ?? "Peer Relay";
+          return (
+            <article
+              key={`${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? "unknown"}:${index}`}
+              className={path.peerRelayStableNodeId ? "identified" : "pending"}
+            >
+              <span className="history-candidate-symbol" aria-hidden="true">
+                {path.peerRelayStableNodeId
+                  ? label.slice(0, 1).toUpperCase()
+                  : "?"}
+              </span>
+              <div>
+                <strong>{label}</strong>
+                <small>
+                  {path.peerRelayVni !== undefined
+                    ? `VNI ${path.peerRelayVni}`
+                    : "VNI unavailable"}
+                  {` · ${candidate.observerCount} observer${candidate.observerCount === 1 ? "" : "s"}`}
+                </small>
+                {path.peerRelayEndpoint ? (
+                  <code>{path.peerRelayEndpoint}</code>
+                ) : null}
+              </div>
+              <div className="history-candidate-meta">
+                <span>{historicalResolutionLabel(candidate)}</span>
+                <time dateTime={candidate.lastObservedAt}>
+                  {formatTimelineDateTime(candidate.lastObservedAt)}
+                </time>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function historicalResolutionLabel(candidate: PathCandidate) {
+  switch (candidate.path.peerRelayResolution) {
+    case "relay_session":
+      return "Relay session";
+    case "tailscale_ip":
+      return "Tailscale IP";
+    case "endpoint_match":
+      return "Matched by endpoint";
+    default:
+      return candidate.path.peerRelayStableNodeId
+        ? "Identified"
+        : "Identity pending";
+  }
 }
 
 function RelaySessionDetails({

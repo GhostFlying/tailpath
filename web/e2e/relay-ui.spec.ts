@@ -1,10 +1,21 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-const observedAt = "2026-08-26T04:00:00Z";
+const observedAt = new Date(Date.now() - 2_000).toISOString();
+const historyFrom = new Date(
+  Date.parse(observedAt) - 60 * 60 * 1_000,
+).toISOString();
+const historyTo = new Date(Date.parse(observedAt) + 1_000).toISOString();
 const relayPath = {
   kind: "peer_relay",
   peerRelayStableNodeId: "relay-stable",
+  peerRelayEndpoint: "203.0.113.10:41642",
+  peerRelayResolution: "endpoint_match",
   peerRelayVni: 7,
+} as const;
+const pendingRelayPath = {
+  kind: "peer_relay",
+  peerRelayEndpoint: "198.51.100.24:45321",
+  peerRelayVni: 19,
 } as const;
 const relaySession = {
   sessionId: "session-7",
@@ -80,7 +91,7 @@ test("presents scoped relay clients and live provenance", async ({
   await expect(inspector).toContainText("session-7");
   await expect(inspector.getByLabel("Partial identity").first()).toBeVisible();
   await expect(inspector.getByLabel("Anonymous relay client")).toBeVisible();
-  await expect(inspector).not.toContainText("192.0.2.");
+  await expect(inspector).toContainText("203.0.113.10:41642");
   expect(consoleErrors).toEqual([]);
   await page.screenshot({
     path: testInfo.outputPath(`relay-live-${testInfo.project.name}.png`),
@@ -88,7 +99,7 @@ test("presents scoped relay clients and live provenance", async ({
   });
 });
 
-test("presents sanitized relay history provenance", async ({
+test("restores durable relay history provenance", async ({
   page,
 }, testInfo) => {
   const consoleErrors: string[] = [];
@@ -117,10 +128,89 @@ test("presents sanitized relay history provenance", async ({
   await expect(provenance).toContainText("session-7");
   await expect(provenance).toContainText("Supports selected path");
   await expect(provenance).toContainText("Anonymous");
-  await expect(provenance).not.toContainText("192.0.2.");
+  const candidates = page.getByLabel("Historical path candidates");
+  await expect(candidates).toContainText("203.0.113.10:41642");
+  await expect(candidates).toContainText("Matched by endpoint");
   expect(consoleErrors).toEqual([]);
   await page.screenshot({
     path: testInfo.outputPath(`relay-history-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+});
+
+test("renders all fresh relay candidates while switching", async ({
+  page,
+}, testInfo) => {
+  await page.unroute("**/api/v1/topology");
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: switchingTopology() }),
+  );
+  await page.unroute("**/api/v1/history/edges/client-a--client-b?**");
+  await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
+    route.fulfill({ json: switchingHistory() }),
+  );
+
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await expect(graph).toHaveAttribute("data-edge-count", "1");
+  await expect(graph).toHaveAttribute("data-node-count", "4");
+
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+  const inspector = page.getByLabel("Topology details");
+  await expect(inspector).toContainText("Switching");
+  await expect(inspector).toContainText("Path candidates");
+  await expect(inspector).toContainText("2 fresh");
+  await expect(inspector).toContainText("aliyun-hangzhou-relay");
+  await expect(inspector).toContainText("Matched by endpoints");
+  await expect(inspector).toContainText("Identity pending");
+  await expect(inspector).toContainText("203.0.113.10:41642");
+
+  const pending = inspector
+    .locator(".relay-candidate")
+    .filter({ hasText: "Identity pending" });
+  await pending.click();
+  await expect(pending).toHaveAttribute("aria-expanded", "true");
+  await expect(pending).toContainText("198.51.100.24:45321");
+  await expect(inspector).toContainText(
+    "Traffic belongs to this relationship and is not duplicated",
+  );
+  await expect(inspector).toContainText("Why Switching?");
+  expect(consoleErrors).toEqual([]);
+
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `peer-relay-switching-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
+
+  await page.goto("/history/edges/client-a--client-b?window=1h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  if (testInfo.project.name.startsWith("mobile")) {
+    await page
+      .getByRole("list", { name: "Path timeline" })
+      .getByRole("listitem")
+      .first()
+      .click();
+  }
+  const historicalCandidates = page.getByLabel("Historical path candidates");
+  await expect(historicalCandidates).toContainText("Switching");
+  await expect(historicalCandidates).toContainText("aliyun-hangzhou-relay");
+  await expect(historicalCandidates).toContainText("203.0.113.10:41642");
+  await expect(historicalCandidates).toContainText("198.51.100.24:45321");
+  await expect(historicalCandidates).toContainText("Identity pending");
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `peer-relay-switching-history-${testInfo.project.name}.png`,
+    ),
     fullPage: true,
   });
 });
@@ -192,6 +282,10 @@ function relayTopology(resolved = false) {
         source: "client-a",
         target: targetID,
         path: relayPath,
+        pathState: "stable",
+        pathCandidates: [
+          { path: relayPath, lastObservedAt: observedAt, observerCount: 1 },
+        ],
         state: "active",
         aToBBytesPerSecond: 600,
         bToABytesPerSecond: 200,
@@ -215,6 +309,61 @@ function relayTopology(resolved = false) {
   };
 }
 
+function switchingTopology() {
+  return {
+    generatedAt: observedAt,
+    nodes: [
+      topologyNode("client-a", "client-a-stable", "r4se-istoreos", "resolved"),
+      topologyNode("client-b", "client-b-stable", "smallbox", "resolved"),
+      topologyNode(
+        "relay-node",
+        "relay-stable",
+        "aliyun-hangzhou-relay",
+        "resolved",
+      ),
+    ],
+    edges: [
+      {
+        id: "client-a--client-b",
+        source: "client-a",
+        target: "client-b",
+        path: relayPath,
+        pathState: "switching",
+        pathCandidates: [
+          { path: relayPath, lastObservedAt: observedAt, observerCount: 2 },
+          {
+            path: pendingRelayPath,
+            lastObservedAt: observedAt,
+            observerCount: 1,
+          },
+        ],
+        state: "active",
+        aToBBytesPerSecond: 16_200_000,
+        bToABytesPerSecond: 1_140_000,
+        lastActive: observedAt,
+        observations: [
+          {
+            observerId: "client-a",
+            path: relayPath,
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+          {
+            observerId: "client-b",
+            path: pendingRelayPath,
+            collectedAt: observedAt,
+            receivedAt: observedAt,
+            clockSkewed: false,
+          },
+        ],
+        conflicts: [pendingRelayPath],
+      },
+    ],
+    observers: [],
+  };
+}
+
 function topologyNode(
   id: string,
   stableNodeId: string,
@@ -227,7 +376,7 @@ function topologyNode(
     hostname,
     observable: id === "relay-node",
     online: id === "relay-node",
-    os: id === "relay-node" ? "linux" : undefined,
+    os: identityStatus === "resolved" ? "linux" : undefined,
     lastEvidenceAt: observedAt,
     clockSkewed: false,
     identityStatus,
@@ -290,6 +439,10 @@ function relayHistory() {
   const event = {
     observedAt,
     path: relayPath,
+    pathState: "stable",
+    pathCandidates: [
+      { path: relayPath, lastObservedAt: observedAt, observerCount: 1 },
+    ],
     conflicts: [],
     observations: [
       {
@@ -317,8 +470,8 @@ function relayHistory() {
         identityStatus: "resolved",
       },
     ],
-    from: "2026-08-26T03:00:00Z",
-    to: "2026-08-26T04:00:01Z",
+    from: historyFrom,
+    to: historyTo,
     bucketDurationMs: 30000,
     lastTrafficAt: observedAt,
     traffic: [{ bucketStart: observedAt, aToBBytes: 1200, bToABytes: 400 }],
@@ -326,6 +479,57 @@ function relayHistory() {
     pathEvents: [event],
     trafficTruncated: false,
     pathEventsTruncated: false,
+  };
+}
+
+function switchingHistory() {
+  const history = relayHistory();
+  const event = {
+    observedAt,
+    path: relayPath,
+    pathState: "switching",
+    pathCandidates: [
+      { path: relayPath, lastObservedAt: observedAt, observerCount: 2 },
+      {
+        path: pendingRelayPath,
+        lastObservedAt: observedAt,
+        observerCount: 1,
+      },
+    ],
+    conflicts: [pendingRelayPath],
+    observations: [
+      {
+        observerId: "client-a",
+        path: relayPath,
+        collectedAt: observedAt,
+        receivedAt: observedAt,
+        clockSkewed: false,
+      },
+      {
+        observerId: "client-b",
+        path: pendingRelayPath,
+        collectedAt: observedAt,
+        receivedAt: observedAt,
+        clockSkewed: false,
+      },
+    ],
+  } as const;
+  return {
+    ...history,
+    source: historyNode("client-a", "r4se-istoreos", "resolved"),
+    target: historyNode("client-b", "smallbox", "resolved"),
+    relatedNodes: [
+      historyNode("client-a", "r4se-istoreos", "resolved"),
+      historyNode("client-b", "smallbox", "resolved"),
+      {
+        id: "relay-node",
+        stableNodeId: "relay-stable",
+        label: "aliyun-hangzhou-relay",
+        identityStatus: "resolved",
+      },
+    ],
+    pathAnchor: undefined,
+    pathEvents: [event],
   };
 }
 

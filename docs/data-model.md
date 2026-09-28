@@ -72,8 +72,9 @@ never added. The reverse direction applies the symmetric priority.
 A relay session names relay observer R and scoped clients A and B. It creates
 only the A-B logical edge, with R retained as provenance and as the explicit
 relay node. Session ID, VNI, cumulative counters, and identity-resolution status
-remain as sanitized provenance. Underlay endpoints exist only while processing
-current runtime evidence and are stripped before every durable representation.
+remain as scoped provenance. Normalized public endpoints and selected relay
+`ip:port` values are durable evidence so a historical path can be reconstructed.
+They never enter the global alias map.
 Directional counters and source/target resolution status are both normalized
 to the canonical unordered edge direction: provenance source describes edge A
 and target describes edge B.
@@ -82,8 +83,9 @@ The aggregator checkpoints relay scopes by relay canonical ID and VNI. Each
 scope keeps bounded session-client bindings and, when available, one fresh
 unordered canonical endpoint pair. Session IDs and opaque client IDs remain
 nested in that scope; they never become global aliases. Short disco hints and
-underlay endpoints are not checkpointed. A scope can infer an unresolved client
-only when the other client already identifies one member of the fresh pair.
+their values are not checkpointed. Public endpoints and selected relay
+endpoints remain in node and path evidence. A scope can infer an unresolved
+client only when the other client already identifies one member of the fresh pair.
 VNI alone cannot choose either endpoint, and a second incompatible fresh pair
 marks the scope conflicted until that evidence ages out. Canonical merges
 rewrite all scoped bindings and persist redirects for historical resolution.
@@ -109,9 +111,13 @@ selecting the surviving identity and status.
 Fresh observations form a normalized path-evidence set. The current primary
 remains selected while supported; after it expires, endpoint observations
 outrank relay-side observations and canonical node IDs provide a deterministic
-tie-break. Other paths are exposed as sorted conflicts. Direct endpoint, relay
-VNI, session ID, and sample time remain provenance details and do not create a
-transition by themselves.
+tie-break. Other paths are exposed as sorted conflicts. Peer Relay evidence is
+keyed by StableNodeID when resolved, otherwise by selected endpoint, then VNI.
+Evidence for the same endpoint is enriched by a unique known StableNodeID;
+distinct fresh relay candidates produce `pathState: switching` and remain
+separately visible. Candidate projections preserve their last observation time
+and observer count. Relationship traffic is never copied or summed per
+candidate.
 
 An edge is active for ten seconds after a business byte delta, recent for two
 heartbeat intervals, and otherwise hidden. Rates become zero when the active

@@ -26,11 +26,12 @@ func TestSnapshotNormalizesIdentityCountersAndPaths(t *testing.T) {
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
 			relayKey: {
 				ID: "relay-stable", TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.8")},
+				Addrs: []string{"192.168.1.8:41641", "203.0.113.8:41641"},
 			},
 			peerKey: {
 				ID: "peer-stable", NodeID: tailcfg.NodeID(202), PublicKey: peerKey,
 				HostName: "peer", OS: "linux", RxBytes: 123, TxBytes: 456,
-				PeerRelay: "100.64.0.8:41641:vni:7", CurAddr: "192.0.2.5:41641", Relay: "hkg",
+				PeerRelay: "203.0.113.8:40000:vni:7", CurAddr: "192.0.2.5:41641", Relay: "hkg",
 			},
 		},
 	}
@@ -44,15 +45,60 @@ func TestSnapshotNormalizesIdentityCountersAndPaths(t *testing.T) {
 		t.Fatalf("observer = %#v", snapshot.Observer)
 	}
 	var peer exporter.PeerSnapshot
+	var relay exporter.PeerSnapshot
 	for _, candidate := range snapshot.Peers {
 		if candidate.Identity.StableNodeID == "peer-stable" {
 			peer = candidate
 		}
+		if candidate.Identity.StableNodeID == "relay-stable" {
+			relay = candidate
+		}
 	}
 	if peer.Identity.StableNodeID == "" || peer.RxBytes != 123 || peer.TxBytes != 456 ||
 		peer.Path.Kind != exporter.PathPeerRelay || peer.Path.PeerRelayStableNodeID != "relay-stable" ||
+		peer.Path.PeerRelayEndpoint != "203.0.113.8:40000" || peer.Path.PeerRelayResolution != "endpoint_match" ||
 		peer.Path.PeerRelayVNI == nil || *peer.Path.PeerRelayVNI != 7 {
 		t.Fatalf("peer = %#v", peer)
+	}
+	if got := relay.Identity.PublicEndpoints; len(got) != 1 || got[0] != "203.0.113.8:41641" {
+		t.Fatalf("relay public endpoints = %#v", got)
+	}
+}
+
+func TestRelayIdentitiesRequireUniquePublicIPOwnership(t *testing.T) {
+	firstKey := key.NewNode().Public()
+	secondKey := key.NewNode().Public()
+	status := &ipnstate.Status{Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+		firstKey:  {ID: "first", Addrs: []string{"198.51.100.9:41641"}},
+		secondKey: {ID: "second", Addrs: []string{"198.51.100.9:51234"}},
+	}}
+	if identity := RelayIdentities(status)["198.51.100.9"]; identity.StableNodeID != "" {
+		t.Fatalf("shared public IP resolved to %#v", identity)
+	}
+	status.Peer[secondKey].Addrs = []string{"198.51.100.10:41641"}
+	if identity := RelayIdentities(status)["198.51.100.9"]; identity.StableNodeID != "first" || identity.Resolution != "endpoint_match" {
+		t.Fatalf("unique public IP resolved to %#v", identity)
+	}
+}
+
+func TestRelayIdentitiesMarkExactTailscaleIPResolution(t *testing.T) {
+	peerKey := key.NewNode().Public()
+	status := &ipnstate.Status{Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+		peerKey: {ID: "relay", TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.8")}},
+	}}
+	identity := RelayIdentities(status)["100.64.0.8"]
+	if identity.StableNodeID != "relay" || identity.Resolution != "tailscale_ip" {
+		t.Fatalf("Tailscale IP resolution = %#v", identity)
+	}
+}
+
+func TestPublicEndpointsKeepOnlyNormalizedPublicAddresses(t *testing.T) {
+	peer := &ipnstate.PeerStatus{Addrs: []string{
+		"192.168.1.8:41641", "100.64.0.8:41641", "203.0.113.8:41641", "[2001:4860:4860::8888]:41641",
+	}}
+	got := PublicEndpoints(peer)
+	if len(got) != 2 || got[0] != "203.0.113.8:41641" || got[1] != "[2001:4860:4860::8888]:41641" {
+		t.Fatalf("public endpoints = %#v", got)
 	}
 }
 
@@ -69,7 +115,7 @@ func TestPathPrecedenceAndUnknown(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Path(&test.peer, map[string]string{"100.64.0.8": "relay"}).Kind; got != test.want {
+			if got := Path(&test.peer, map[string]RelayIdentity{"100.64.0.8": {StableNodeID: "relay", Resolution: "tailscale_ip"}}).Kind; got != test.want {
 				t.Fatalf("path = %q, want %q", got, test.want)
 			}
 		})

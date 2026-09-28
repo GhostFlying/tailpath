@@ -1,6 +1,8 @@
 import type { ElementDefinition } from "cytoscape";
 import type {
+  PathCandidate,
   PathKind,
+  PathObservation,
   Topology,
   TopologyEdge,
   TopologyNode,
@@ -40,7 +42,10 @@ export function buildElements(
     ),
   );
   const intermediates = new Map(
-    visibleEdges.map((edge) => [edge.id, intermediateFor(edge, stableNodeMap)]),
+    visibleEdges.map((edge) => [
+      edge.id,
+      intermediatesFor(edge, stableNodeMap),
+    ]),
   );
   const relevantNodeIDs = visibleTopologyNodeIDs(
     topology,
@@ -49,7 +54,7 @@ export function buildElements(
   );
   const peerRelayNodeIDs = new Set(
     [...intermediates.values()]
-      .map((intermediate) => intermediate?.nodeID)
+      .flatMap((values) => values.map((intermediate) => intermediate.nodeID))
       .filter((id): id is string => Boolean(id)),
   );
   const elements: ElementDefinition[] = topology.nodes
@@ -61,33 +66,62 @@ export function buildElements(
   const activeIntermediateIDs = new Set(
     visibleEdges
       .filter((edge) => edge.state === "active")
-      .map((edge) => intermediates.get(edge.id)?.id)
+      .flatMap((edge) =>
+        (intermediates.get(edge.id) ?? []).map(
+          (intermediate) => intermediate.id,
+        ),
+      )
       .filter((id): id is string => Boolean(id)),
   );
 
   for (const edge of visibleEdges) {
-    const intermediate = intermediates.get(edge.id);
-    if (!intermediate) {
-      elements.push(edgeElement(edge, edge.source, edge.target, "main"));
+    const edgeIntermediates = intermediates.get(edge.id) ?? [];
+    if (!edgeIntermediates.length) {
+      elements.push(edgeElement(edge, edge.source, edge.target, "main", true));
       continue;
     }
-    if (!nodeMap.has(intermediate.id) && !virtualNodes.has(intermediate.id)) {
-      elements.push({
-        group: "nodes",
-        data: {
-          id: intermediate.id,
-          label: intermediate.label,
-          kind: intermediate.kind,
-          logicalEdgeId: intermediate.logicalEdgeId,
-        },
-        classes: `${intermediate.classes} ${
-          activeIntermediateIDs.has(intermediate.id) ? "active" : "recent"
-        }`,
-      });
-      virtualNodes.add(intermediate.id);
-    }
-    elements.push(edgeElement(edge, edge.source, intermediate.id, "source"));
-    elements.push(edgeElement(edge, intermediate.id, edge.target, "target"));
+    edgeIntermediates.forEach((intermediate, index) => {
+      if (!nodeMap.has(intermediate.id) && !virtualNodes.has(intermediate.id)) {
+        elements.push({
+          group: "nodes",
+          data: {
+            id: intermediate.id,
+            label: intermediate.label,
+            kind: intermediate.kind,
+            logicalEdgeId: intermediate.logicalEdgeId,
+            candidateState: intermediate.candidateState,
+          },
+          classes: `${intermediate.classes} ${
+            activeIntermediateIDs.has(intermediate.id) ? "active" : "recent"
+          }`,
+        });
+        virtualNodes.add(intermediate.id);
+      }
+      const candidateClass =
+        edgeIntermediates.length > 1
+          ? `switching-candidate ${intermediate.candidateState}`
+          : "";
+      elements.push(
+        edgeElement(
+          edge,
+          edge.source,
+          intermediate.id,
+          `candidate-${index}-source`,
+          index === 0,
+          candidateClass,
+        ),
+      );
+      elements.push(
+        edgeElement(
+          edge,
+          intermediate.id,
+          edge.target,
+          `candidate-${index}-target`,
+          false,
+          candidateClass,
+        ),
+      );
+    });
   }
   return elements;
 }
@@ -109,8 +143,9 @@ export function visibleTopologyNodeIDs(
     ),
   );
   for (const edge of visibleEdges) {
-    const intermediate = intermediateFor(edge, nodesByStableID);
-    if (intermediate?.nodeID) result.add(intermediate.nodeID);
+    for (const intermediate of intermediatesFor(edge, nodesByStableID)) {
+      if (intermediate.nodeID) result.add(intermediate.nodeID);
+    }
   }
   return result;
 }
@@ -206,41 +241,96 @@ function nodeIconLayers(
     : {};
 }
 
-function intermediateFor(
+interface PathIntermediate {
+  id: string;
+  label: string;
+  kind: string;
+  classes: string;
+  logicalEdgeId?: string;
+  nodeID?: string;
+  candidateState?: "identified" | "pending";
+}
+
+function intermediatesFor(
   edge: TopologyEdge,
   nodesByStableID: Map<string, TopologyNode>,
-) {
+): PathIntermediate[] {
   if (edge.path.kind === "derp") {
     const region = edge.path.derpRegion || "unknown";
-    return {
-      id: `derp:${region}`,
-      label: `DERP ${region}`,
-      kind: "derp",
-      classes: "relay-node derp",
-    };
+    return [
+      {
+        id: `derp:${region}`,
+        label: `DERP ${region}`,
+        kind: "derp",
+        classes: "relay-node derp",
+      },
+    ];
   }
   if (edge.path.kind === "peer_relay") {
-    const stableID = edge.path.peerRelayStableNodeId;
-    const node = stableID ? nodesByStableID.get(stableID) : undefined;
-    return {
-      id: node?.id || `peer-relay:${stableID || "unknown"}`,
-      label: node ? nodeLabel(node) : "Peer Relay",
-      kind: "peer-relay",
-      classes: "relay-node peer-relay",
-      nodeID: node?.id,
-      vni: edge.path.peerRelayVni,
-    };
+    return peerRelayCandidates(edge).map((candidate) => {
+      const stableID = candidate.path.peerRelayStableNodeId;
+      const node = stableID ? nodesByStableID.get(stableID) : undefined;
+      const key = peerRelayCandidateKey(candidate.path);
+      const candidateState = stableID ? "identified" : "pending";
+      return {
+        id:
+          node?.id ||
+          (stableID
+            ? `peer-relay:${stableID}`
+            : `peer-relay:${edge.id}:${encodeURIComponent(key)}`),
+        label: node ? nodeLabel(node) : "Peer Relay",
+        kind: "peer-relay",
+        classes: `relay-node peer-relay candidate-${candidateState}`,
+        logicalEdgeId: node ? undefined : edge.id,
+        nodeID: node?.id,
+        candidateState,
+      };
+    });
   }
   if (edge.path.kind === "unknown") {
-    return {
-      id: `unknown-marker:${edge.id}`,
-      label: "?",
-      kind: "unknown",
-      classes: "path-marker unknown-marker",
-      logicalEdgeId: edge.id,
-    };
+    return [
+      {
+        id: `unknown-marker:${edge.id}`,
+        label: "?",
+        kind: "unknown",
+        classes: "path-marker unknown-marker",
+        logicalEdgeId: edge.id,
+      },
+    ];
   }
-  return null;
+  return [];
+}
+
+export function peerRelayCandidates(edge: TopologyEdge): PathCandidate[] {
+  const supplied = edge.pathCandidates?.filter(
+    (candidate) => candidate.path.kind === "peer_relay",
+  );
+  if (supplied?.length) return supplied;
+  const paths = [edge.path, ...(edge.conflicts ?? [])].filter(
+    (path) => path.kind === "peer_relay",
+  );
+  const seen = new Set<string>();
+  return paths.flatMap((path) => {
+    const key = peerRelayCandidateKey(path);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    const matching = edge.observations.filter(
+      (observation) => peerRelayCandidateKey(observation.path) === key,
+    );
+    const lastObservedAt = matching.reduce(
+      (latest, observation) =>
+        observation.receivedAt > latest ? observation.receivedAt : latest,
+      edge.lastActive,
+    );
+    return [{ path, lastObservedAt, observerCount: matching.length }];
+  });
+}
+
+export function peerRelayCandidateKey(path: PathObservation): string {
+  if (path.peerRelayStableNodeId) return `node:${path.peerRelayStableNodeId}`;
+  if (path.peerRelayEndpoint) return `endpoint:${path.peerRelayEndpoint}`;
+  if (path.peerRelayVni !== undefined) return `vni:${path.peerRelayVni}`;
+  return "unknown";
 }
 
 function edgeElement(
@@ -248,11 +338,12 @@ function edgeElement(
   source: string,
   target: string,
   segment: string,
+  showLabel: boolean,
+  candidateClass = "",
 ): ElementDefinition {
   const totalRate = edge.aToBBytesPerSecond + edge.bToABytesPerSecond;
   const isActive = edge.state === "active";
-  const label =
-    isActive && segment !== "target" ? formatCompactRate(totalRate) : "";
+  const label = isActive && showLabel ? formatCompactRate(totalRate) : "";
   return {
     group: "edges",
     data: {
@@ -267,6 +358,7 @@ function edgeElement(
     classes: [
       edge.path.kind,
       edge.state,
+      candidateClass,
       isActive && edge.aToBBytesPerSecond > 0 ? "flow-forward" : "",
       isActive && edge.bToABytesPerSecond > 0 ? "flow-reverse" : "",
     ].join(" "),

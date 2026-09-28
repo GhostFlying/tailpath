@@ -60,6 +60,19 @@ const (
 	Unknown   PathKind = "unknown"
 )
 
+// Defines values for PathObservationPeerRelayResolution.
+const (
+	EndpointMatch PathObservationPeerRelayResolution = "endpoint_match"
+	RelaySession  PathObservationPeerRelayResolution = "relay_session"
+	TailscaleIp   PathObservationPeerRelayResolution = "tailscale_ip"
+)
+
+// Defines values for PathState.
+const (
+	Stable    PathState = "stable"
+	Switching PathState = "switching"
+)
+
 // Defines values for ReportKind.
 const (
 	InventoryUpdate    ReportKind = "inventory_update"
@@ -222,9 +235,12 @@ type NodeIdentity struct {
 	NodeKey  *string `json:"nodeKey,omitempty"`
 
 	// Os Reported operating system for display only; never identity evidence.
-	Os           *string   `json:"os,omitempty"`
-	StableNodeId *string   `json:"stableNodeId,omitempty"`
-	TailscaleIps *[]string `json:"tailscaleIps,omitempty"`
+	Os *string `json:"os,omitempty"`
+
+	// PublicEndpoints Passive public ip:port endpoint candidates observed for this node. They are durable path evidence and never canonical identity aliases.
+	PublicEndpoints *[]string `json:"publicEndpoints,omitempty"`
+	StableNodeId    *string   `json:"stableNodeId,omitempty"`
+	TailscaleIps    *[]string `json:"tailscaleIps,omitempty"`
 }
 
 // ObservationProvenance defines model for ObservationProvenance.
@@ -235,7 +251,7 @@ type ObservationProvenance struct {
 	Path        PathObservation `json:"path"`
 	ReceivedAt  time.Time       `json:"receivedAt"`
 
-	// RelaySession Sanitized third-party provenance; underlay endpoints are never exposed.
+	// RelaySession Scoped third-party provenance. Short disco values and relay-client endpoints are omitted from this projection; selected Peer Relay endpoints are exposed through PathObservation.
 	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
 }
 
@@ -260,12 +276,21 @@ type ObserverState struct {
 	Online          bool      `json:"online"`
 }
 
+// PathCandidate defines model for PathCandidate.
+type PathCandidate struct {
+	LastObservedAt time.Time       `json:"lastObservedAt"`
+	ObserverCount  int             `json:"observerCount"`
+	Path           PathObservation `json:"path"`
+}
+
 // PathEvent defines model for PathEvent.
 type PathEvent struct {
-	Conflicts    []PathObservation       `json:"conflicts"`
-	Observations []ObservationProvenance `json:"observations"`
-	ObservedAt   time.Time               `json:"observedAt"`
-	Path         PathObservation         `json:"path"`
+	Conflicts      []PathObservation       `json:"conflicts"`
+	Observations   []ObservationProvenance `json:"observations"`
+	ObservedAt     time.Time               `json:"observedAt"`
+	Path           PathObservation         `json:"path"`
+	PathCandidates *[]PathCandidate        `json:"pathCandidates,omitempty"`
+	PathState      *PathState              `json:"pathState,omitempty"`
 }
 
 // PathKind defines model for PathKind.
@@ -273,12 +298,22 @@ type PathKind string
 
 // PathObservation defines model for PathObservation.
 type PathObservation struct {
-	DerpRegion            *string  `json:"derpRegion,omitempty"`
-	DirectEndpoint        *string  `json:"directEndpoint,omitempty"`
-	Kind                  PathKind `json:"kind"`
-	PeerRelayStableNodeId *string  `json:"peerRelayStableNodeId,omitempty"`
-	PeerRelayVni          *int64   `json:"peerRelayVni,omitempty"`
+	DerpRegion     *string  `json:"derpRegion,omitempty"`
+	DirectEndpoint *string  `json:"directEndpoint,omitempty"`
+	Kind           PathKind `json:"kind"`
+
+	// PeerRelayEndpoint Normalized selected Peer Relay underlay ip:port.
+	PeerRelayEndpoint     *string                             `json:"peerRelayEndpoint,omitempty"`
+	PeerRelayResolution   *PathObservationPeerRelayResolution `json:"peerRelayResolution,omitempty"`
+	PeerRelayStableNodeId *string                             `json:"peerRelayStableNodeId,omitempty"`
+	PeerRelayVni          *int64                              `json:"peerRelayVni,omitempty"`
 }
+
+// PathObservationPeerRelayResolution defines model for PathObservation.PeerRelayResolution.
+type PathObservationPeerRelayResolution string
+
+// PathState defines model for PathState.
+type PathState string
 
 // PeerObservation defines model for PeerObservation.
 type PeerObservation struct {
@@ -307,7 +342,7 @@ type Problem struct {
 type RelaySessionClient struct {
 	DiscoShort *string `json:"discoShort,omitempty"`
 
-	// Endpoint Current underlay endpoint; accepted only as volatile provenance.
+	// Endpoint Current underlay endpoint; durable scoped provenance, never a global alias.
 	Endpoint *string `json:"endpoint,omitempty"`
 
 	// Identity At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
@@ -336,7 +371,7 @@ type RelaySessionObservation struct {
 	Vni                 int64              `json:"vni"`
 }
 
-// RelaySessionProvenance Sanitized third-party provenance; underlay endpoints are never exposed.
+// RelaySessionProvenance Scoped third-party provenance. Short disco values and relay-client endpoints are omitted from this projection; selected Peer Relay endpoints are exposed through PathObservation.
 type RelaySessionProvenance struct {
 	SessionId            string         `json:"sessionId"`
 	SourceIdentityStatus IdentityStatus `json:"sourceIdentityStatus"`
@@ -393,6 +428,8 @@ type TopologyEdge struct {
 	LastActive         time.Time               `json:"lastActive"`
 	Observations       []ObservationProvenance `json:"observations"`
 	Path               PathObservation         `json:"path"`
+	PathCandidates     *[]PathCandidate        `json:"pathCandidates,omitempty"`
+	PathState          *PathState              `json:"pathState,omitempty"`
 	Source             string                  `json:"source"`
 	State              TopologyEdgeState       `json:"state"`
 
@@ -420,9 +457,12 @@ type TopologyNode struct {
 	Online         bool                 `json:"online"`
 
 	// Os Reported operating system for display only; never identity evidence.
-	Os           *string   `json:"os,omitempty"`
-	StableNodeId *string   `json:"stableNodeId,omitempty"`
-	TailscaleIps *[]string `json:"tailscaleIps,omitempty"`
+	Os *string `json:"os,omitempty"`
+
+	// PublicEndpoints Passive public ip:port endpoint candidates observed for this node. They are durable path evidence and never canonical identity aliases.
+	PublicEndpoints *[]string `json:"publicEndpoints,omitempty"`
+	StableNodeId    *string   `json:"stableNodeId,omitempty"`
+	TailscaleIps    *[]string `json:"tailscaleIps,omitempty"`
 }
 
 // TrafficBucket defines model for TrafficBucket.
