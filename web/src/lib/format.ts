@@ -66,6 +66,12 @@ export function pathLabel(path: PathObservation): string {
   }
 }
 
+export function unresolvedPeerRelayLabel(path: PathObservation): string {
+  return path.peerRelayVni === undefined
+    ? "Unresolved relay"
+    : `Unresolved relay · VNI ${path.peerRelayVni}`;
+}
+
 export function nodeLabel(node: TopologyNode): string {
   const dnsName = node.dnsName?.replace(/\.$/, "");
   return dnsName?.split(".", 1)[0] || node.hostname || node.id;

@@ -5,6 +5,7 @@ import {
   nodeLabel,
   pathLabel,
   runtimeReportingLabel,
+  unresolvedPeerRelayLabel,
 } from "./format";
 
 describe("formatRate", () => {
@@ -38,6 +39,14 @@ describe("runtimeReportingLabel", () => {
 describe("pathLabel", () => {
   it("includes a DERP region when known", () => {
     expect(pathLabel({ kind: "derp", derpRegion: "hkg" })).toBe("DERP hkg");
+  });
+});
+
+describe("unresolvedPeerRelayLabel", () => {
+  it("distinguishes an unresolved relay candidate by VNI", () => {
+    expect(
+      unresolvedPeerRelayLabel({ kind: "peer_relay", peerRelayVni: 8 }),
+    ).toBe("Unresolved relay · VNI 8");
   });
 });
 

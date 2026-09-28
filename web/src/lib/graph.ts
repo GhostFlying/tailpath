@@ -7,7 +7,11 @@ import type {
   TopologyEdge,
   TopologyNode,
 } from "../api/types";
-import { formatCompactRate, nodeLabel } from "./format";
+import {
+  formatCompactRate,
+  nodeLabel,
+  unresolvedPeerRelayLabel,
+} from "./format";
 import { identityPresentation, unresolvedNodeLabel } from "./identity";
 import { platformPresentation } from "./platform";
 
@@ -278,7 +282,9 @@ function intermediatesFor(
           (stableID
             ? `peer-relay:${stableID}`
             : `peer-relay:${edge.id}:${encodeURIComponent(key)}`),
-        label: node ? nodeLabel(node) : "Peer Relay",
+        label: node
+          ? nodeLabel(node)
+          : unresolvedPeerRelayLabel(candidate.path),
         kind: "peer-relay",
         classes: `relay-node peer-relay candidate-${candidateState}`,
         logicalEdgeId: node ? undefined : edge.id,

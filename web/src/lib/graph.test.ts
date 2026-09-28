@@ -260,7 +260,7 @@ describe("buildElements", () => {
     expect(
       nodes.find((element) => element.data?.candidateState === "pending")?.data
         ?.label,
-    ).toBe("Peer Relay");
+    ).toBe("Unresolved relay · VNI 8");
     expect(edges).toHaveLength(4);
     expect(edges.filter((element) => element.data?.label)).toHaveLength(1);
     expect(
