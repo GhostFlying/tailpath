@@ -52,6 +52,13 @@ const (
 	TailscaleIps MetadataConflictField = "tailscaleIps"
 )
 
+// Defines values for PathEvidence.
+const (
+	Inferred PathEvidence = "inferred"
+	Legacy   PathEvidence = "legacy"
+	Observed PathEvidence = "observed"
+)
+
 // Defines values for PathKind.
 const (
 	Derp      PathKind = "derp"
@@ -93,6 +100,20 @@ const (
 type DeviceDirectory struct {
 	Devices []DirectoryDevice  `json:"devices"`
 	Sync    DirectorySyncState `json:"sync"`
+}
+
+// DirectionalPathState defines model for DirectionalPathState.
+type DirectionalPathState struct {
+	ClockSkewed   bool             `json:"clockSkewed"`
+	CollectedAt   time.Time        `json:"collectedAt"`
+	Evidence      PathEvidence     `json:"evidence"`
+	FallbackPath  *PathObservation `json:"fallbackPath,omitempty"`
+	FromNodeId    string           `json:"fromNodeId"`
+	InferenceRule *string          `json:"inferenceRule,omitempty"`
+	ObserverId    string           `json:"observerId"`
+	PrimaryPath   PathObservation  `json:"primaryPath"`
+	ReceivedAt    time.Time        `json:"receivedAt"`
+	ToNodeId      string           `json:"toNodeId"`
 }
 
 // DirectoryDevice defines model for DirectoryDevice.
@@ -245,11 +266,14 @@ type NodeIdentity struct {
 
 // ObservationProvenance defines model for ObservationProvenance.
 type ObservationProvenance struct {
-	ClockSkewed bool            `json:"clockSkewed"`
-	CollectedAt time.Time       `json:"collectedAt"`
-	ObserverId  string          `json:"observerId"`
-	Path        PathObservation `json:"path"`
-	ReceivedAt  time.Time       `json:"receivedAt"`
+	ClockSkewed       bool             `json:"clockSkewed"`
+	CollectedAt       time.Time        `json:"collectedAt"`
+	FallbackPath      *PathObservation `json:"fallbackPath,omitempty"`
+	ObserverId        string           `json:"observerId"`
+	Path              PathObservation  `json:"path"`
+	PathEvidence      *PathEvidence    `json:"pathEvidence,omitempty"`
+	PathInferenceRule *string          `json:"pathInferenceRule,omitempty"`
+	ReceivedAt        time.Time        `json:"receivedAt"`
 
 	// RelaySession Scoped third-party provenance. Short disco values and relay-client endpoints are omitted from this projection; selected Peer Relay endpoints are exposed through PathObservation.
 	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
@@ -286,12 +310,23 @@ type PathCandidate struct {
 // PathEvent defines model for PathEvent.
 type PathEvent struct {
 	Conflicts      []PathObservation       `json:"conflicts"`
+	Directions     *[]DirectionalPathState `json:"directions,omitempty"`
 	Observations   []ObservationProvenance `json:"observations"`
 	ObservedAt     time.Time               `json:"observedAt"`
 	Path           PathObservation         `json:"path"`
 	PathCandidates *[]PathCandidate        `json:"pathCandidates,omitempty"`
 	PathState      *PathState              `json:"pathState,omitempty"`
 }
+
+// PathEventPage defines model for PathEventPage.
+type PathEventPage struct {
+	Anchor     *PathEvent  `json:"anchor,omitempty"`
+	Events     []PathEvent `json:"events"`
+	NextCursor *string     `json:"nextCursor,omitempty"`
+}
+
+// PathEvidence defines model for PathEvidence.
+type PathEvidence string
 
 // PathKind defines model for PathKind.
 type PathKind string
@@ -317,8 +352,13 @@ type PathState string
 
 // PeerObservation defines model for PeerObservation.
 type PeerObservation struct {
-	LastActive time.Time       `json:"lastActive"`
-	Path       PathObservation `json:"path"`
+	FallbackPath *PathObservation `json:"fallbackPath,omitempty"`
+	LastActive   time.Time        `json:"lastActive"`
+	Path         PathObservation  `json:"path"`
+	PathEvidence *PathEvidence    `json:"pathEvidence,omitempty"`
+
+	// PathInferenceRule Versioned rule used when pathEvidence is inferred.
+	PathInferenceRule *string `json:"pathInferenceRule,omitempty"`
 
 	// Peer At least one stableNodeId, nodeId, nodeKey, discoKey, or Tailscale IP is required. Names are display fields and never merge nodes.
 	Peer    NodeIdentity `json:"peer"`
@@ -424,6 +464,7 @@ type TopologyEdge struct {
 	AToBBytesPerSecond float64                 `json:"aToBBytesPerSecond"`
 	BToABytesPerSecond float64                 `json:"bToABytesPerSecond"`
 	Conflicts          *[]PathObservation      `json:"conflicts,omitempty"`
+	Directions         *[]DirectionalPathState `json:"directions,omitempty"`
 	Id                 string                  `json:"id"`
 	LastActive         time.Time               `json:"lastActive"`
 	Observations       []ObservationProvenance `json:"observations"`
@@ -495,6 +536,16 @@ type GetEdgeHistoryParams struct {
 
 	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
 	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
+}
+
+// GetEdgePathHistoryParams defines parameters for GetEdgePathHistory.
+type GetEdgePathHistoryParams struct {
+	Window HistoryWindow `form:"window" json:"window"`
+
+	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
+	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
+	Cursor                 *string                 `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit                  *int                    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetHistoryNodesParams defines parameters for GetHistoryNodes.

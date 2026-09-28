@@ -24,7 +24,7 @@ Tailpath never logs auth keys or complete report bodies. Public endpoints from
 ordinary direct-path observations, node identifiers, traffic history, passive
 node endpoint candidates, and selected Peer Relay endpoints remain in the local
 SQLite database. Authenticated topology and History responses may expose these
-public `ip:port` values so switching evidence can be reconstructed accurately.
+public `ip:port` values so directional and fallback evidence can be reconstructed accurately.
 Endpoints remain scoped evidence and never become global identity aliases.
 Short disco hints are replaced by a constant presence marker in the raw report
 journal, preserving `partial` replay semantics without retaining the value;
@@ -34,6 +34,9 @@ never written to logs. There is no outbound product telemetry.
 The SQLite database, backups, authenticated API responses, and operator
 diagnostic exports therefore contain sensitive Tailnet network metadata and
 must use access and retention controls appropriate for traffic history.
+Directional records also retain whether a path was observed, inferred by a
+named rule, or reconstructed as legacy evidence. They do not contain packet
+contents and do not require active probing.
 
 Reporters are responsible for generating opaque relay session and scoped
 client IDs that contain no endpoint, hostname, Tailnet suffix, or credential.

@@ -108,16 +108,18 @@ decode with an empty status, so v0.3 requires no numbered schema migration.
 History node search, edge summaries, and details resolve redirects before
 selecting the surviving identity and status.
 
-Fresh observations form a normalized path-evidence set. The current primary
-remains selected while supported; after it expires, endpoint observations
-outrank relay-side observations and canonical node IDs provide a deterministic
-tie-break. Other paths are exposed as sorted conflicts. Peer Relay evidence is
-keyed by StableNodeID when resolved, otherwise by selected endpoint, then VNI.
-Evidence for the same endpoint is enriched by a unique known StableNodeID;
-distinct fresh relay candidates produce `pathState: switching` and remain
-separately visible. Candidate projections preserve their last observation time
-and observer count. Relationship traffic is never copied or summed per
-candidate.
+A logical edge stores up to two directional states keyed by endpoint order.
+Only the source endpoint's own observation selects a direction's primary and
+optional DERP fallback. Third-party relay-session evidence can enrich a relay
+StableNodeID but cannot select the path. Directional evidence is labeled
+`observed`, `inferred`, or `legacy` and includes its observer and collection,
+receipt, clock-skew, and versioned inference metadata. Peer Relay identity uses
+StableNodeID when resolved, otherwise selected endpoint, then VNI. Relationship
+traffic stays on the edge and is never copied onto primary or fallback routes.
+
+The previous sticky primary, conflicts, `pathState`, and `pathCandidates`
+remain compatibility projections. They are not the source of truth for new
+Live or History rendering.
 
 An edge is active for ten seconds after a business byte delta, recent for two
 heartbeat intervals, and otherwise hidden. Rates become zero when the active
@@ -146,6 +148,13 @@ events in time order and removes adjacent events whose primary/conflict keys
 are equivalent, preserving the earliest event as the window anchor. History
 node, list, and detail queries exclude system telemetry by default; the
 diagnostic query option includes it without changing stored provenance.
+
+Schema migration 6 adds a directional JSON column to path events and derives
+best-effort endpoint directions from retained provenance. Derived rows are
+marked `legacy` and never invent a fallback. New events persist both directions
+and their evidence exactly. A dedicated `(observed_at, id)` keyset-paginated
+endpoint exposes every transition in a selected window; the older embedded
+500-event detail field remains for compatibility.
 
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including

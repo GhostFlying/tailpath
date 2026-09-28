@@ -29,7 +29,8 @@ Tailpath 不是 ACL 可视化器、Admin Console、抓包工具、网络配置�
 ## 产品边界
 
 首个稳定版本面向单 Tailnet、单服务实例、250 个已知节点和 1000 条可见
-active/recent edge。无法观察的信息保持 Unknown，不推断未观察到的数据路径。
+active/recent edge。无法观察的信息保持 Unknown，不虚构未观察到的数据路径；对被动
+status 变化所做的有界解释必须明确标注为 inferred。
 
 Directory device 不代表设备在线、可观察或正在通信。Live 始终是 runtime data-plane
 view；Devices workspace 是可选控制面目录，connected-to-control 与 Tailpath runtime

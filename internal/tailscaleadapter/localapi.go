@@ -15,15 +15,16 @@ import (
 )
 
 type LocalSource struct {
-	client *local.Client
+	client  *local.Client
+	tracker *tailscalestatus.Tracker
 }
 
 func NewLocalSource(socket string) *LocalSource {
-	return &LocalSource{client: &local.Client{Socket: socket, UseSocketOnly: socket != ""}}
+	return &LocalSource{client: &local.Client{Socket: socket, UseSocketOnly: socket != ""}, tracker: tailscalestatus.NewTracker()}
 }
 
 func NewLocalSourceWithClient(client *local.Client) *LocalSource {
-	return &LocalSource{client: client}
+	return &LocalSource{client: client, tracker: tailscalestatus.NewTracker()}
 }
 
 func (s *LocalSource) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
@@ -31,7 +32,7 @@ func (s *LocalSource) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 	if err != nil {
 		return exporter.Snapshot{}, err
 	}
-	return tailscalestatus.Snapshot(status, time.Now())
+	return s.tracker.Snapshot(status, time.Now())
 }
 
 func (s *LocalSource) Diagnostic(ctx context.Context) (collector.Diagnostic, error) {

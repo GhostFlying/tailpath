@@ -15,7 +15,32 @@ import (
 	"github.com/GhostFlying/tailpath/exporter"
 )
 
+const (
+	FallbackInferenceWindow = 12 * time.Second
+	FallbackInferenceRule   = "tailscale-status-fallback-v1"
+)
+
+type fallbackState struct {
+	path       exporter.Path
+	observedAt time.Time
+}
+
+// Tracker adds bounded, versioned fallback inference to otherwise stateless
+// Tailscale status normalization. Its timestamps are local process values and
+// retain Go's monotonic clock component while the process is running.
+type Tracker struct {
+	lastRelay map[string]fallbackState
+}
+
+func NewTracker() *Tracker {
+	return &Tracker{lastRelay: make(map[string]fallbackState)}
+}
+
 func Snapshot(status *ipnstate.Status, collectedAt time.Time) (exporter.Snapshot, error) {
+	return NewTracker().Snapshot(status, collectedAt)
+}
+
+func (tracker *Tracker) Snapshot(status *ipnstate.Status, collectedAt time.Time) (exporter.Snapshot, error) {
 	if status == nil {
 		return exporter.Snapshot{}, errors.New("tailscale status is unavailable")
 	}
@@ -32,14 +57,54 @@ func Snapshot(status *ipnstate.Status, collectedAt time.Time) (exporter.Snapshot
 		if peer == nil {
 			continue
 		}
+		path := Path(peer, relays)
+		path, fallback, evidence, rule := tracker.classifyPath(peer, path, collectedAt)
 		snapshot.Peers = append(snapshot.Peers, exporter.PeerSnapshot{
-			Identity: PeerIdentity(peer),
-			RxBytes:  peer.RxBytes,
-			TxBytes:  peer.TxBytes,
-			Path:     Path(peer, relays),
+			Identity:          PeerIdentity(peer),
+			RxBytes:           peer.RxBytes,
+			TxBytes:           peer.TxBytes,
+			Path:              path,
+			FallbackPath:      fallback,
+			PathEvidence:      evidence,
+			PathInferenceRule: rule,
 		})
 	}
 	return snapshot, nil
+}
+
+func (tracker *Tracker) classifyPath(
+	peer *ipnstate.PeerStatus,
+	path exporter.Path,
+	observedAt time.Time,
+) (exporter.Path, *exporter.Path, exporter.PathEvidence, string) {
+	key := peerIdentityKey(peer)
+	switch path.Kind {
+	case exporter.PathPeerRelay:
+		tracker.lastRelay[key] = fallbackState{path: path, observedAt: observedAt}
+		return path, nil, exporter.PathEvidenceObserved, ""
+	case exporter.PathDirect, exporter.PathUnknown:
+		delete(tracker.lastRelay, key)
+		return path, nil, exporter.PathEvidenceObserved, ""
+	case exporter.PathDERP:
+		previous, ok := tracker.lastRelay[key]
+		if !ok {
+			return path, nil, exporter.PathEvidenceObserved, ""
+		}
+		elapsed := observedAt.Sub(previous.observedAt)
+		if elapsed >= 0 && elapsed <= FallbackInferenceWindow {
+			fallback := path
+			return previous.path, &fallback, exporter.PathEvidenceInferred, FallbackInferenceRule
+		}
+		return path, nil, exporter.PathEvidenceInferred, FallbackInferenceRule
+	default:
+		delete(tracker.lastRelay, key)
+		return path, nil, exporter.PathEvidenceObserved, ""
+	}
+}
+
+func peerIdentityKey(peer *ipnstate.PeerStatus) string {
+	identity := PeerIdentity(peer)
+	return identity.IdentityKey()
 }
 
 func NormalizeOS(value string) string {

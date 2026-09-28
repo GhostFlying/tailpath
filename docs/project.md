@@ -33,7 +33,8 @@ do not require a Tailpath agent.
 
 The first stable release targets one self-hosted server, one Tailnet, 250 known
 nodes, and 1,000 visible active/recent edges. Missing observations stay unknown;
-Tailpath does not infer an unobserved data path.
+Tailpath does not invent an unobserved data path. Any bounded interpretation of
+passively observed status transitions is explicitly labeled inferred.
 
 A directory device is not evidence that the device is online, observable, or
 communicating. Live remains a runtime data-plane view. The Devices workspace is

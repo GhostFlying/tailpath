@@ -66,6 +66,14 @@ const (
 	PathUnknown   PathKind = "unknown"
 )
 
+type PathEvidence string
+
+const (
+	PathEvidenceObserved PathEvidence = "observed"
+	PathEvidenceInferred PathEvidence = "inferred"
+	PathEvidenceLegacy   PathEvidence = "legacy"
+)
+
 type EdgeState string
 
 const (
@@ -160,14 +168,17 @@ func equalOptionalInt64(left, right *int64) bool {
 }
 
 type PeerObservation struct {
-	Peer             NodeIdentity    `json:"peer"`
-	RxBytes          int64           `json:"rxBytes"`
-	TxBytes          int64           `json:"txBytes"`
-	RxDelta          int64           `json:"rxDelta"`
-	TxDelta          int64           `json:"txDelta"`
-	SampleDurationMS int64           `json:"sampleDurationMs"`
-	Path             PathObservation `json:"path"`
-	LastActive       time.Time       `json:"lastActive"`
+	Peer              NodeIdentity     `json:"peer"`
+	RxBytes           int64            `json:"rxBytes"`
+	TxBytes           int64            `json:"txBytes"`
+	RxDelta           int64            `json:"rxDelta"`
+	TxDelta           int64            `json:"txDelta"`
+	SampleDurationMS  int64            `json:"sampleDurationMs"`
+	Path              PathObservation  `json:"path"`
+	FallbackPath      *PathObservation `json:"fallbackPath,omitempty"`
+	PathEvidence      PathEvidence     `json:"pathEvidence,omitempty"`
+	PathInferenceRule string           `json:"pathInferenceRule,omitempty"`
+	LastActive        time.Time        `json:"lastActive"`
 }
 
 type ObserverReport struct {
@@ -298,7 +309,34 @@ func (r ReportEnvelope) Validate() error {
 			if r.Kind == ReportTrafficSample && peer.SampleDurationMS < 1 {
 				return errors.New("traffic samples require a positive sampleDurationMs")
 			}
+			if err := validatePeerPathEvidence(peer); err != nil {
+				return err
+			}
 		}
+	}
+	return nil
+}
+
+func validatePeerPathEvidence(peer PeerObservation) error {
+	evidence := peer.PathEvidence
+	if evidence == "" {
+		evidence = PathEvidenceObserved
+	}
+	switch evidence {
+	case PathEvidenceObserved, PathEvidenceInferred, PathEvidenceLegacy:
+	default:
+		return fmt.Errorf("unknown path evidence %q", evidence)
+	}
+	if peer.FallbackPath != nil {
+		if peer.FallbackPath.Kind != PathDERP {
+			return errors.New("fallbackPath must be DERP")
+		}
+		if peer.Path.Kind != PathDirect && peer.Path.Kind != PathPeerRelay {
+			return errors.New("fallbackPath requires a direct or Peer Relay primary")
+		}
+	}
+	if evidence != PathEvidenceInferred && peer.PathInferenceRule != "" {
+		return errors.New("pathInferenceRule requires inferred path evidence")
 	}
 	return nil
 }
@@ -366,12 +404,28 @@ type RelaySessionProvenance struct {
 }
 
 type ObservationProvenance struct {
-	ObserverID   string                  `json:"observerId"`
-	Path         PathObservation         `json:"path"`
-	CollectedAt  time.Time               `json:"collectedAt"`
-	ReceivedAt   time.Time               `json:"receivedAt"`
-	ClockSkewed  bool                    `json:"clockSkewed"`
-	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
+	ObserverID        string                  `json:"observerId"`
+	Path              PathObservation         `json:"path"`
+	FallbackPath      *PathObservation        `json:"fallbackPath,omitempty"`
+	PathEvidence      PathEvidence            `json:"pathEvidence,omitempty"`
+	PathInferenceRule string                  `json:"pathInferenceRule,omitempty"`
+	CollectedAt       time.Time               `json:"collectedAt"`
+	ReceivedAt        time.Time               `json:"receivedAt"`
+	ClockSkewed       bool                    `json:"clockSkewed"`
+	RelaySession      *RelaySessionProvenance `json:"relaySession,omitempty"`
+}
+
+type DirectionalPathState struct {
+	FromNodeID    string           `json:"fromNodeId"`
+	ToNodeID      string           `json:"toNodeId"`
+	PrimaryPath   PathObservation  `json:"primaryPath"`
+	FallbackPath  *PathObservation `json:"fallbackPath,omitempty"`
+	Evidence      PathEvidence     `json:"evidence"`
+	InferenceRule string           `json:"inferenceRule,omitempty"`
+	ObserverID    string           `json:"observerId"`
+	CollectedAt   time.Time        `json:"collectedAt"`
+	ReceivedAt    time.Time        `json:"receivedAt"`
+	ClockSkewed   bool             `json:"clockSkewed"`
 }
 
 type TopologyEdge struct {
@@ -388,6 +442,7 @@ type TopologyEdge struct {
 	Conflicts          []PathObservation       `json:"conflicts,omitempty"`
 	PathState          PathState               `json:"pathState"`
 	PathCandidates     []PathCandidate         `json:"pathCandidates"`
+	Directions         []DirectionalPathState  `json:"directions"`
 }
 
 type ObserverState struct {
@@ -421,6 +476,7 @@ type PathEvent struct {
 	Observations   []ObservationProvenance `json:"observations"`
 	PathState      PathState               `json:"pathState"`
 	PathCandidates []PathCandidate         `json:"pathCandidates"`
+	Directions     []DirectionalPathState  `json:"directions"`
 }
 
 type AcceptedTraffic struct {
@@ -440,6 +496,13 @@ type PathTransition struct {
 	Path         PathObservation
 	Conflicts    []PathObservation
 	Observations []ObservationProvenance
+	Directions   []DirectionalPathState
+}
+
+type PathEventPage struct {
+	Anchor     *PathEvent  `json:"anchor,omitempty"`
+	Events     []PathEvent `json:"events"`
+	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
 type EdgeHistory struct {

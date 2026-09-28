@@ -108,16 +108,20 @@ and removes those values from checkpoints and API projections. Existing logical
 edge mappings apply scoped-node redirects before rollup and query, so relay
 fallback traffic and anchors remain attached to the surviving endpoint pair.
 
-Path state is a sticky primary plus a deterministic set of conflicting fresh
-evidence. A supported primary remains selected regardless of cross-observer
-receipt order; after it expires, endpoint observations outrank relay-side
-observations and canonical node IDs break ties. Peer Relay evidence uses the
-StableNodeID when known, otherwise selected endpoint, then VNI. A unique public
-IP owner in one fresh observer snapshot can enrich a selected relay endpoint
-even when the normal Tailscale and relay service ports differ; shared-IP
-ownership stays unresolved. More than one fresh relay candidate is exposed as
-`switching`. Live and History carry each candidate's path, observation time,
-and observer count while traffic remains on the logical relationship only.
+Every logical edge carries up to two endpoint-owned outbound path states. An
+endpoint report can select only its own direction; relay-session observations
+may enrich a matching relay identity but never vote on an active direction.
+Each direction records a primary, optional DERP fallback, and
+`observed`, `inferred`, or `legacy` evidence. The compatibility primary,
+conflicts, state, and candidates remain available for older clients.
+
+Tailscale status does not expose dual-send directly. A process-local tracker
+therefore keeps the latest explicit Peer Relay selection using monotonic time.
+A DERP status within twelve seconds is stored as an inferred fallback beside
+that relay; a longer DERP interval becomes an inferred DERP primary. Startup
+DERP is recorded as observed without guessing a preceding relay. The versioned
+inference rule is persisted so a future exact upstream signal can replace it
+without changing the API shape.
 
 Restart restores current reporter sequences, observer-owned inventory
 generations and memberships, reporter-to-observer ownership, identity aliases,
@@ -147,7 +151,9 @@ process crash therefore falls back to the server's ordinary freshness expiry.
 History node, edge-list, and edge-detail APIs expose only fixed windows. Queries
 join a persisted physical-to-logical edge map built from canonical redirects,
 correct direction before deduplicating alias buckets, use keyset pagination,
-and cap detail responses at 200 traffic points and 500 path transitions. A path
+and cap compatibility detail responses at 200 traffic points and 500 path
+transitions. The directional path endpoint uses `(observed_at, id)` keyset
+pagination so a client can retrieve every transition in the selected window. A path
 anchor records the latest logical-edge state across all aliases at the start of
 a window without replaying topology. Detail responses include source, target,
 observer, and Peer Relay node references so provenance never depends on a

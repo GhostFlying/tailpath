@@ -8,8 +8,9 @@ import (
 )
 
 type PathEvidenceState struct {
-	Path      PathObservation
-	Conflicts []PathObservation
+	Path       PathObservation
+	Conflicts  []PathObservation
+	Directions []DirectionalPathState
 }
 
 // ReconcilePathEvidence selects a stable primary without using cross-observer
@@ -121,7 +122,7 @@ func SamePathEvidence(left, right PathEvidenceState) bool {
 			return false
 		}
 	}
-	return true
+	return SameDirectionalPaths(left.Directions, right.Directions)
 }
 
 func observerEvidenceRole(sourceID, targetID, observerID string) int {

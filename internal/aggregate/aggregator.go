@@ -112,30 +112,34 @@ type relaySessionState struct {
 }
 
 type edgeState struct {
-	ID                 string                     `json:"id"`
-	Source             string                     `json:"source"`
-	Target             string                     `json:"target"`
-	SystemTelemetry    bool                       `json:"systemTelemetry,omitempty"`
-	LastActive         time.Time                  `json:"lastActive"`
-	LastKnownPath      domain.PathObservation     `json:"lastKnownPath"`
-	LastKnownConflicts []domain.PathObservation   `json:"lastKnownConflicts,omitempty"`
-	Observations       map[string]edgeObservation `json:"observations"`
+	ID                  string                        `json:"id"`
+	Source              string                        `json:"source"`
+	Target              string                        `json:"target"`
+	SystemTelemetry     bool                          `json:"systemTelemetry,omitempty"`
+	LastActive          time.Time                     `json:"lastActive"`
+	LastKnownPath       domain.PathObservation        `json:"lastKnownPath"`
+	LastKnownConflicts  []domain.PathObservation      `json:"lastKnownConflicts,omitempty"`
+	LastKnownDirections []domain.DirectionalPathState `json:"lastKnownDirections,omitempty"`
+	Observations        map[string]edgeObservation    `json:"observations"`
 }
 
 type edgeObservation struct {
-	ObserverID     string                         `json:"observerId"`
-	Path           domain.PathObservation         `json:"path"`
-	CollectedAt    time.Time                      `json:"collectedAt"`
-	ReceivedAt     time.Time                      `json:"receivedAt"`
-	WithdrawnAt    time.Time                      `json:"withdrawnAt,omitempty"`
-	ClockSkewed    bool                           `json:"clockSkewed"`
-	RelaySession   *domain.RelaySessionProvenance `json:"relaySession,omitempty"`
-	SourceEndpoint string                         `json:"-"`
-	TargetEndpoint string                         `json:"-"`
-	TxRate         float64                        `json:"txRate"`
-	RxRate         float64                        `json:"rxRate"`
-	AToBRate       float64                        `json:"aToBRate,omitempty"`
-	BToARate       float64                        `json:"bToARate,omitempty"`
+	ObserverID        string                         `json:"observerId"`
+	Path              domain.PathObservation         `json:"path"`
+	FallbackPath      *domain.PathObservation        `json:"fallbackPath,omitempty"`
+	PathEvidence      domain.PathEvidence            `json:"pathEvidence,omitempty"`
+	PathInferenceRule string                         `json:"pathInferenceRule,omitempty"`
+	CollectedAt       time.Time                      `json:"collectedAt"`
+	ReceivedAt        time.Time                      `json:"receivedAt"`
+	WithdrawnAt       time.Time                      `json:"withdrawnAt,omitempty"`
+	ClockSkewed       bool                           `json:"clockSkewed"`
+	RelaySession      *domain.RelaySessionProvenance `json:"relaySession,omitempty"`
+	SourceEndpoint    string                         `json:"-"`
+	TargetEndpoint    string                         `json:"-"`
+	TxRate            float64                        `json:"txRate"`
+	RxRate            float64                        `json:"rxRate"`
+	AToBRate          float64                        `json:"aToBRate,omitempty"`
+	BToARate          float64                        `json:"bToARate,omitempty"`
 }
 
 type ApplyResult struct {
@@ -444,7 +448,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				edgeID, source, target := domain.EdgeID(observerID, peerID)
 				if _, seen := touchedEdges[edgeID]; !seen {
 					if edge := a.state.Edges[edgeID]; edge != nil {
-						touchedEdges[edgeID] = domain.PathEvidenceState{Path: edge.LastKnownPath, Conflicts: edge.LastKnownConflicts}
+						touchedEdges[edgeID] = domain.PathEvidenceState{Path: edge.LastKnownPath, Conflicts: edge.LastKnownConflicts, Directions: edge.LastKnownDirections}
 					} else {
 						touchedEdges[edgeID] = domain.PathEvidenceState{}
 					}
@@ -497,7 +501,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 			edgeID, source, target := domain.EdgeID(sourceID, targetID)
 			if _, seen := touchedEdges[edgeID]; !seen {
 				if edge := a.state.Edges[edgeID]; edge != nil {
-					touchedEdges[edgeID] = domain.PathEvidenceState{Path: edge.LastKnownPath, Conflicts: edge.LastKnownConflicts}
+					touchedEdges[edgeID] = domain.PathEvidenceState{Path: edge.LastKnownPath, Conflicts: edge.LastKnownConflicts, Directions: edge.LastKnownDirections}
 				} else {
 					touchedEdges[edgeID] = domain.PathEvidenceState{}
 				}
@@ -526,15 +530,18 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 		if current.Path.Kind == "" {
 			current.Path.Kind = domain.PathUnknown
 		}
-		if previous.Path.Kind == "" || !domain.SamePathEvidence(previous, domain.PathEvidenceState{Path: current.Path, Conflicts: current.Conflicts}) {
+		currentEvidence := domain.PathEvidenceState{Path: current.Path, Conflicts: current.Conflicts, Directions: current.Directions}
+		if previous.Path.Kind == "" || !domain.SamePathEvidence(previous, currentEvidence) {
 			result.PathTransitions = append(result.PathTransitions, domain.PathTransition{
 				EdgeID: edgeID, ObservedAt: receivedAt, Path: current.Path,
 				Conflicts:    append([]domain.PathObservation(nil), current.Conflicts...),
 				Observations: append([]domain.ObservationProvenance(nil), current.Observations...),
+				Directions:   domain.CloneDirectionalPaths(current.Directions),
 			})
 		}
 		edge.LastKnownPath = current.Path
 		edge.LastKnownConflicts = append(edge.LastKnownConflicts[:0], current.Conflicts...)
+		edge.LastKnownDirections = domain.CloneDirectionalPaths(current.Directions)
 	}
 
 	reporter.LastSequence = report.Sequence
@@ -593,7 +600,9 @@ func (a *Aggregator) applyPeerLocked(collectedAt, receivedAt time.Time, observer
 	}
 	duration := float64(peer.SampleDurationMS) / 1000
 	edge.Observations[observerID] = edgeObservation{
-		ObserverID: observerID, Path: peer.Path, CollectedAt: collectedAt, ReceivedAt: receivedAt,
+		ObserverID: observerID, Path: peer.Path, FallbackPath: clonePathPointer(peer.FallbackPath),
+		PathEvidence: peer.PathEvidence, PathInferenceRule: peer.PathInferenceRule,
+		CollectedAt: collectedAt, ReceivedAt: receivedAt,
 		ClockSkewed: a.isClockSkewed(collectedAt, receivedAt),
 		TxRate:      float64(peer.TxDelta) / duration,
 		RxRate:      float64(peer.RxDelta) / duration,
@@ -1215,6 +1224,18 @@ func (a *Aggregator) rebuildEdgesLocked(keepID, removeID string) {
 			current.LastActive = edge.LastActive
 			current.LastKnownPath = edge.LastKnownPath
 			current.LastKnownConflicts = append(current.LastKnownConflicts[:0], edge.LastKnownConflicts...)
+			current.LastKnownDirections = domain.CloneDirectionalPaths(edge.LastKnownDirections)
+			for index := range current.LastKnownDirections {
+				if current.LastKnownDirections[index].FromNodeID == removeID {
+					current.LastKnownDirections[index].FromNodeID = keepID
+				}
+				if current.LastKnownDirections[index].ToNodeID == removeID {
+					current.LastKnownDirections[index].ToNodeID = keepID
+				}
+				if current.LastKnownDirections[index].ObserverID == removeID {
+					current.LastKnownDirections[index].ObserverID = keepID
+				}
+			}
 		}
 		for observerID, observation := range edge.Observations {
 			if observerID == removeID {
@@ -1596,7 +1617,9 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 			relayObservation = &copy
 		}
 		result.Observations = append(result.Observations, domain.ObservationProvenance{
-			ObserverID: observation.ObserverID, Path: observation.Path, CollectedAt: observation.CollectedAt,
+			ObserverID: observation.ObserverID, Path: observation.Path,
+			FallbackPath: clonePathPointer(observation.FallbackPath), PathEvidence: observation.PathEvidence,
+			PathInferenceRule: observation.PathInferenceRule, CollectedAt: observation.CollectedAt,
 			ReceivedAt: observation.ReceivedAt, ClockSkewed: observation.ClockSkewed,
 			RelaySession: observation.RelaySession,
 		})
@@ -1628,6 +1651,10 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 		}
 	}
 	result.PathState, result.PathCandidates = domain.PathCandidates(result.Path, result.Conflicts, result.Observations)
+	result.Directions = domain.DirectionalPaths(edge.Source, edge.Target, result.Observations)
+	if len(result.Directions) == 0 {
+		result.Directions = domain.CloneDirectionalPaths(edge.LastKnownDirections)
+	}
 	sort.Slice(result.Observations, func(i, j int) bool {
 		return result.Observations[i].ObserverID < result.Observations[j].ObserverID
 	})
@@ -1669,6 +1696,18 @@ func equivalentPath(left, right domain.PathObservation) bool {
 	default:
 		return false
 	}
+}
+
+func clonePathPointer(path *domain.PathObservation) *domain.PathObservation {
+	if path == nil {
+		return nil
+	}
+	copy := *path
+	if path.PeerRelayVNI != nil {
+		value := *path.PeerRelayVNI
+		copy.PeerRelayVNI = &value
+	}
+	return &copy
 }
 
 func pathSpecificity(path domain.PathObservation) int {
@@ -1825,6 +1864,7 @@ func cloneRuntimeState(source runtimeState) runtimeState {
 	for id, edge := range source.Edges {
 		copy := *edge
 		copy.LastKnownConflicts = append([]domain.PathObservation(nil), edge.LastKnownConflicts...)
+		copy.LastKnownDirections = domain.CloneDirectionalPaths(edge.LastKnownDirections)
 		copy.Observations = make(map[string]edgeObservation, len(edge.Observations))
 		for observerID, observation := range edge.Observations {
 			copy.Observations[observerID] = observation

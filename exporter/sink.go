@@ -1098,6 +1098,25 @@ func validateAndCloneSnapshot(snapshot Snapshot, fallback time.Time) (Snapshot, 
 		if peer.Path.PeerRelayVNI != nil && (*peer.Path.PeerRelayVNI < 0 || *peer.Path.PeerRelayVNI > 1<<24-1) {
 			return Snapshot{}, fmt.Errorf("peer %d relay VNI is invalid", index)
 		}
+		if peer.PathEvidence == "" {
+			peer.PathEvidence = PathEvidenceObserved
+		}
+		switch peer.PathEvidence {
+		case PathEvidenceObserved, PathEvidenceInferred, PathEvidenceLegacy:
+		default:
+			return Snapshot{}, fmt.Errorf("peer %d path evidence %q is invalid", index, peer.PathEvidence)
+		}
+		if peer.FallbackPath != nil {
+			if peer.FallbackPath.Kind != PathDERP {
+				return Snapshot{}, fmt.Errorf("peer %d fallback path must be DERP", index)
+			}
+			if peer.Path.Kind != PathDirect && peer.Path.Kind != PathPeerRelay {
+				return Snapshot{}, fmt.Errorf("peer %d fallback requires a direct or Peer Relay primary", index)
+			}
+		}
+		if peer.PathEvidence != PathEvidenceInferred && peer.PathInferenceRule != "" {
+			return Snapshot{}, fmt.Errorf("peer %d inference rule requires inferred evidence", index)
+		}
 	}
 	return result, nil
 }
@@ -1108,7 +1127,8 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 	for index, peer := range snapshot.Peers {
 		result.Peers[index] = PeerSnapshot{
 			Identity: cloneIdentity(peer.Identity), RxBytes: peer.RxBytes, TxBytes: peer.TxBytes,
-			Path: clonePath(peer.Path),
+			Path: clonePath(peer.Path), FallbackPath: cloneOptionalPath(peer.FallbackPath),
+			PathEvidence: peer.PathEvidence, PathInferenceRule: peer.PathInferenceRule,
 		}
 	}
 	return result
@@ -1126,6 +1146,14 @@ func clonePath(path Path) Path {
 		path.PeerRelayVNI = &value
 	}
 	return path
+}
+
+func cloneOptionalPath(path *Path) *Path {
+	if path == nil {
+		return nil
+	}
+	cloned := clonePath(*path)
+	return &cloned
 }
 
 func snapshotInventoryHash(snapshot Snapshot) string {
@@ -1151,7 +1179,9 @@ func baselineSnapshotPeers(snapshot Snapshot) []PeerObservation {
 	for _, peer := range snapshot.Peers {
 		peers = append(peers, PeerObservation{
 			Peer: cloneIdentity(peer.Identity), RxBytes: peer.RxBytes, TxBytes: peer.TxBytes,
-			Path: clonePath(peer.Path), LastActive: snapshot.CollectedAt,
+			Path: clonePath(peer.Path), FallbackPath: cloneOptionalPath(peer.FallbackPath),
+			PathEvidence: peer.PathEvidence, PathInferenceRule: peer.PathInferenceRule,
+			LastActive: snapshot.CollectedAt,
 		})
 	}
 	return peers
@@ -1183,7 +1213,9 @@ func changedSnapshotPeers(previous, current Snapshot, controlIDs map[string]stru
 		changed = append(changed, PeerObservation{
 			Peer: cloneIdentity(peer.Identity), RxBytes: peer.RxBytes, TxBytes: peer.TxBytes,
 			RxDelta: rxDelta, TxDelta: txDelta, SampleDurationMS: max(duration.Milliseconds(), 1),
-			Path: clonePath(peer.Path), LastActive: current.CollectedAt,
+			Path: clonePath(peer.Path), FallbackPath: cloneOptionalPath(peer.FallbackPath),
+			PathEvidence: peer.PathEvidence, PathInferenceRule: peer.PathInferenceRule,
+			LastActive: current.CollectedAt,
 		})
 	}
 	return changed

@@ -208,6 +208,172 @@ func (s *SQLite) EdgeHistoryWindow(ctx context.Context, edgeID string, window do
 	return history, true, nil
 }
 
+func (s *SQLite) EdgePathHistoryWindow(
+	ctx context.Context,
+	edgeID string,
+	window domain.HistoryWindow,
+	to time.Time,
+	cursorValue string,
+	limit int,
+	includeSystemTelemetry bool,
+) (domain.PathEventPage, bool, error) {
+	if !window.Valid() {
+		return domain.PathEventPage{}, false, fmt.Errorf("invalid history window %q", window)
+	}
+	if limit == 0 {
+		limit = 500
+	}
+	if limit < 1 || limit > 500 {
+		return domain.PathEventPage{}, false, fmt.Errorf("path history limit must be between 1 and 500")
+	}
+	index, err := s.loadHistoryIndex(ctx)
+	if err != nil {
+		return domain.PathEventPage{}, false, err
+	}
+	canonicalID := index.edgeAlias[edgeID]
+	if canonicalID == "" {
+		canonicalID = edgeID
+	}
+	edge := index.edges[canonicalID]
+	if edge == nil || (edge.systemTelemetry && !includeSystemTelemetry) {
+		return domain.PathEventPage{}, false, nil
+	}
+	var cursor pathEventCursor
+	if cursorValue != "" {
+		cursor, err = decodePathEventCursor(cursorValue)
+		if err != nil {
+			return domain.PathEventPage{}, false, err
+		}
+	}
+	to = to.UTC()
+	from := to.Add(-window.Duration())
+	edgeIDs := originalEdgeIDs(index, canonicalID)
+	if len(edgeIDs) == 0 {
+		edgeIDs = []string{canonicalID}
+	}
+	placeholders := make([]string, len(edgeIDs))
+	for index := range edgeIDs {
+		placeholders[index] = "?"
+	}
+	edgeClause := strings.Join(placeholders, ",")
+
+	page := domain.PathEventPage{Events: []domain.PathEvent{}}
+	anchorArgs := make([]any, 0, len(edgeIDs)+1)
+	anchorArgs = append(anchorArgs, formatTime(from))
+	for _, sourceID := range edgeIDs {
+		anchorArgs = append(anchorArgs, sourceID)
+	}
+	anchorQuery := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
+		FROM path_events WHERE julianday(observed_at) < julianday(?) AND edge_id IN (` + edgeClause + `)
+		ORDER BY julianday(observed_at) DESC, id DESC LIMIT 1`
+	row := s.db.QueryRowContext(ctx, anchorQuery, anchorArgs...)
+	var storedAnchor storedPathEvent
+	if err := row.Scan(&storedAnchor.edgeID, &storedAnchor.id, &storedAnchor.observedAt,
+		&storedAnchor.path, &storedAnchor.conflicts, &storedAnchor.observations, &storedAnchor.directions); err == nil {
+		event, err := decodeStoredPathEvent(storedAnchor, index)
+		if err != nil {
+			return domain.PathEventPage{}, false, err
+		}
+		page.Anchor = &event
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return domain.PathEventPage{}, false, err
+	}
+
+	args := make([]any, 0, len(edgeIDs)+5)
+	args = append(args, formatTime(from), formatTime(to))
+	for _, sourceID := range edgeIDs {
+		args = append(args, sourceID)
+	}
+	query := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
+		FROM path_events WHERE julianday(observed_at) >= julianday(?) AND julianday(observed_at) < julianday(?) AND edge_id IN (` + edgeClause + `)`
+	if cursorValue != "" {
+		query += ` AND (julianday(observed_at) > julianday(?) OR (julianday(observed_at) = julianday(?) AND id > ?))`
+		args = append(args, formatTime(cursor.ObservedAt), formatTime(cursor.ObservedAt), cursor.ID)
+	}
+	query += ` ORDER BY julianday(observed_at), id LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return domain.PathEventPage{}, false, err
+	}
+	defer rows.Close()
+	type pageEvent struct {
+		event domain.PathEvent
+		id    int64
+	}
+	items := make([]pageEvent, 0, limit+1)
+	for rows.Next() {
+		var stored storedPathEvent
+		if err := rows.Scan(&stored.edgeID, &stored.id, &stored.observedAt,
+			&stored.path, &stored.conflicts, &stored.observations, &stored.directions); err != nil {
+			return domain.PathEventPage{}, false, err
+		}
+		event, err := decodeStoredPathEvent(stored, index)
+		if err != nil {
+			return domain.PathEventPage{}, false, err
+		}
+		items = append(items, pageEvent{event: event, id: stored.id})
+	}
+	if err := rows.Err(); err != nil {
+		return domain.PathEventPage{}, false, err
+	}
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[len(items)-1]
+		page.NextCursor = encodePathEventCursor(pathEventCursor{ObservedAt: last.event.ObservedAt, ID: last.id})
+	}
+	for _, item := range items {
+		page.Events = append(page.Events, item.event)
+	}
+	return page, true, nil
+}
+
+type storedPathEvent struct {
+	edgeID       string
+	id           int64
+	observedAt   string
+	path         []byte
+	conflicts    []byte
+	observations []byte
+	directions   []byte
+}
+
+func decodeStoredPathEvent(stored storedPathEvent, index historyIndex) (domain.PathEvent, error) {
+	var event domain.PathEvent
+	var err error
+	event.ObservedAt, err = time.Parse(time.RFC3339Nano, stored.observedAt)
+	if err != nil {
+		return event, err
+	}
+	if err := json.Unmarshal(stored.path, &event.Path); err != nil {
+		return event, err
+	}
+	if err := json.Unmarshal(stored.conflicts, &event.Conflicts); err != nil {
+		return event, err
+	}
+	if err := json.Unmarshal(stored.observations, &event.Observations); err != nil {
+		return event, err
+	}
+	if err := json.Unmarshal(stored.directions, &event.Directions); err != nil {
+		return event, err
+	}
+	if event.Conflicts == nil {
+		event.Conflicts = []domain.PathObservation{}
+	}
+	if event.Observations == nil {
+		event.Observations = []domain.ObservationProvenance{}
+	}
+	for observationIndex := range event.Observations {
+		event.Observations[observationIndex].ObserverID = resolveNodeID(index.redirects, event.Observations[observationIndex].ObserverID)
+	}
+	event.Directions = domain.RemapDirectionalPaths(event.Directions, index.redirects)
+	if event.Directions == nil {
+		event.Directions = []domain.DirectionalPathState{}
+	}
+	event.PathState, event.PathCandidates = domain.PathCandidates(event.Path, event.Conflicts, event.Observations)
+	return event, nil
+}
+
 func (s *SQLite) loadHistoryIndex(ctx context.Context) (historyIndex, error) {
 	index := historyIndex{
 		redirects: make(map[string]string), nodes: make(map[string]storedNodeIdentity),
@@ -579,7 +745,7 @@ func (s *SQLite) loadPathSets(ctx context.Context, index historyIndex, from, to 
 }
 
 func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, from, to time.Time, edgeIDs []string) (map[string]*historyPathSet, error) {
-	query := `SELECT edge_id, observed_at, path, conflicts, observations FROM path_events WHERE observed_at < ?`
+	query := `SELECT edge_id, observed_at, path, conflicts, observations, directions FROM path_events WHERE julianday(observed_at) < julianday(?)`
 	args := []any{formatTime(to)}
 	if len(edgeIDs) != 0 {
 		placeholders := make([]string, len(edgeIDs))
@@ -589,7 +755,7 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		}
 		query += " AND edge_id IN (" + strings.Join(placeholders, ",") + ")"
 	}
-	query += " ORDER BY observed_at, id"
+	query += " ORDER BY julianday(observed_at), id"
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -598,8 +764,8 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 	result := make(map[string]*historyPathSet)
 	for rows.Next() {
 		var originalID, rawTime string
-		var rawPath, rawConflicts, rawObservations []byte
-		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawConflicts, &rawObservations); err != nil {
+		var rawPath, rawConflicts, rawObservations, rawDirections []byte
+		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections); err != nil {
 			return nil, err
 		}
 		edgeID := index.edgeAlias[originalID]
@@ -624,12 +790,19 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		if err := json.Unmarshal(rawObservations, &event.Observations); err != nil {
 			return nil, err
 		}
+		if err := json.Unmarshal(rawDirections, &event.Directions); err != nil {
+			return nil, err
+		}
 		event.PathState, event.PathCandidates = domain.PathCandidates(event.Path, event.Conflicts, event.Observations)
 		if event.Observations == nil {
 			event.Observations = []domain.ObservationProvenance{}
 		}
 		for observationIndex := range event.Observations {
 			event.Observations[observationIndex].ObserverID = resolveNodeID(index.redirects, event.Observations[observationIndex].ObserverID)
+		}
+		event.Directions = domain.RemapDirectionalPaths(event.Directions, index.redirects)
+		if event.Directions == nil {
+			event.Directions = []domain.DirectionalPathState{}
 		}
 		set := result[edgeID]
 		if set == nil {
@@ -739,6 +912,13 @@ func relatedHistoryNodes(index historyIndex, history domain.EdgeHistory) []domai
 			ids[observation.ObserverID] = struct{}{}
 			addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, observation.Path.PeerRelayStableNodeID)
 		}
+		for _, direction := range event.Directions {
+			ids[direction.ObserverID] = struct{}{}
+			addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, direction.PrimaryPath.PeerRelayStableNodeID)
+			if direction.FallbackPath != nil {
+				addRelayHistoryNode(ids, unresolvedStableIDs, stableIDs, direction.FallbackPath.PeerRelayStableNodeID)
+			}
+		}
 	}
 	addEvent(history.PathAnchor)
 	for index := range history.PathEvents {
@@ -808,6 +988,25 @@ func containsPathKind(paths []domain.PathKind, candidate domain.PathKind) bool {
 type historyCursor struct {
 	LastTrafficAt time.Time `json:"t"`
 	EdgeID        string    `json:"e"`
+}
+
+type pathEventCursor struct {
+	ObservedAt time.Time `json:"t"`
+	ID         int64     `json:"i"`
+}
+
+func encodePathEventCursor(cursor pathEventCursor) string {
+	payload, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodePathEventCursor(value string) (pathEventCursor, error) {
+	var cursor pathEventCursor
+	payload, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || json.Unmarshal(payload, &cursor) != nil || cursor.ObservedAt.IsZero() || cursor.ID < 1 {
+		return cursor, ErrInvalidHistoryCursor
+	}
+	return cursor, nil
 }
 
 func encodeHistoryCursor(summary domain.HistoryEdgeSummary) string {

@@ -102,6 +102,42 @@ paths:
           $ref: '#/components/responses/Problem'
         '401':
           $ref: '#/components/responses/Problem'
+  /history/edges/{edgeId}/paths:
+    get:
+      operationId: getEdgePathHistory
+      summary: Return a complete keyset-paginated page of directional path events.
+      parameters:
+        - name: edgeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/HistoryWindow'
+        - $ref: '#/components/parameters/IncludeSystemTelemetry'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        '200':
+          description: Ordered directional path event page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PathEventPage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
   /history/nodes:
     get:
       operationId: getHistoryNodes
@@ -492,6 +528,13 @@ components:
           description: Zero for hello/inventory baselines; positive for traffic samples.
         path:
           $ref: '#/components/schemas/PathObservation'
+        fallbackPath:
+          $ref: '#/components/schemas/PathObservation'
+        pathEvidence:
+          $ref: '#/components/schemas/PathEvidence'
+        pathInferenceRule:
+          type: string
+          description: Versioned rule used when pathEvidence is inferred.
         lastActive:
           type: string
           format: date-time
@@ -599,6 +642,36 @@ components:
     PathKind:
       type: string
       enum: [direct, derp, peer_relay, unknown]
+    PathEvidence:
+      type: string
+      enum: [observed, inferred, legacy]
+    DirectionalPathState:
+      type: object
+      required: [fromNodeId, toNodeId, primaryPath, evidence, observerId, collectedAt, receivedAt, clockSkewed]
+      properties:
+        fromNodeId:
+          type: string
+        toNodeId:
+          type: string
+        primaryPath:
+          $ref: '#/components/schemas/PathObservation'
+        fallbackPath:
+          $ref: '#/components/schemas/PathObservation'
+          description: Optional DERP fallback used in parallel with a direct or Peer Relay primary.
+        evidence:
+          $ref: '#/components/schemas/PathEvidence'
+        inferenceRule:
+          type: string
+        observerId:
+          type: string
+        collectedAt:
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+        clockSkewed:
+          type: boolean
     PathState:
       type: string
       enum: [stable, switching]
@@ -695,6 +768,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PathCandidate'
+        directions:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/DirectionalPathState'
         state:
           type: string
           enum: [active, recent]
@@ -725,6 +803,12 @@ components:
           type: string
         path:
           $ref: '#/components/schemas/PathObservation'
+        fallbackPath:
+          $ref: '#/components/schemas/PathObservation'
+        pathEvidence:
+          $ref: '#/components/schemas/PathEvidence'
+        pathInferenceRule:
+          type: string
         collectedAt:
           type: string
           format: date-time
@@ -936,6 +1020,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ObservationProvenance'
+        directions:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/DirectionalPathState'
+    PathEventPage:
+      type: object
+      required: [events]
+      properties:
+        anchor:
+          $ref: '#/components/schemas/PathEvent'
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/PathEvent'
+        nextCursor:
+          type: string
     Problem:
       type: object
       required: [title, status]

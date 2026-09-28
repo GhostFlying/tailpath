@@ -274,8 +274,8 @@ func TestPathEvidenceTransitionsOnlyWhenNormalizedSetChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second.PathTransitions) != 0 {
-		t.Fatalf("equivalent observer endpoint created transitions: %#v", second.PathTransitions)
+	if len(second.PathTransitions) != 1 || len(second.PathTransitions[0].Directions) != 2 {
+		t.Fatalf("second endpoint direction transition = %#v, want two directions", second.PathTransitions)
 	}
 
 	now = now.Add(time.Second)

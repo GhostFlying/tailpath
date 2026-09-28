@@ -226,6 +226,49 @@ func TestEdgeHistoryWindowCapsPathTransitions(t *testing.T) {
 	}
 }
 
+func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
+	database, now := seededHistoryDatabase(t)
+	if _, err := database.db.Exec(`DELETE FROM path_events WHERE edge_id IN ('n_a--n_b', 'n_b--n_old')`); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathPeerRelay})
+	directions, _ := json.Marshal([]domain.DirectionalPathState{{
+		FromNodeID: "n_a", ToNodeID: "n_b", ObserverID: "n_a", Evidence: domain.PathEvidenceObserved,
+		PrimaryPath: domain.PathObservation{Kind: domain.PathPeerRelay},
+		CollectedAt: now.Add(-10 * time.Minute), ReceivedAt: now.Add(-10 * time.Minute),
+	}})
+	for index := range 900 {
+		at := now.Add(-10 * time.Minute).Add(time.Duration(index) * time.Millisecond)
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatTime(at), path, directions); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var all []domain.PathEvent
+	cursor := ""
+	for {
+		page, found, err := database.EdgePathHistoryWindow(
+			context.Background(), "n_a--n_b", domain.History15Minutes, now, cursor, 200, false,
+		)
+		if err != nil || !found {
+			t.Fatalf("found=%v err=%v", found, err)
+		}
+		all = append(all, page.Events...)
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(all) != 900 {
+		t.Fatalf("paged path events = %d, want 900", len(all))
+	}
+	for index := 1; index < len(all); index++ {
+		if !all[index].ObservedAt.After(all[index-1].ObservedAt) {
+			t.Fatalf("events out of order at %d: %s then %s", index, all[index-1].ObservedAt, all[index].ObservedAt)
+		}
+	}
+}
+
 func TestHistoryWindowResolutionContract(t *testing.T) {
 	for _, item := range []struct {
 		window     domain.HistoryWindow

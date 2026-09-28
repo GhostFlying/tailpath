@@ -79,6 +79,14 @@ represent an interval; traffic-bearing peer and relay samples require a positive
 duration. The server must not derive a real-time rate from time between sparse
 HTTP reports.
 
+Each traffic-bearing peer may additionally carry `fallbackPath`,
+`pathEvidence`, and `pathInferenceRule`. The fallback is limited to DERP beside
+a Direct or Peer Relay primary. Endpoint evidence selects only that observer's
+outbound direction. `observed` means status reported the primary directly;
+`inferred` names a versioned bounded rule; `legacy` is reserved for History
+reconstructed from pre-directional records. Protocol-v1 senders may omit all
+three fields and are treated as observed primary-only evidence.
+
 Relay sessions additionally carry a session ID, unsigned 24-bit VNI,
 directional counters, and directional deltas. Each endpoint has a non-empty
 `sessionClientId` plus optional full identity, short disco hint, and underlay
@@ -102,8 +110,9 @@ observer identity described in a report.
 
 Relay client resolution is `resolved`, `partial`, `anonymous`, or `conflict`.
 Topology and History may expose that status together with session ID and VNI
-provenance. Normalized public endpoints and selected Peer Relay endpoints are
-durable so Live and History can reproduce switching evidence. Authenticated
+provenance. Normalized public endpoints, selected Peer Relay endpoints,
+directional state, and inferred fallback evidence are durable so Live and
+History can reproduce the decision available at that time. Authenticated
 path responses may expose that network metadata. The raw journal stores only
 whether a short disco hint was present, not its value, so restart replay
 preserves `partial` status without turning the hint into durable identity
