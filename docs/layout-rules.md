@@ -167,6 +167,11 @@ changes. Cap placement attempts and avoid unrestricted layout on each frame.
 - History/Devices rows keep identity separate from status and traffic metadata.
   At narrow widths, move metadata to a reserved second row before permitting
   overlap. Empty/loading/error states keep the same workspace structure.
+- Dense History timeline strips keep time, a single-line path label, duration,
+  and compact state in fixed rows. Observer counts belong in the selected
+  provenance detail; the strip scrolls within its own region instead of
+  shrinking or wrapping text into another row. The narrow-screen list may grow
+  a row to preserve a long identity without overflowing the viewport.
 
 ## 7. Verification contract
 

@@ -5,7 +5,6 @@ import {
   Globe2,
   RadioTower,
   TriangleAlert,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -24,7 +23,7 @@ import type {
   PathCandidate,
   PathKind,
 } from "../api/types";
-import { pathLabel } from "../lib/format";
+import { pathLabel, unresolvedPeerRelayLabel } from "../lib/format";
 import { identityPresentation } from "../lib/identity";
 import {
   buildPathTimeline,
@@ -76,6 +75,9 @@ export const PathTimeline = memo(function PathTimeline({
           {items.map((item) => {
             const Icon = pathIcon(item.path.kind);
             const active = item.id === selected?.id;
+            const label = displayPathLabel(item.path, nodes.byStableID);
+            const switching = item.pathState === "switching";
+            const observerLabel = `${item.observations.length} observer${item.observations.length === 1 ? "" : "s"}`;
             return (
               <button
                 key={item.id}
@@ -89,6 +91,7 @@ export const PathTimeline = memo(function PathTimeline({
                   } as React.CSSProperties
                 }
                 aria-pressed={active}
+                aria-label={`${formatTimelineTime(item.from)}, ${label}${switching ? ", switching" : ""}, ${formatDuration(item.durationMs)}, ${observerLabel}`}
                 onClick={() => select(item)}
               >
                 <span className="timeline-time">
@@ -101,15 +104,11 @@ export const PathTimeline = memo(function PathTimeline({
                   <Icon size={19} />
                 </span>
                 <span className="timeline-copy">
-                  <strong>
-                    {item.pathState === "switching"
-                      ? "Peer Relay · Switching"
-                      : displayPathLabel(item.path, nodes.byStableID)}
-                  </strong>
+                  <strong title={label}>{label}</strong>
                   <small>{formatDuration(item.durationMs)}</small>
-                </span>
-                <span className="timeline-observers">
-                  <Users size={15} /> {item.observations.length} observers
+                  {switching ? (
+                    <span className="timeline-state">Switching</span>
+                  ) : null}
                 </span>
                 <ChevronRight size={18} />
               </button>
@@ -290,7 +289,7 @@ function HistoryPathCandidates({
             ? nodes.byStableID.get(path.peerRelayStableNodeId)
             : undefined;
           const label =
-            relay?.label ?? path.peerRelayStableNodeId ?? "Peer Relay";
+            relay?.label ?? path.peerRelayStableNodeId ?? "Unresolved relay";
           return (
             <article
               key={`${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? "unknown"}:${index}`}
@@ -481,11 +480,12 @@ function displayPathLabel(
   path: PathTimelineItem["path"],
   byStableID: Map<string, HistoryNodeReference>,
 ) {
-  if (path.kind !== "peer_relay" || !path.peerRelayStableNodeId) {
+  if (path.kind !== "peer_relay") {
     return pathLabel(path);
   }
+  if (!path.peerRelayStableNodeId) return unresolvedPeerRelayLabel(path);
   const relay = byStableID.get(path.peerRelayStableNodeId);
-  return `Peer Relay via ${relay?.label ?? path.peerRelayStableNodeId}`;
+  return `${relay?.label ?? path.peerRelayStableNodeId} · Peer Relay`;
 }
 
 function pathIcon(kind: PathKind) {

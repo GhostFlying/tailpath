@@ -204,12 +204,83 @@ test("renders all fresh relay candidates while switching", async ({
   const historicalCandidates = page.getByLabel("Historical path candidates");
   await expect(historicalCandidates).toContainText("Switching");
   await expect(historicalCandidates).toContainText("aliyun-hangzhou-relay");
+  await expect(historicalCandidates).toContainText("Unresolved relay");
+  await expect(historicalCandidates).toContainText("VNI 19");
   await expect(historicalCandidates).toContainText("203.0.113.10:41642");
   await expect(historicalCandidates).toContainText("198.51.100.24:45321");
   await expect(historicalCandidates).toContainText("Identity pending");
   await page.screenshot({
     path: testInfo.outputPath(
       `peer-relay-switching-history-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
+});
+
+test("keeps a dense switching timeline readable", async ({
+  page,
+}, testInfo) => {
+  await page.unroute("**/api/v1/history/edges/client-a--client-b?**");
+  await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
+    route.fulfill({ json: denseSwitchingHistory() }),
+  );
+
+  await page.goto("/history/edges/client-a--client-b?window=1h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  const timeline = page.getByRole("list", { name: "Path timeline" });
+  const events = timeline.getByRole("listitem");
+  await expect(events).toHaveCount(12);
+  await expect(timeline.locator(".timeline-state")).toHaveCount(12);
+  await expect(timeline.locator(".timeline-observers")).toHaveCount(0);
+  await expect(events.first()).toHaveAccessibleName(/2 observers/);
+  await expect(timeline).toContainText("aliyun-hangzhou-relay");
+  await expect(timeline).toContainText("Unresolved relay");
+
+  const geometryFailures = await events.evaluateAll((buttons) =>
+    buttons.flatMap((button, index) => {
+      const compactStrip = window.innerWidth > 600;
+      const buttonRect = button.getBoundingClientRect();
+      const label = button.querySelector<HTMLElement>(".timeline-copy strong");
+      const duration = button.querySelector<HTMLElement>(
+        ".timeline-copy small",
+      );
+      const state = button.querySelector<HTMLElement>(".timeline-state");
+      if (!label || !duration || !state) return [`${index}: missing content`];
+      const labelRect = label.getBoundingClientRect();
+      const durationRect = duration.getBoundingClientRect();
+      const stateRect = state.getBoundingClientRect();
+      const withinButton = [labelRect, durationRect, stateRect].every(
+        (rect) =>
+          rect.left >= buttonRect.left - 1 &&
+          rect.right <= buttonRect.right + 1 &&
+          rect.top >= buttonRect.top - 1 &&
+          rect.bottom <= buttonRect.bottom + 1,
+      );
+      const rowsSeparated =
+        labelRect.bottom <= Math.min(durationRect.top, stateRect.top) + 1;
+      const metadataSeparated = durationRect.right <= stateRect.left + 1;
+      const oneLine =
+        !compactStrip || getComputedStyle(label).whiteSpace === "nowrap";
+      return withinButton && rowsSeparated && metadataSeparated && oneLine
+        ? []
+        : [
+            `${index}: within=${withinButton} rows=${rowsSeparated} metadata=${metadataSeparated} oneLine=${oneLine}`,
+          ];
+    }),
+  );
+  expect(geometryFailures).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `dense-switching-timeline-${testInfo.project.name}.png`,
     ),
     fullPage: true,
   });
@@ -530,6 +601,36 @@ function switchingHistory() {
     ],
     pathAnchor: undefined,
     pathEvents: [event],
+  };
+}
+
+function denseSwitchingHistory() {
+  const history = switchingHistory();
+  const seed = history.pathEvents[0];
+  const end = Date.parse(observedAt);
+  const start = end - 55_000;
+  const pathEvents = Array.from({ length: 12 }, (_, index) => {
+    const timestamp = new Date(start + index * 5_000).toISOString();
+    return {
+      ...seed,
+      observedAt: timestamp,
+      path: index % 2 === 0 ? relayPath : pendingRelayPath,
+      pathCandidates: seed.pathCandidates.map((candidate) => ({
+        ...candidate,
+        lastObservedAt: timestamp,
+      })),
+      observations: seed.observations.map((observation) => ({
+        ...observation,
+        collectedAt: timestamp,
+        receivedAt: timestamp,
+      })),
+    };
+  });
+  return {
+    ...history,
+    from: new Date(start).toISOString(),
+    to: new Date(end + 5_000).toISOString(),
+    pathEvents,
   };
 }
 

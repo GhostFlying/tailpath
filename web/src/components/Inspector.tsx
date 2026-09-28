@@ -265,7 +265,7 @@ function RelayCandidate({
   const relay = stableID
     ? topology.nodes.find((node) => node.stableNodeId === stableID)
     : undefined;
-  const label = relay ? nodeLabel(relay) : stableID || "Peer Relay";
+  const label = relay ? nodeLabel(relay) : stableID || "Unresolved relay";
   const resolution = candidateResolution(candidate);
   return (
     <button
