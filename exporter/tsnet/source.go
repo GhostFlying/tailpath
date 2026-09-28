@@ -22,8 +22,9 @@ type statusClient interface {
 
 // Source reads the passive runtime status of one embedded Tailscale identity.
 type Source struct {
-	client statusClient
-	now    func() time.Time
+	client  statusClient
+	now     func() time.Time
+	tracker *tailscalestatus.Tracker
 }
 
 // New obtains a LocalClient from server and returns a Source for that embedded
@@ -50,7 +51,7 @@ func NewLocalClient(client *local.Client) (*Source, error) {
 }
 
 func newSource(client statusClient, now func() time.Time) *Source {
-	return &Source{client: client, now: now}
+	return &Source{client: client, now: now, tracker: tailscalestatus.NewTracker()}
 }
 
 // Snapshot reads one passive LocalAPI status snapshot. It does not dial or
@@ -63,7 +64,7 @@ func (s *Source) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 		}
 		return exporter.Snapshot{}, errors.New("read tsnet runtime status")
 	}
-	snapshot, err := tailscalestatus.Snapshot(status, s.now())
+	snapshot, err := s.tracker.Snapshot(status, s.now())
 	if err != nil {
 		return exporter.Snapshot{}, err
 	}

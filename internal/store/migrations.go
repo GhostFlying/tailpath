@@ -10,7 +10,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 type migration func(*sql.Tx) error
 
@@ -20,6 +20,71 @@ var migrations = []migration{
 	migrateHistoryEdgeMapping,
 	migrateCanonicalHourRollups,
 	migrateHistoryEvidence,
+	migrateDirectionalPaths,
+}
+
+func migrateDirectionalPaths(tx *sql.Tx) error {
+	if err := ensureColumn(tx, "path_events", "directions", "BLOB NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
+	type edgeEndpoints struct{ source, target string }
+	endpoints := make(map[string]edgeEndpoints)
+	edgeRows, err := tx.Query(`SELECT edge_id, source_id, target_id FROM history_edges`)
+	if err != nil {
+		return err
+	}
+	for edgeRows.Next() {
+		var edgeID string
+		var edge edgeEndpoints
+		if err := edgeRows.Scan(&edgeID, &edge.source, &edge.target); err != nil {
+			edgeRows.Close()
+			return err
+		}
+		endpoints[edgeID] = edge
+	}
+	if err := edgeRows.Close(); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id, edge_id, observations FROM path_events ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	type update struct {
+		id         int64
+		directions []domain.DirectionalPathState
+	}
+	var updates []update
+	for rows.Next() {
+		var id int64
+		var edgeID string
+		var rawObservations []byte
+		if err := rows.Scan(&id, &edgeID, &rawObservations); err != nil {
+			rows.Close()
+			return err
+		}
+		var observations []domain.ObservationProvenance
+		if len(rawObservations) != 0 {
+			if err := json.Unmarshal(rawObservations, &observations); err != nil {
+				rows.Close()
+				return fmt.Errorf("decode path event observations %d: %w", id, err)
+			}
+		}
+		edge := endpoints[edgeID]
+		updates = append(updates, update{id: id, directions: domain.LegacyDirectionalPaths(edge.source, edge.target, observations)})
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, item := range updates {
+		payload, err := json.Marshal(item.directions)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE path_events SET directions = ? WHERE id = ?`, payload, item.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateHistoryEvidence(tx *sql.Tx) error {
@@ -53,7 +118,7 @@ func migrateHistoryEvidence(tx *sql.Tx) error {
 		path         domain.PathObservation
 		observations []domain.ObservationProvenance
 	}
-	rows, err := tx.Query(`SELECT id, edge_id, path, observations FROM path_events ORDER BY edge_id, observed_at, id`)
+	rows, err := tx.Query(`SELECT id, edge_id, path, observations FROM path_events ORDER BY edge_id, julianday(observed_at), id`)
 	if err != nil {
 		return err
 	}

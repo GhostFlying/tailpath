@@ -258,6 +258,17 @@ func (a *App) EdgeHistoryWindow(ctx context.Context, edgeID string, window domai
 	return a.Store.EdgeHistoryWindow(ctx, edgeID, window, time.Now().UTC(), includeSystemTelemetry)
 }
 
+func (a *App) EdgePathHistoryWindow(
+	ctx context.Context,
+	edgeID string,
+	window domain.HistoryWindow,
+	cursor string,
+	limit int,
+	includeSystemTelemetry bool,
+) (domain.PathEventPage, bool, error) {
+	return a.Store.EdgePathHistoryWindow(ctx, edgeID, window, time.Now().UTC(), cursor, limit, includeSystemTelemetry)
+}
+
 func (a *App) StoreRetention() time.Duration {
 	return a.Store.Retention()
 }

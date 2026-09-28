@@ -62,15 +62,17 @@ layer，但保留 canonical redirect 和既有 History。
 值仍会在 raw journal 中替换为固定 presence marker，并从 checkpoint 和 API
 projection 中删除。Endpoint 只是证据，不进入全局 identity alias。
 
-路径状态由一个粘性主路径和确定性排序的新鲜冲突证据集合组成。只要主路径仍有
-新鲜证据支持，跨 observer 的 report 到达顺序就不会改变它；失去支持后，endpoint
-证据优先于 relay 侧证据，并以 canonical node ID 确定性打破平局。Peer Relay
-优先以 StableNodeID 区分，未解析时依次使用选中 endpoint 和 VNI。同一份新鲜
-observer snapshot 中，一个公网 IP 只有唯一 StableNodeID owner 时才允许关联；普通
-Tailscale port 与 relay service port 不要求一致，共享公网 IP 必须保持未解析。存在
-多个新鲜 relay candidate 时状态为 `switching`；Live 和 History 同时保留各 candidate
-的 path、观察时间和 observer 数量，流量仍只属于逻辑 relationship，不按 candidate
-重复计算。
+每条逻辑 edge 最多保存两个由 endpoint 自己拥有的 outbound 路径状态。Endpoint
+report 只能选择自己的方向；relay-session observation 可以补充匹配的 relay 身份，
+但不能投票决定任何方向的 active path。每个方向保存主路径、可选 DERP fallback，
+以及 `observed`、`inferred` 或 `legacy` 证据。旧客户端仍可使用兼容的顶层主路径、
+冲突、状态和 candidate 字段。
+
+Tailscale status 不直接暴露 dual-send。Collector 因此用进程本地单调时钟保存最近
+一次明确的 Peer Relay 选择：十二秒内出现 DERP 时，将其记录为该 relay 的 inferred
+fallback；更长的 DERP 区间转为 inferred DERP 主路径。进程启动后首次只看到 DERP
+时按 observed DERP 保存，不猜测之前的 relay。版本化 inference rule 会持久化，未来
+拿到 upstream 精确信号时可以直接改为 observed，不需要再次修改 API 结构。
 
 重启从最新 checkpoint 恢复 reporter sequence、observer 自己持有的 inventory
 generation 和 membership、reporter 到 observer 的 ownership、identity alias、节点、

@@ -59,6 +59,14 @@ const (
 	PathUnknown   PathKind = "unknown"
 )
 
+type PathEvidence string
+
+const (
+	PathEvidenceObserved PathEvidence = "observed"
+	PathEvidenceInferred PathEvidence = "inferred"
+	PathEvidenceLegacy   PathEvidence = "legacy"
+)
+
 type NodeIdentity struct {
 	StableNodeID    string   `json:"stableNodeId"`
 	NodeID          string   `json:"nodeId,omitempty"`
@@ -140,10 +148,13 @@ type Snapshot struct {
 }
 
 type PeerSnapshot struct {
-	Identity NodeIdentity
-	RxBytes  int64
-	TxBytes  int64
-	Path     Path
+	Identity          NodeIdentity
+	RxBytes           int64
+	TxBytes           int64
+	Path              Path
+	FallbackPath      *Path
+	PathEvidence      PathEvidence
+	PathInferenceRule string
 }
 
 // Source provides passive snapshots for one Tailscale runtime. Implementations
@@ -207,14 +218,17 @@ type Reporter interface {
 }
 
 type PeerObservation struct {
-	Peer             NodeIdentity `json:"peer"`
-	RxBytes          int64        `json:"rxBytes"`
-	TxBytes          int64        `json:"txBytes"`
-	RxDelta          int64        `json:"rxDelta"`
-	TxDelta          int64        `json:"txDelta"`
-	SampleDurationMS int64        `json:"sampleDurationMs"`
-	Path             Path         `json:"path"`
-	LastActive       time.Time    `json:"lastActive"`
+	Peer              NodeIdentity `json:"peer"`
+	RxBytes           int64        `json:"rxBytes"`
+	TxBytes           int64        `json:"txBytes"`
+	RxDelta           int64        `json:"rxDelta"`
+	TxDelta           int64        `json:"txDelta"`
+	SampleDurationMS  int64        `json:"sampleDurationMs"`
+	Path              Path         `json:"path"`
+	FallbackPath      *Path        `json:"fallbackPath,omitempty"`
+	PathEvidence      PathEvidence `json:"pathEvidence,omitempty"`
+	PathInferenceRule string       `json:"pathInferenceRule,omitempty"`
+	LastActive        time.Time    `json:"lastActive"`
 }
 
 type ObserverReport struct {

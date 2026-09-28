@@ -112,6 +112,7 @@ func New(application *app.App, options Options) *Server {
 	server.mux.HandleFunc("GET /api/v1/history/nodes", server.getHistoryNodes)
 	server.mux.HandleFunc("GET /api/v1/history/edges", server.listHistoryEdges)
 	server.mux.HandleFunc("GET /api/v1/history/edges/{edgeID}", server.getEdgeHistory)
+	server.mux.HandleFunc("GET /api/v1/history/edges/{edgeID}/paths", server.getEdgePathHistory)
 	if options.FixtureMutation != nil {
 		server.mux.HandleFunc("POST /api/v1/fixture/edge-update", func(response http.ResponseWriter, request *http.Request) {
 			value, err := options.FixtureMutation(request.Context())
@@ -275,6 +276,76 @@ func (s *Server) getEdgeHistory(response http.ResponseWriter, request *http.Requ
 	writeJSON(response, http.StatusOK, history)
 }
 
+func (s *Server) getEdgePathHistory(response http.ResponseWriter, request *http.Request) {
+	edgeID := request.PathValue("edgeID")
+	if edgeID == "" {
+		writeProblem(response, http.StatusBadRequest, "edge ID is required", "")
+		return
+	}
+	window, ok := parseHistoryWindow(response, request)
+	if !ok {
+		return
+	}
+	includeSystemTelemetry, ok := parseIncludeSystemTelemetry(response, request)
+	if !ok {
+		return
+	}
+	limit := 500
+	if rawLimit := request.URL.Query().Get("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 500 {
+			writeProblem(response, http.StatusBadRequest, "invalid path history limit", "limit must be between 1 and 500")
+			return
+		}
+		limit = parsed
+	}
+	page, found, err := s.app.EdgePathHistoryWindow(
+		request.Context(), edgeID, window, request.URL.Query().Get("cursor"), limit, includeSystemTelemetry,
+	)
+	if errors.Is(err, store.ErrInvalidHistoryCursor) {
+		writeProblem(response, http.StatusBadRequest, "invalid history cursor", "")
+		return
+	}
+	if err != nil {
+		if historyRequestCanceled(request, err) {
+			return
+		}
+		s.logger.Error("edge path history query failed", "edge_id", edgeID, "error", err)
+		writeProblem(response, http.StatusInternalServerError, "history query failed", "")
+		return
+	}
+	if !found {
+		writeProblem(response, http.StatusNotFound, "edge history not found", "")
+		return
+	}
+	normalizePathEventPage(&page)
+	writeJSON(response, http.StatusOK, page)
+}
+
+func normalizePathEventPage(page *domain.PathEventPage) {
+	if page.Events == nil {
+		page.Events = []domain.PathEvent{}
+	}
+	normalize := func(event *domain.PathEvent) {
+		if event == nil {
+			return
+		}
+		if event.Conflicts == nil {
+			event.Conflicts = []domain.PathObservation{}
+		}
+		if event.Observations == nil {
+			event.Observations = []domain.ObservationProvenance{}
+		}
+		if event.Directions == nil {
+			event.Directions = []domain.DirectionalPathState{}
+		}
+	}
+	normalize(page.Anchor)
+	for index := range page.Events {
+		normalize(&page.Events[index])
+	}
+}
+
 func normalizeHistoryCollections(history *domain.EdgeHistory) {
 	if history.Traffic == nil {
 		history.Traffic = []domain.TrafficBucket{}
@@ -291,12 +362,18 @@ func normalizeHistoryCollections(history *domain.EdgeHistory) {
 	if history.PathAnchor != nil && history.PathAnchor.Conflicts == nil {
 		history.PathAnchor.Conflicts = []domain.PathObservation{}
 	}
+	if history.PathAnchor != nil && history.PathAnchor.Directions == nil {
+		history.PathAnchor.Directions = []domain.DirectionalPathState{}
+	}
 	for index := range history.PathEvents {
 		if history.PathEvents[index].Observations == nil {
 			history.PathEvents[index].Observations = []domain.ObservationProvenance{}
 		}
 		if history.PathEvents[index].Conflicts == nil {
 			history.PathEvents[index].Conflicts = []domain.PathObservation{}
+		}
+		if history.PathEvents[index].Directions == nil {
+			history.PathEvents[index].Directions = []domain.DirectionalPathState{}
 		}
 	}
 }

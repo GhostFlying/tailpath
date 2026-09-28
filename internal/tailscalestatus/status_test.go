@@ -129,3 +129,75 @@ func TestSnapshotRejectsUnavailableSelf(t *testing.T) {
 		}
 	}
 }
+
+func TestTrackerInfersShortDERPFallbackAndExpiresIt(t *testing.T) {
+	tracker := NewTracker()
+	peerKey := key.NewNode().Public()
+	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	status := &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "self"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+		},
+	}
+	first, err := tracker.Snapshot(status, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Peers[0].Path.Kind != exporter.PathPeerRelay || first.Peers[0].PathEvidence != exporter.PathEvidenceObserved {
+		t.Fatalf("first path = %#v", first.Peers[0])
+	}
+
+	status.Peer[peerKey].PeerRelay = ""
+	status.Peer[peerKey].Relay = "hgh-custom"
+	short, err := tracker.Snapshot(status, at.Add(6*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := short.Peers[0]
+	if peer.Path.Kind != exporter.PathPeerRelay || peer.FallbackPath == nil ||
+		peer.FallbackPath.Kind != exporter.PathDERP || peer.FallbackPath.DERPRegion != "hgh-custom" ||
+		peer.PathEvidence != exporter.PathEvidenceInferred || peer.PathInferenceRule != FallbackInferenceRule {
+		t.Fatalf("short fallback = %#v", peer)
+	}
+
+	long, err := tracker.Snapshot(status, at.Add(FallbackInferenceWindow+time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer = long.Peers[0]
+	if peer.Path.Kind != exporter.PathDERP || peer.FallbackPath != nil ||
+		peer.PathEvidence != exporter.PathEvidenceInferred || peer.PathInferenceRule != FallbackInferenceRule {
+		t.Fatalf("expired fallback = %#v", peer)
+	}
+}
+
+func TestTrackerDoesNotGuessStartupDERPAndReplacesRelay(t *testing.T) {
+	tracker := NewTracker()
+	peerKey := key.NewNode().Public()
+	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	status := &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "self"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			peerKey: {ID: "peer", Relay: "hgh-custom"},
+		},
+	}
+	startup, err := tracker.Snapshot(status, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peer := startup.Peers[0]; peer.Path.Kind != exporter.PathDERP ||
+		peer.PathEvidence != exporter.PathEvidenceObserved || peer.FallbackPath != nil {
+		t.Fatalf("startup DERP = %#v", peer)
+	}
+
+	status.Peer[peerKey].Relay = ""
+	status.Peer[peerKey].PeerRelay = "203.0.113.9:40000:vni:8"
+	second, err := tracker.Snapshot(status, at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peer := second.Peers[0]; peer.Path.PeerRelayVNI == nil || *peer.Path.PeerRelayVNI != 8 || peer.FallbackPath != nil {
+		t.Fatalf("replacement relay = %#v", peer)
+	}
+}

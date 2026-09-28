@@ -343,9 +343,17 @@ func recordPathTransition(ctx context.Context, tx *sql.Tx, transition domain.Pat
 	if err != nil {
 		return err
 	}
+	directionValues := transition.Directions
+	if directionValues == nil {
+		directionValues = []domain.DirectionalPathState{}
+	}
+	directions, err := json.Marshal(directionValues)
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations) VALUES (?, ?, ?, ?, ?)`,
-		transition.EdgeID, formatTime(transition.ObservedAt), path, conflicts, observations)
+		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES (?, ?, ?, ?, ?, ?)`,
+		transition.EdgeID, formatTime(transition.ObservedAt), path, conflicts, observations, directions)
 	return err
 }
 
@@ -386,17 +394,17 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 	}
 
 	rows, err = s.db.QueryContext(ctx, `
-		SELECT observed_at, path, conflicts, observations FROM path_events
-        WHERE edge_id = ? AND observed_at >= ? ORDER BY observed_at`, edgeID, formatTime(since))
+		SELECT observed_at, path, conflicts, observations, directions FROM path_events
+		WHERE edge_id = ? AND julianday(observed_at) >= julianday(?) ORDER BY julianday(observed_at), id`, edgeID, formatTime(since))
 	if err != nil {
 		return history, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var rawTime string
-		var rawPath, rawConflicts, rawObservations []byte
+		var rawPath, rawConflicts, rawObservations, rawDirections []byte
 		var event domain.PathEvent
-		if err := rows.Scan(&rawTime, &rawPath, &rawConflicts, &rawObservations); err != nil {
+		if err := rows.Scan(&rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections); err != nil {
 			return history, err
 		}
 		event.ObservedAt, err = time.Parse(time.RFC3339Nano, rawTime)
@@ -418,6 +426,13 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 		if event.Observations == nil {
 			event.Observations = []domain.ObservationProvenance{}
 		}
+		if err := json.Unmarshal(rawDirections, &event.Directions); err != nil {
+			return history, err
+		}
+		if event.Directions == nil {
+			event.Directions = []domain.DirectionalPathState{}
+		}
+		event.PathState, event.PathCandidates = domain.PathCandidates(event.Path, event.Conflicts, event.Observations)
 		history.PathEvents = append(history.PathEvents, event)
 	}
 	return history, rows.Err()

@@ -1090,20 +1090,27 @@ func TestOpenMigratesV4PathStormToStickyEvidence(t *testing.T) {
 	}
 	defer database.Close()
 	assertTableCount(t, database, "path_events", 1)
-	var rawPath, rawConflicts []byte
-	if err := database.db.QueryRow(`SELECT path, conflicts FROM path_events`).Scan(&rawPath, &rawConflicts); err != nil {
+	var rawPath, rawConflicts, rawDirections []byte
+	if err := database.db.QueryRow(`SELECT path, conflicts, directions FROM path_events`).Scan(&rawPath, &rawConflicts, &rawDirections); err != nil {
 		t.Fatal(err)
 	}
 	var migratedPath domain.PathObservation
 	var conflicts []domain.PathObservation
+	var directions []domain.DirectionalPathState
 	if err := json.Unmarshal(rawPath, &migratedPath); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(rawConflicts, &conflicts); err != nil {
 		t.Fatal(err)
 	}
+	if err := json.Unmarshal(rawDirections, &directions); err != nil {
+		t.Fatal(err)
+	}
 	if migratedPath.Kind != domain.PathDirect || len(conflicts) != 1 || conflicts[0].PeerRelayStableNodeID != "relay" {
 		t.Fatalf("migrated evidence path=%#v conflicts=%#v", migratedPath, conflicts)
+	}
+	if len(directions) != 1 || directions[0].FromNodeID != "n_a" || directions[0].Evidence != domain.PathEvidenceLegacy {
+		t.Fatalf("migrated directions=%#v", directions)
 	}
 }
 

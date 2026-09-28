@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/history/edges/{edgeId}/paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return a complete keyset-paginated page of directional path events. */
+        get: operations["getEdgePathHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/history/nodes": {
         parameters: {
             query?: never;
@@ -274,6 +291,10 @@ export interface components {
              */
             sampleDurationMs: number;
             path: components["schemas"]["PathObservation"];
+            fallbackPath?: components["schemas"]["PathObservation"];
+            pathEvidence?: components["schemas"]["PathEvidence"];
+            /** @description Versioned rule used when pathEvidence is inferred. */
+            pathInferenceRule?: string;
             /** Format: date-time */
             lastActive: string;
         };
@@ -324,6 +345,23 @@ export interface components {
         /** @enum {string} */
         PathKind: "direct" | "derp" | "peer_relay" | "unknown";
         /** @enum {string} */
+        PathEvidence: "observed" | "inferred" | "legacy";
+        DirectionalPathState: {
+            fromNodeId: string;
+            toNodeId: string;
+            primaryPath: components["schemas"]["PathObservation"];
+            /** @description Optional DERP fallback used in parallel with a direct or Peer Relay primary. */
+            fallbackPath?: components["schemas"]["PathObservation"];
+            evidence: components["schemas"]["PathEvidence"];
+            inferenceRule?: string;
+            observerId: string;
+            /** Format: date-time */
+            collectedAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            clockSkewed: boolean;
+        };
+        /** @enum {string} */
         PathState: "stable" | "switching";
         PathCandidate: {
             path: components["schemas"]["PathObservation"];
@@ -369,6 +407,7 @@ export interface components {
             path: components["schemas"]["PathObservation"];
             pathState?: components["schemas"]["PathState"];
             pathCandidates?: components["schemas"]["PathCandidate"][];
+            directions?: components["schemas"]["DirectionalPathState"][];
             /** @enum {string} */
             state: "active" | "recent";
             /** Format: double */
@@ -383,6 +422,9 @@ export interface components {
         ObservationProvenance: {
             observerId: string;
             path: components["schemas"]["PathObservation"];
+            fallbackPath?: components["schemas"]["PathObservation"];
+            pathEvidence?: components["schemas"]["PathEvidence"];
+            pathInferenceRule?: string;
             /** Format: date-time */
             collectedAt: string;
             /** Format: date-time */
@@ -480,6 +522,12 @@ export interface components {
             pathCandidates?: components["schemas"]["PathCandidate"][];
             conflicts: components["schemas"]["PathObservation"][];
             observations: components["schemas"]["ObservationProvenance"][];
+            directions?: components["schemas"]["DirectionalPathState"][];
+        };
+        PathEventPage: {
+            anchor?: components["schemas"]["PathEvent"];
+            events: components["schemas"]["PathEvent"][];
+            nextCursor?: string;
         };
         Problem: {
             title: string;
@@ -643,6 +691,37 @@ export interface operations {
                     "application/json": components["schemas"]["EdgeHistory"];
                 };
             };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    getEdgePathHistory: {
+        parameters: {
+            query: {
+                window: components["parameters"]["HistoryWindow"];
+                /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
+                includeSystemTelemetry?: components["parameters"]["IncludeSystemTelemetry"];
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                edgeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered directional path event page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PathEventPage"];
+                };
+            };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
         };

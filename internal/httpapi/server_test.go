@@ -425,6 +425,8 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		"/api/v1/history/edges?window=1h&cursor=invalid",
 		"/api/v1/history/edges?window=1h&includeSystemTelemetry=maybe",
 		"/api/v1/history/edges/n_a--n_b",
+		"/api/v1/history/edges/n_a--n_b/paths?window=1h&limit=501",
+		"/api/v1/history/edges/n_a--n_b/paths?window=1h&cursor=invalid",
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, requestPath, nil)
@@ -471,6 +473,17 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	}
 	if history.RelatedNodes == nil || history.PathEvents[0].Conflicts == nil {
 		t.Fatalf("required history collections = %#v", history)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_b/paths?window=1h&limit=1", nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("path history status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var pathPage domain.PathEventPage
+	if err := json.NewDecoder(recorder.Body).Decode(&pathPage); err != nil || len(pathPage.Events) != 1 || pathPage.Events[0].Directions == nil {
+		t.Fatalf("path history page = %#v, err=%v", pathPage, err)
 	}
 
 	recorder = httptest.NewRecorder()
@@ -532,6 +545,7 @@ func TestHistoryRequestCancellationIsNotAnInternalServerError(t *testing.T) {
 		"/api/v1/history/nodes?window=1h",
 		"/api/v1/history/edges?window=1h",
 		"/api/v1/history/edges/edge?window=1h",
+		"/api/v1/history/edges/edge/paths?window=1h",
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
