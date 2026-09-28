@@ -39,14 +39,19 @@ Follow the [systematic layout contract](layout-rules.md) ([中文版](layout-rul
 - Keep the path-specific color and shape for a resolved canonical Peer Relay,
   while rendering its reported platform icon inside that anatomy. Virtual or
   unresolved relay markers must not invent a platform icon.
-- When more than one Peer Relay candidate is fresh, render every candidate and
-  label the relationship `Switching`. Known candidates use their canonical
-  relay identity; unresolved candidates use an explicit `Peer Relay` marker
-  with identity-pending copy. Candidate styling and text must distinguish them
-  without duplicating the relationship's traffic label, width, or totals.
+- Treat each endpoint report as evidence for that endpoint's outbound path.
+  Collapse two directions only when their primary and fallback identities are
+  equivalent; otherwise render two destination-arrow route chains and label
+  the relationship `Asymmetric paths`. A missing direction remains explicitly
+  unknown and must never be copied from its reverse.
+- Render inferred DERP fallback as a thin amber dashed route with explicit
+  `DERP fallback` and `Inferred` copy. It is evidence about a redundant route,
+  not another application-traffic total, so do not duplicate the relationship
+  rate or width. Keep endpoint path evidence separate from relay-session
+  identity evidence in Live and History.
 - Live and History must show the endpoint, VNI, resolution method, freshness,
-  and observer count retained for a relay candidate. History renders the
-  candidate set recorded for that event rather than recomputing it from current
+  observer, and `Observed`, `Inferred`, or `Legacy` evidence retained for each
+  direction. Historical state is restored from the event rather than current
   node metadata.
 - Runtime status reports known views as `N runtimes reporting`, adding
   `N reporting · M stale` only when previously known views expire. Do not use

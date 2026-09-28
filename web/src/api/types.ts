@@ -5,6 +5,9 @@ export type TopologyNode = components["schemas"]["TopologyNode"];
 export type TopologyEdge = components["schemas"]["TopologyEdge"];
 export type PathKind = components["schemas"]["PathKind"];
 export type PathObservation = components["schemas"]["PathObservation"];
+export type PathEvidence = components["schemas"]["PathEvidence"];
+export type DirectionalPathState =
+  components["schemas"]["DirectionalPathState"];
 export type PathCandidate = components["schemas"]["PathCandidate"];
 export type PathState = components["schemas"]["PathState"];
 export type EdgeHistory = components["schemas"]["EdgeHistory"];
@@ -16,6 +19,7 @@ export type HistoryEdgeSummary = components["schemas"]["HistoryEdgeSummary"];
 export type HistoryEdgePage = components["schemas"]["HistoryEdgePage"];
 export type TrafficBucket = components["schemas"]["TrafficBucket"];
 export type PathEvent = components["schemas"]["PathEvent"];
+export type PathEventPage = components["schemas"]["PathEventPage"];
 export type ServerCapabilities = components["schemas"]["ServerCapabilities"];
 export type DeviceDirectory = components["schemas"]["DeviceDirectory"];
 export type DirectoryDevice = components["schemas"]["DirectoryDevice"];
