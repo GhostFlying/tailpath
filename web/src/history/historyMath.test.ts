@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { EdgeHistory } from "../api/types";
 import {
   buildPathTimeline,
+  buildDirectionalTimeline,
+  hasDirectionalHistory,
   trafficGeometry,
   trafficPointAtX,
 } from "./historyMath";
@@ -113,4 +115,92 @@ describe("path timeline", () => {
     });
     expect(timeline[0].durationMs).toBe(30 * 60 * 1000);
   });
+
+  it("restores both direction slots on one chronological axis", () => {
+    const history = directionalHistory();
+    const timeline = buildDirectionalTimeline(history);
+
+    expect(hasDirectionalHistory(history)).toBe(true);
+    expect(timeline).toHaveLength(2);
+    expect(timeline.map((item) => item.from)).toEqual([
+      history.from,
+      history.pathEvents[0].observedAt,
+    ]);
+    expect(timeline[0].aToB?.primaryPath.kind).toBe("peer_relay");
+    expect(timeline[0].aToB?.fallbackPath?.kind).toBe("derp");
+    expect(timeline[0].bToA?.primaryPath.kind).toBe("direct");
+    expect(timeline[1].aToB?.primaryPath.kind).toBe("direct");
+    expect(timeline[1].bToA).toBeUndefined();
+  });
+
+  it("keeps the pre-event window unknown when no anchor was retained", () => {
+    const history = directionalHistory();
+    history.pathAnchor = undefined;
+    const timeline = buildDirectionalTimeline(history);
+
+    expect(timeline).toHaveLength(2);
+    expect(timeline[0]).toMatchObject({
+      from: history.from,
+      to: history.pathEvents[0].observedAt,
+      noEvidence: true,
+      aToB: undefined,
+      bToA: undefined,
+    });
+  });
 });
+
+function directionalHistory(): EdgeHistory {
+  const state = (
+    fromNodeId: string,
+    toNodeId: string,
+    primaryPath: EdgeHistory["pathEvents"][number]["path"],
+    fallbackPath?: EdgeHistory["pathEvents"][number]["path"],
+  ) => ({
+    fromNodeId,
+    toNodeId,
+    primaryPath,
+    fallbackPath,
+    evidence: fallbackPath ? ("inferred" as const) : ("observed" as const),
+    observerId: fromNodeId,
+    collectedAt: "2026-08-24T00:00:00Z",
+    receivedAt: "2026-08-24T00:00:01Z",
+    clockSkewed: false,
+  });
+  return {
+    edgeId: "a--b",
+    source: { id: "a", label: "A" },
+    target: { id: "b", label: "B" },
+    systemTelemetry: false,
+    relatedNodes: [],
+    from: "2026-08-24T00:00:00Z",
+    to: "2026-08-24T01:00:00Z",
+    bucketDurationMs: 30_000,
+    traffic: [],
+    pathAnchor: {
+      observedAt: "2026-08-23T23:59:00Z",
+      path: { kind: "peer_relay" },
+      conflicts: [],
+      observations: [],
+      directions: [
+        state(
+          "a",
+          "b",
+          { kind: "peer_relay", peerRelayVni: 4293 },
+          { kind: "derp", derpRegion: "hkg" },
+        ),
+        state("b", "a", { kind: "direct" }),
+      ],
+    },
+    pathEvents: [
+      {
+        observedAt: "2026-08-24T00:30:00Z",
+        path: { kind: "direct" },
+        conflicts: [],
+        observations: [],
+        directions: [state("a", "b", { kind: "direct" })],
+      },
+    ],
+    trafficTruncated: false,
+    pathEventsTruncated: false,
+  };
+}

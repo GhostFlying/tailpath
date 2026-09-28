@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDevices, getEdgeHistory } from "./client";
+import { getDevices, getEdgeHistory, getEdgePathHistory } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,6 +39,47 @@ describe("getEdgeHistory", () => {
 
     expect(history.pathEvents).toHaveLength(1);
     expect(history.pathEvents[0].observations).toEqual([]);
+  });
+});
+
+describe("getEdgePathHistory", () => {
+  it("requests a stable cursor page and normalizes directional collections", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        anchor: { ...pathEvent(), directions: null },
+        events: [
+          {
+            ...pathEvent(),
+            observedAt: "2026-08-30T00:01:00Z",
+            conflicts: null,
+            observations: null,
+            directions: null,
+          },
+        ],
+        nextCursor: "next page",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await getEdgePathHistory(
+      "node-a--node-b",
+      "24h",
+      "cursor value",
+      undefined,
+      200,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/history/edges/node-a--node-b/paths?window=24h&limit=200&cursor=cursor+value",
+      expect.objectContaining({ headers: { Accept: "application/json" } }),
+    );
+    expect(page.anchor?.directions).toEqual([]);
+    expect(page.events[0]).toMatchObject({
+      conflicts: [],
+      observations: [],
+      directions: [],
+    });
+    expect(page.nextCursor).toBe("next page");
   });
 });
 

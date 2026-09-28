@@ -109,6 +109,9 @@ export default function HistoryWorkspace() {
         <HistoryDetail
           history={detail.history}
           loading={detail.loading}
+          pathsLoading={detail.pathsLoading}
+          pathEventsLoaded={detail.pathEventsLoaded}
+          pathEventsComplete={detail.pathEventsComplete}
           error={detail.error}
           window={query.window}
           onBack={backToList}
