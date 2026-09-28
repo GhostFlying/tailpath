@@ -5,10 +5,12 @@ import { trafficGeometry, trafficPointAtX } from "./historyMath";
 
 interface Props {
   history: EdgeHistory;
+  selectedAt?: string;
 }
 
 export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
   history,
+  selectedAt,
 }: Props) {
   const geometry = useMemo(
     () =>
@@ -23,6 +25,9 @@ export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
   const [hovered, setHovered] = useState<number | null>(null);
   const point = hovered === null ? null : geometry.points[hovered];
   const ticks = chartTicks(history.from, history.to);
+  const selectedX = selectedAt
+    ? timelineX(selectedAt, history.from, history.to)
+    : null;
 
   if (geometry.points.length === 0) {
     return (
@@ -84,6 +89,16 @@ export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
             <path d={geometry.bArea} className="traffic-area traffic-area-b" />
             <path d={geometry.aLine} className="traffic-line traffic-line-a" />
             <path d={geometry.bLine} className="traffic-line traffic-line-b" />
+            {selectedX !== null ? (
+              <line
+                x1={selectedX}
+                y1="0"
+                x2={selectedX}
+                y2="260"
+                className="chart-selected-cursor"
+                aria-label={`Selected path time ${selectedAt}`}
+              />
+            ) : null}
             {point ? (
               <>
                 <line
@@ -145,6 +160,16 @@ export const DirectionalTrafficChart = memo(function DirectionalTrafficChart({
     </section>
   );
 });
+
+function timelineX(value: string, from: string, to: string) {
+  const start = new Date(from).getTime();
+  const end = new Date(to).getTime();
+  const selected = new Date(value).getTime();
+  if (![start, end, selected].every(Number.isFinite) || end <= start) {
+    return null;
+  }
+  return Math.max(0, Math.min(900, ((selected - start) / (end - start)) * 900));
+}
 
 function chartTicks(from: string, to: string) {
   const start = new Date(from).getTime();

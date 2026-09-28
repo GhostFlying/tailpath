@@ -58,6 +58,15 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
     route.fulfill({ json: relayHistory() }),
   );
+  await page.route(
+    "**/api/v1/history/edges/client-a--client-b/paths?**",
+    (route) => {
+      const history = relayHistory();
+      return route.fulfill({
+        json: { anchor: history.pathAnchor, events: history.pathEvents },
+      });
+    },
+  );
 });
 
 test("presents scoped relay clients and live provenance", async ({
@@ -155,6 +164,16 @@ test("renders all fresh relay candidates while switching", async ({
   await page.unroute("**/api/v1/history/edges/client-a--client-b?**");
   await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
     route.fulfill({ json: switchingHistory() }),
+  );
+  await page.unroute("**/api/v1/history/edges/client-a--client-b/paths?**");
+  await page.route(
+    "**/api/v1/history/edges/client-a--client-b/paths?**",
+    (route) => {
+      const history = switchingHistory();
+      return route.fulfill({
+        json: { anchor: history.pathAnchor, events: history.pathEvents },
+      });
+    },
   );
 
   const consoleErrors: string[] = [];
@@ -416,6 +435,16 @@ test("keeps a dense switching timeline readable", async ({
   await page.unroute("**/api/v1/history/edges/client-a--client-b?**");
   await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
     route.fulfill({ json: denseSwitchingHistory() }),
+  );
+  await page.unroute("**/api/v1/history/edges/client-a--client-b/paths?**");
+  await page.route(
+    "**/api/v1/history/edges/client-a--client-b/paths?**",
+    (route) => {
+      const history = denseSwitchingHistory();
+      return route.fulfill({
+        json: { anchor: history.pathAnchor, events: history.pathEvents },
+      });
+    },
   );
 
   await page.goto("/history/edges/client-a--client-b?window=1h");

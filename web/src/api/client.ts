@@ -4,6 +4,7 @@ import type {
   HistoryEdgePage,
   HistoryNodes,
   HistoryWindow,
+  PathEventPage,
   PathKind,
   Topology,
   ServerCapabilities,
@@ -49,10 +50,11 @@ export function getEdgeHistory(
 
 type NullablePathEvent = Omit<
   EdgeHistory["pathEvents"][number],
-  "conflicts" | "observations"
+  "conflicts" | "observations" | "directions"
 > & {
   conflicts: EdgeHistory["pathEvents"][number]["conflicts"] | null;
   observations: EdgeHistory["pathEvents"][number]["observations"] | null;
+  directions?: EdgeHistory["pathEvents"][number]["directions"] | null;
 };
 
 type NullableEdgeHistory = Omit<
@@ -70,7 +72,32 @@ function normalizePathEvent(event: NullablePathEvent) {
     ...event,
     conflicts: event.conflicts ?? [],
     observations: event.observations ?? [],
+    directions: event.directions ?? [],
   };
+}
+
+type NullablePathEventPage = Omit<PathEventPage, "anchor" | "events"> & {
+  anchor?: NullablePathEvent | null;
+  events: NullablePathEvent[] | null;
+};
+
+export function getEdgePathHistory(
+  edgeId: string,
+  window: HistoryWindow,
+  cursor = "",
+  signal?: AbortSignal,
+  limit = 500,
+): Promise<PathEventPage> {
+  const query = new URLSearchParams({ window, limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return getJSON<NullablePathEventPage>(
+    `/api/v1/history/edges/${encodeURIComponent(edgeId)}/paths?${query.toString()}`,
+    signal,
+  ).then((page) => ({
+    ...page,
+    anchor: page.anchor ? normalizePathEvent(page.anchor) : undefined,
+    events: (page.events ?? []).map(normalizePathEvent),
+  }));
 }
 
 function normalizeEdgeHistory(history: NullableEdgeHistory): EdgeHistory {

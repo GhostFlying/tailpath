@@ -206,6 +206,168 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(page.getByLabel("History connections")).toBeVisible();
 });
 
+test("renders directional history on shared chronological lanes", async ({
+  page,
+}, testInfo) => {
+  const detail = directionalHistoryFor(edgeSummaries[0], 3);
+  await page.route(
+    "**/api/v1/history/edges/node-mac--node-dev/paths?**",
+    (route) =>
+      route.fulfill({
+        json: {
+          anchor: detail.pathAnchor,
+          events: detail.pathEvents,
+        },
+      }),
+  );
+  await page.route("**/api/v1/history/edges/node-mac--node-dev?**", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/history/edges/node-mac--node-dev?window=24h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  await expect(
+    page.getByText("Complete · 3 events", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Time flows left to right", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Newest first", { exact: true })).toHaveCount(0);
+  const timeline = page.getByRole("list", { name: "Path timeline" });
+  await expect(timeline.getByRole("listitem")).toHaveCount(4);
+  await expect(page.locator(".directional-lane-segment.a-primary")).toHaveCount(
+    4,
+  );
+  await expect(page.locator(".directional-lane-segment.b-primary")).toHaveCount(
+    4,
+  );
+  await expect(page.locator(".directional-fallback-segment")).not.toHaveCount(
+    0,
+  );
+  await expect(page.locator(".chart-selected-cursor")).toHaveCount(1);
+  await expect(page.locator(".chart-selected-cursor")).toHaveAttribute(
+    "x1",
+    /\d/,
+  );
+
+  const lastState = timeline.getByRole("listitem").last();
+  if (testInfo.project.name.startsWith("mobile")) {
+    const touchTarget = await lastState.boundingBox();
+    expect(touchTarget?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(touchTarget?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await lastState.click();
+    const sheet = page.getByRole("dialog", { name: "Path evidence" });
+    await expect(sheet).toContainText("Asymmetric paths");
+    await expect(
+      sheet.getByRole("table", { name: "Directional path state" }),
+    ).toContainText("DERP hkg");
+    await expect(sheet).toContainText("Inferred");
+    await expect(
+      sheet.getByRole("button", { name: "Close path evidence" }),
+    ).toBeFocused();
+    await page.screenshot({
+      path: testInfo.outputPath("directional-history-sheet-mobile.png"),
+      fullPage: true,
+    });
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+    await expect(lastState).toBeFocused();
+  } else {
+    const table = page.getByRole("table", { name: "Directional path state" });
+    await expect(table).toContainText("MacBook → DevBox");
+    await expect(table).toContainText("DevBox → MacBook");
+    await expect(table).toContainText("DERP hkg");
+    await expect(table).toContainText("Inferred");
+  }
+
+  const labelFailures = await page
+    .locator(".directional-lane-segment, .directional-fallback-segment")
+    .evaluateAll((segments) =>
+      segments.flatMap((segment, index) => {
+        if (!segment.textContent?.trim()) return [];
+        const style = getComputedStyle(segment);
+        return segment.clientWidth >= 55 &&
+          segment.scrollHeight <= segment.clientHeight + 1 &&
+          style.overflow === "hidden" &&
+          style.whiteSpace === "nowrap"
+          ? []
+          : [`${index}: ${segment.textContent}`];
+      }),
+    );
+  expect(labelFailures).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  expect(consoleErrors).toEqual([]);
+
+  await page.screenshot({
+    path: testInfo.outputPath(
+      `directional-history-${testInfo.project.name}.png`,
+    ),
+    fullPage: true,
+  });
+});
+
+test("loads all 900 directional path events without truncation", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop"));
+  test.setTimeout(30_000);
+  const detail = directionalHistoryFor(edgeSummaries[0], 900);
+  let pageRequests = 0;
+  await page.route(
+    "**/api/v1/history/edges/node-mac--node-dev/paths?**",
+    (route) => {
+      pageRequests += 1;
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      const events = cursor
+        ? detail.pathEvents.slice(500)
+        : detail.pathEvents.slice(0, 500);
+      return (async () => {
+        if (cursor) await new Promise((resolve) => setTimeout(resolve, 500));
+        await route.fulfill({
+          json: {
+            anchor: detail.pathAnchor,
+            events,
+            nextCursor: cursor ? undefined : "second-page",
+          },
+        });
+      })();
+    },
+  );
+  await page.route("**/api/v1/history/edges/node-mac--node-dev?**", (route) =>
+    route.fulfill({
+      json: {
+        ...detail,
+        pathEvents: detail.pathEvents.slice(0, 500),
+        pathEventsTruncated: true,
+      },
+    }),
+  );
+
+  await page.goto("/history/edges/node-mac--node-dev?window=24h");
+  await expect(
+    page.getByText("Loading path history · 500 events", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Complete · 900 events", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Path timeline" }).getByRole("listitem"),
+  ).toHaveCount(901);
+  await expect(page.getByText("Latest retained points shown")).toHaveCount(0);
+  expect(pageRequests).toBe(2);
+});
+
 test("separates mobile History identity, recency, and traffic totals", async ({
   page,
 }, testInfo) => {
@@ -278,23 +440,27 @@ test("keeps path evidence usable in a 320px bottom sheet", async ({
   await page.setViewportSize({ width: 320, height: 700 });
   const relayStableNodeID =
     "nodekey:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const baseDetail = historyFor(edgeSummaries[0]);
+  const detail = {
+    ...baseDetail,
+    pathEvents: baseDetail.pathEvents.map((event, index) =>
+      index === baseDetail.pathEvents.length - 1
+        ? {
+            ...event,
+            path: {
+              kind: "peer_relay" as const,
+              peerRelayStableNodeId: relayStableNodeID,
+            },
+          }
+        : event,
+    ),
+  };
   await page.route("**/api/v1/history/edges/*?**", async (route) => {
-    const detail = historyFor(edgeSummaries[0]);
+    await route.fulfill({ json: detail });
+  });
+  await page.route("**/api/v1/history/edges/*/paths?**", async (route) => {
     await route.fulfill({
-      json: {
-        ...detail,
-        pathEvents: detail.pathEvents.map((event, index) =>
-          index === detail.pathEvents.length - 1
-            ? {
-                ...event,
-                path: {
-                  kind: "peer_relay",
-                  peerRelayStableNodeId: relayStableNodeID,
-                },
-              }
-            : event,
-        ),
-      },
+      json: { anchor: detail.pathAnchor, events: detail.pathEvents },
     });
   });
   await page.goto("/history/edges/node-mac--node-dev?window=24h");
@@ -580,6 +746,22 @@ async function installHistoryAPI(page: Page) {
     }
     await route.fulfill({ json: historyFor(summary) });
   });
+  await page.route("**/api/v1/history/edges/*/paths?**", async (route) => {
+    const segments = new URL(route.request().url()).pathname.split("/");
+    const edgeID = decodeURIComponent(segments.at(-2) ?? "");
+    const summary = edgeSummaries.find((edge) => edge.edgeId === edgeID);
+    if (!summary) {
+      await route.fulfill({ status: 404, body: "unknown edge" });
+      return;
+    }
+    const history = historyFor(summary);
+    await route.fulfill({
+      json: {
+        anchor: history.pathAnchor,
+        events: history.pathEvents,
+      },
+    });
+  });
 }
 
 function historyFor(summary: (typeof edgeSummaries)[number]) {
@@ -640,5 +822,119 @@ function historyFor(summary: (typeof edgeSummaries)[number]) {
     ],
     trafficTruncated: false,
     pathEventsTruncated: false,
+  };
+}
+
+function directionalHistoryFor(
+  summary: (typeof edgeSummaries)[number],
+  eventCount: number,
+) {
+  const base = historyFor(summary);
+  const relay = {
+    kind: "peer_relay" as const,
+    peerRelayStableNodeId: "relay-hangzhou-stable",
+    peerRelayEndpoint: "203.0.113.10:41642",
+    peerRelayResolution: "endpoint_match" as const,
+    peerRelayVni: 4293,
+  };
+  const reverseRelay = { ...relay, peerRelayVni: 8 };
+  const direct = {
+    kind: "direct" as const,
+    directEndpoint: "198.51.100.20:41641",
+  };
+  const fallback = { kind: "derp" as const, derpRegion: "hkg" };
+  const direction = (
+    fromNodeId: string,
+    toNodeId: string,
+    primaryPath: typeof relay | typeof direct,
+    fallbackPath?: typeof fallback,
+  ) => ({
+    fromNodeId,
+    toNodeId,
+    primaryPath,
+    fallbackPath,
+    evidence: fallbackPath ? ("inferred" as const) : ("observed" as const),
+    inferenceRule: fallbackPath ? "tailscale-status-fallback-v1" : undefined,
+    observerId: fromNodeId,
+    collectedAt: base.from,
+    receivedAt: base.from,
+    clockSkewed: false,
+  });
+  const eventAt = (index: number) =>
+    new Date(
+      Date.parse(base.from) +
+        ((Date.parse(base.to) - Date.parse(base.from)) * (index + 1)) /
+          (eventCount + 1),
+    ).toISOString();
+  const pathEvents = Array.from({ length: eventCount }, (_, index) => {
+    const observedAt = eventAt(index);
+    const aToB =
+      index % 3 === 2
+        ? direction(summary.source.id, summary.target.id, direct)
+        : direction(
+            summary.source.id,
+            summary.target.id,
+            relay,
+            index % 3 === 0 ? fallback : undefined,
+          );
+    const bToA = direction(
+      summary.target.id,
+      summary.source.id,
+      index % 3 === 0 ? direct : reverseRelay,
+      index % 3 === 2 ? fallback : undefined,
+    );
+    return {
+      observedAt,
+      path: aToB.primaryPath,
+      pathState: "stable" as const,
+      conflicts: [],
+      observations: [
+        {
+          observerId: summary.source.id,
+          path: aToB.primaryPath,
+          fallbackPath: aToB.fallbackPath,
+          pathEvidence: aToB.evidence,
+          pathInferenceRule: aToB.inferenceRule,
+          collectedAt: observedAt,
+          receivedAt: observedAt,
+          clockSkewed: false,
+        },
+        {
+          observerId: summary.target.id,
+          path: bToA.primaryPath,
+          fallbackPath: bToA.fallbackPath,
+          pathEvidence: bToA.evidence,
+          pathInferenceRule: bToA.inferenceRule,
+          collectedAt: observedAt,
+          receivedAt: observedAt,
+          clockSkewed: false,
+        },
+      ],
+      directions: [aToB, bToA],
+    };
+  });
+  const anchorDirections = [
+    direction(summary.source.id, summary.target.id, relay, fallback),
+    direction(summary.target.id, summary.source.id, direct),
+  ];
+  return {
+    ...base,
+    relatedNodes: [
+      ...base.relatedNodes,
+      {
+        id: "relay-hangzhou",
+        stableNodeId: "relay-hangzhou-stable",
+        label: "aliyun-hangzhou-relay",
+      },
+    ],
+    pathAnchor: {
+      observedAt: new Date(Date.parse(base.from) - 60_000).toISOString(),
+      path: relay,
+      conflicts: [],
+      observations: [],
+      directions: anchorDirections,
+    },
+    pathEvents,
+    pathEventsTruncated: eventCount > 500,
   };
 }
