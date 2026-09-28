@@ -134,7 +134,7 @@ later pages cannot drift as wall time advances.
 
 ## Current state
 
-The API/storage and Live slices are implemented. Collector snapshots now carry
+The API/storage, Live, and History slices are implemented. Collector snapshots now carry
 optional fallback and evidence metadata, native and tsnet sources share the
 versioned twelve-second monotonic inference tracker, and aggregation projects
 only endpoint observations into two directions. Schema migration 6 persists
@@ -148,15 +148,22 @@ missing direction unknown, labels evidence, and separates endpoint path
 evidence from relay-session identity evidence. Legacy edges without directions
 retain their compatibility candidate view.
 
-The ready-for-review stack has received fifty actionable inline findings.
+History now consumes the keyset-paginated path endpoint to completion and
+reports incremental progress. Directional records render on a shared
+left-to-right axis with two primary lanes, two DERP fallback sublanes, a shared
+traffic cursor, and an exact-time desktop table or mobile bottom sheet. Labels
+are omitted below the 56px budget, dense fallback windows are summarized, and
+every event remains available in a 44px-target detail index. Pre-directional
+records retain the legacy newest-first view and explicit combined-evidence
+copy.
+
+The ready-for-review stack has received forty-six actionable inline findings.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
 records resolved relay endpoint/VNI changes, and rejects inferred evidence
-without a versioned rule. It also clears directions when endpoint evidence is
-withdrawn, includes fallback kinds in History filters, and rejects fresh legacy
-evidence. The Live slice now derives arrows from directional rates,
-distinguishes partial evidence, suppresses recent arrows, exposes relay
+without a versioned rule. The Live slice now derives arrows from directional
+rates, distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
 recent-path inspector, treats complete relay identity as the shared Live and
 recent-event comparison key, and separates reciprocal route geometry. Obstacle
@@ -176,9 +183,7 @@ remediation, then rerun the complete repository and browser gates.
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
-  window end, node references first encountered on a paginated page, the
-  irreversible v5 boundary, withdrawn directions, fallback filtering, resolved
-  relay endpoint/VNI transitions, and both evidence-validation boundaries.
+  window end, and node references first encountered on a paginated page.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
@@ -197,9 +202,29 @@ remediation, then rerun the complete repository and browser gates.
 - Focused obstacle and relay UI browser coverage passes: 23 passed and one
   intentionally skipped across desktop and mobile, including reciprocal
   obstacle routes and selection across route-ID replacement.
+- Directional History Playwright coverage passes on desktop and mobile,
+  including focus-restoring bottom-sheet interaction, 56px label disclosure,
+  horizontal-overflow checks, shared traffic selection, and exact-time state.
+- A two-page 900-event browser fixture renders all 900 events and exposes the
+  500-event intermediate loading state without truncation or duplication.
+- The complete repository gate passed: generated-file consistency, shell
+  harnesses, formatting, `go vet`, all Go tests, TypeScript, 81 Vitest tests,
+  and the production Web build.
+- The complete Chromium browser matrix passed with CI concurrency: 63 passed
+  and 31 intentionally skipped across desktop and mobile projects. A first
+  non-CI 32-worker run exposed one pre-existing Retry-button DOM replacement
+  race; the CI gate's four-worker run passed the same case without retry.
+- Final Live and History desktop/mobile screenshots were compared against all
+  three accepted concepts with `view_image`; the implemented hierarchy and
+  interaction match while code-native copy replaces concept-only labels.
 - The Browser plugin is unavailable in this environment; repository Playwright
   is the recorded browser-validation fallback.
 
 ## Completion summary
 
-Pending.
+The three implementation slices are complete: durable directional evidence and
+pagination, asymmetric Live rendering, and paginated directional History. The
+compatibility API remains available, old evidence is honestly labeled, DERP
+fallback never duplicates traffic totals, and no active network observation
+was introduced. Release and exact-digest deployment remain gated on human
+review and ordered rebase-merges.

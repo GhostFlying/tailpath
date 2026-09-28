@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowRight,
   ChevronRight,
   CircleHelp,
   Globe2,
@@ -19,27 +20,48 @@ import {
 import { createPortal } from "react-dom";
 import type {
   EdgeHistory,
+  DirectionalPathState,
   HistoryNodeReference,
   PathCandidate,
   PathKind,
+  PathObservation,
 } from "../api/types";
 import { pathLabel, unresolvedPeerRelayLabel } from "../lib/format";
 import { identityPresentation } from "../lib/identity";
 import {
   buildPathTimeline,
+  buildDirectionalTimeline,
+  hasDirectionalHistory,
   pathColor,
   pathEvidenceKey,
   type PathTimelineItem,
+  type DirectionalTimelineSegment,
 } from "./historyMath";
 
 interface Props {
   history: EdgeHistory;
   mobile: boolean;
+  loading: boolean;
+  loaded: number;
+  complete: boolean;
+  onSelectTime: (at: string) => void;
 }
 
-export const PathTimeline = memo(function PathTimeline({
+export const PathTimeline = memo(function PathTimeline(props: Props) {
+  return hasDirectionalHistory(props.history) ? (
+    <DirectionalPathTimeline {...props} />
+  ) : (
+    <LegacyPathTimeline {...props} />
+  );
+});
+
+const LegacyPathTimeline = memo(function LegacyPathTimeline({
   history,
   mobile,
+  loading,
+  loaded,
+  complete,
+  onSelectTime,
 }: Props) {
   const items = useMemo(() => buildPathTimeline(history), [history]);
   const [selectedID, setSelectedID] = useState("");
@@ -57,6 +79,7 @@ export const PathTimeline = memo(function PathTimeline({
 
   function select(item: PathTimelineItem) {
     setSelectedID(item.id);
+    onSelectTime(item.from);
     if (mobile) setSheetOpen(true);
   }
 
@@ -64,7 +87,16 @@ export const PathTimeline = memo(function PathTimeline({
     <section className="history-section path-timeline-section">
       <div className="history-section-heading">
         <h2>Path timeline</h2>
-        <span>Newest first</span>
+        <span className="legacy-timeline-status">
+          <span>Newest first</span>
+          <small>
+            {loading
+              ? `Loading · ${loaded} events`
+              : complete
+                ? `Complete · ${loaded} events`
+                : "Legacy combined evidence"}
+          </small>
+        </span>
       </div>
       {items.length === 0 ? (
         <div className="history-chart-empty">
@@ -134,6 +166,628 @@ export const PathTimeline = memo(function PathTimeline({
     </section>
   );
 });
+
+const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
+  history,
+  mobile,
+  loading,
+  loaded,
+  complete,
+  onSelectTime,
+}: Props) {
+  const segments = useMemo(() => buildDirectionalTimeline(history), [history]);
+  const [selectedID, setSelectedID] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const selected =
+    segments.find((segment) => segment.id === selectedID) ?? segments.at(-1);
+  const nodes = useMemo(() => buildHistoryNodeMaps(history), [history]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const measure = () => setCanvasWidth(canvas.getBoundingClientRect().width);
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!mobile) setSheetOpen(false);
+  }, [mobile]);
+
+  useEffect(() => {
+    if (selected) onSelectTime(selected.from);
+  }, [onSelectTime, selected]);
+
+  function select(segment: DirectionalTimelineSegment) {
+    setSelectedID(segment.id);
+    onSelectTime(segment.from);
+    if (mobile) setSheetOpen(true);
+  }
+
+  const shortFallbacks = segments.reduce((count, segment) => {
+    const position = timelinePosition(segment, history);
+    const short = (position.width / 100) * canvasWidth < 56;
+    if (!short) return count;
+    return (
+      count +
+      Number(Boolean(segment.aToB?.fallbackPath)) +
+      Number(Boolean(segment.bToA?.fallbackPath))
+    );
+  }, 0);
+
+  return (
+    <section className="history-section path-timeline-section directional-history-section">
+      <div className="history-section-heading">
+        <h2>Directional path timeline</h2>
+        <span>
+          {loading
+            ? `Loading path history · ${loaded} events`
+            : complete
+              ? `Complete · ${loaded} events`
+              : `${loaded} embedded events`}
+        </span>
+      </div>
+      {segments.length === 0 ? (
+        <div className="history-chart-empty">
+          No path evidence in this window
+        </div>
+      ) : (
+        <>
+          <div className="directional-timeline-layout">
+            <div className="directional-lane-labels" aria-hidden="true">
+              <DirectionLaneLabel
+                from={history.source.label}
+                to={history.target.label}
+              />
+              <span>DERP fallback</span>
+              <DirectionLaneLabel
+                from={history.target.label}
+                to={history.source.label}
+              />
+              <span>DERP fallback</span>
+            </div>
+            <div className="directional-timeline-canvas" ref={canvasRef}>
+              <div className="directional-time-axis" aria-hidden="true">
+                {timelineTicks(history.from, history.to).map((tick) => (
+                  <span key={tick.toISOString()}>
+                    {formatTimelineTime(tick.toISOString())}
+                  </span>
+                ))}
+              </div>
+              <div className="directional-lane-grid" aria-hidden="true">
+                {[0, 1, 2, 3].map((lane) => (
+                  <i key={lane} />
+                ))}
+              </div>
+              <div className="directional-visual-segments" aria-hidden="true">
+                {segments.map((segment) => (
+                  <DirectionalSegmentVisual
+                    key={segment.id}
+                    segment={segment}
+                    history={history}
+                    nodes={nodes}
+                    canvasWidth={canvasWidth}
+                  />
+                ))}
+              </div>
+              <div
+                className="directional-hit-segments"
+                role="list"
+                aria-label="Path timeline"
+              >
+                <span className="sr-only">
+                  {segments
+                    .map((segment) => compactDirectionalLabel(segment, nodes))
+                    .join("; ")}
+                </span>
+                {segments.map((segment) => {
+                  const position = timelinePosition(segment, history);
+                  const active = segment.id === selected?.id;
+                  const widthPixels = (position.width / 100) * canvasWidth;
+                  if (mobile && canvasWidth > 0 && widthPixels < 44) {
+                    return (
+                      <span
+                        key={segment.id}
+                        className="directional-short-hit"
+                        style={{
+                          left: `${position.left}%`,
+                          width: `${position.width}%`,
+                        }}
+                        aria-hidden="true"
+                      />
+                    );
+                  }
+                  return (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      role="listitem"
+                      className={active ? "selected" : ""}
+                      style={{
+                        left: `${position.left}%`,
+                        width: `${position.width}%`,
+                      }}
+                      aria-pressed={active}
+                      aria-label={directionalSegmentLabel(
+                        segment,
+                        history,
+                        nodes,
+                      )}
+                      onClick={() => select(segment)}
+                    />
+                  );
+                })}
+              </div>
+              {selected ? (
+                <i
+                  className="directional-time-cursor"
+                  style={{
+                    left: `${timelinePosition(selected, history).left}%`,
+                  }}
+                  aria-hidden="true"
+                />
+              ) : null}
+            </div>
+          </div>
+          <div className="directional-timeline-footer">
+            <span>Time flows left to right</span>
+            {shortFallbacks ? (
+              <span>+{shortFallbacks} short fallback windows</span>
+            ) : null}
+          </div>
+        </>
+      )}
+      {selected && !mobile ? (
+        <DirectionalSnapshotContent
+          history={history}
+          selected={selected}
+          nodes={nodes}
+        />
+      ) : null}
+      {selected && mobile && sheetOpen ? (
+        <MobileDirectionalSheet
+          history={history}
+          selected={selected}
+          nodes={nodes}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
+      {segments.length ? (
+        <details className="directional-event-index">
+          <summary>{segments.length} recorded path states</summary>
+          <div>
+            {segments.map((segment) => (
+              <button
+                key={segment.id}
+                type="button"
+                onClick={() => select(segment)}
+              >
+                <time dateTime={segment.from}>
+                  {formatTimelineDateTime(segment.from)}
+                </time>
+                <span>{compactDirectionalLabel(segment, nodes)}</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  );
+});
+
+function DirectionLaneLabel({ from, to }: { from: string; to: string }) {
+  return (
+    <strong title={`${from} to ${to}`}>
+      <span>{from}</span>
+      <ArrowRight size={13} />
+      <span>{to}</span>
+    </strong>
+  );
+}
+
+function DirectionalSegmentVisual({
+  segment,
+  history,
+  nodes,
+  canvasWidth,
+}: {
+  segment: DirectionalTimelineSegment;
+  history: EdgeHistory;
+  nodes: HistoryNodeMaps;
+  canvasWidth: number;
+}) {
+  const position = timelinePosition(segment, history);
+  const showLabel = (position.width / 100) * canvasWidth >= 56;
+  const style = {
+    left: `${position.left}%`,
+    width: `${position.width}%`,
+  };
+  const noDirections = !segment.aToB && !segment.bToA;
+  if (noDirections && !segment.noEvidence) {
+    return (
+      <span className="directional-legacy-segment" style={style}>
+        {showLabel ? "Legacy combined evidence" : null}
+      </span>
+    );
+  }
+  return (
+    <>
+      <DirectionalLaneSegment
+        state={segment.aToB}
+        lane="a-primary"
+        style={style}
+        showLabel={showLabel}
+        nodes={nodes}
+      />
+      <DirectionalFallbackSegment
+        state={segment.aToB}
+        lane="a-fallback"
+        style={style}
+        showLabel={showLabel}
+      />
+      <DirectionalLaneSegment
+        state={segment.bToA}
+        lane="b-primary"
+        style={style}
+        showLabel={showLabel}
+        nodes={nodes}
+      />
+      <DirectionalFallbackSegment
+        state={segment.bToA}
+        lane="b-fallback"
+        style={style}
+        showLabel={showLabel}
+      />
+    </>
+  );
+}
+
+function DirectionalLaneSegment({
+  state,
+  lane,
+  style,
+  showLabel,
+  nodes,
+}: {
+  state?: DirectionalPathState;
+  lane: "a-primary" | "b-primary";
+  style: React.CSSProperties;
+  showLabel: boolean;
+  nodes: HistoryNodeMaps;
+}) {
+  const kind = state?.primaryPath.kind ?? "unknown";
+  return (
+    <span
+      className={`directional-lane-segment ${lane} ${kind}`}
+      style={
+        { ...style, "--timeline-color": pathColor(kind) } as React.CSSProperties
+      }
+    >
+      {showLabel
+        ? state
+          ? displayPathLabel(state.primaryPath, nodes.byStableID)
+          : "Unknown"
+        : null}
+    </span>
+  );
+}
+
+function DirectionalFallbackSegment({
+  state,
+  lane,
+  style,
+  showLabel,
+}: {
+  state?: DirectionalPathState;
+  lane: "a-fallback" | "b-fallback";
+  style: React.CSSProperties;
+  showLabel: boolean;
+}) {
+  if (!state?.fallbackPath) return null;
+  return (
+    <span className={`directional-fallback-segment ${lane}`} style={style}>
+      {showLabel
+        ? `DERP fallback${state.fallbackPath.derpRegion ? ` · ${state.fallbackPath.derpRegion}` : ""}`
+        : null}
+    </span>
+  );
+}
+
+function DirectionalSnapshotContent({
+  history,
+  selected,
+  nodes,
+  onClose,
+  closeButtonRef,
+}: {
+  history: EdgeHistory;
+  selected: DirectionalTimelineSegment;
+  nodes: HistoryNodeMaps;
+  onClose?: () => void;
+  closeButtonRef?: RefObject<HTMLButtonElement | null>;
+}) {
+  const directions = [
+    {
+      label: `${history.source.label} → ${history.target.label}`,
+      state: selected.aToB,
+    },
+    {
+      label: `${history.target.label} → ${history.source.label}`,
+      state: selected.bToA,
+    },
+  ];
+  const observations = selected.event.observations;
+  return (
+    <div className="provenance-section directional-snapshot">
+      <header className="provenance-title">
+        <div>
+          <span>Effective paths at</span>
+          <strong>{formatTimelineDateTime(selected.from)}</strong>
+        </div>
+        <span className="directional-snapshot-state">
+          {snapshotIsAsymmetric(selected)
+            ? "Asymmetric paths"
+            : "Directional snapshot"}
+        </span>
+        {onClose ? (
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close path evidence"
+          >
+            <X size={20} />
+          </button>
+        ) : null}
+      </header>
+      {!selected.aToB && !selected.bToA && !selected.noEvidence ? (
+        <div className="legacy-combined-callout">
+          <strong>Legacy combined evidence</strong>
+          <span>
+            This record predates directional storage. Tailpath cannot recreate
+            which endpoint selected {pathLabel(selected.event.path)}.
+          </span>
+        </div>
+      ) : selected.noEvidence ? (
+        <div className="legacy-combined-callout no-evidence">
+          <strong>Unknown / No fresh observation</strong>
+          <span>No retained path state covers this part of the window.</span>
+        </div>
+      ) : (
+        <div
+          className="directional-state-table"
+          role="table"
+          aria-label="Directional path state"
+        >
+          <div role="row" className="directional-state-head">
+            <span>Direction</span>
+            <span>Primary path</span>
+            <span>Fallback</span>
+            <span>Evidence</span>
+          </div>
+          {directions.map(({ label, state }) => (
+            <div role="row" className="directional-state-row" key={label}>
+              <strong>{label}</strong>
+              <span>
+                {state
+                  ? displayPathLabel(state.primaryPath, nodes.byStableID)
+                  : "Unknown"}
+                {state ? (
+                  <small>{directionPathMetadata(state.primaryPath)}</small>
+                ) : (
+                  <small>No fresh observation</small>
+                )}
+              </span>
+              <span>
+                {state?.fallbackPath ? pathLabel(state.fallbackPath) : "None"}
+                {state?.inferenceRule ? (
+                  <code>{state.inferenceRule}</code>
+                ) : null}
+              </span>
+              <span
+                className={`history-evidence-badge ${state?.evidence ?? "unknown"}`}
+              >
+                {state ? capitalize(state.evidence) : "Unknown"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <h2>Evidence retained at this event</h2>
+      {observations.length ? (
+        <div className="directional-history-evidence">
+          {observations.map((observation, index) => (
+            <div key={`${observation.observerId}:${index}`}>
+              <strong>
+                {nodes.byID.get(observation.observerId)?.label ??
+                  observation.observerId}
+              </strong>
+              <span>
+                {observation.relaySession ? "Relay identity" : "Endpoint path"}
+              </span>
+              <span>
+                {displayPathLabel(observation.path, nodes.byStableID)}
+              </span>
+              <time dateTime={observation.receivedAt}>
+                {formatTimelineTime(observation.receivedAt, true)}
+              </time>
+              {observation.relaySession ? (
+                <RelaySessionDetails
+                  history={history}
+                  observation={observation}
+                  nodes={nodes}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="provenance-empty">No observer provenance retained</div>
+      )}
+    </div>
+  );
+}
+
+function MobileDirectionalSheet({
+  history,
+  selected,
+  nodes,
+  onClose,
+}: {
+  history: EdgeHistory;
+  selected: DirectionalTimelineSegment;
+  nodes: HistoryNodeMaps;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useDialogFocus(dialogRef, closeButtonRef, onClose);
+  return createPortal(
+    <div className="history-sheet-layer">
+      <div
+        className="history-sheet-backdrop"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <div
+        ref={dialogRef}
+        className="history-provenance-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Path evidence"
+      >
+        <DirectionalSnapshotContent
+          history={history}
+          selected={selected}
+          nodes={nodes}
+          onClose={onClose}
+          closeButtonRef={closeButtonRef}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function useDialogFocus(
+  dialogRef: RefObject<HTMLDivElement | null>,
+  closeButtonRef: RefObject<HTMLButtonElement | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [closeButtonRef, dialogRef, onClose]);
+}
+
+function timelinePosition(
+  segment: DirectionalTimelineSegment,
+  history: EdgeHistory,
+) {
+  const start = new Date(history.from).getTime();
+  const end = new Date(history.to).getTime();
+  const from = new Date(segment.from).getTime();
+  const to = new Date(segment.to).getTime();
+  const duration = Math.max(1, end - start);
+  return {
+    left: ((from - start) / duration) * 100,
+    width: Math.max(0, ((to - from) / duration) * 100),
+  };
+}
+
+function timelineTicks(from: string, to: string) {
+  const start = new Date(from).getTime();
+  const end = new Date(to).getTime();
+  return Array.from(
+    { length: 5 },
+    (_, index) => new Date(start + ((end - start) * index) / 4),
+  );
+}
+
+function directionalSegmentLabel(
+  segment: DirectionalTimelineSegment,
+  history: EdgeHistory,
+  nodes: HistoryNodeMaps,
+) {
+  return `${formatTimelineDateTime(segment.from)}; ${history.source.label} to ${history.target.label}: ${directionStateLabel(segment.aToB, nodes)}; ${history.target.label} to ${history.source.label}: ${directionStateLabel(segment.bToA, nodes)}`;
+}
+
+function directionStateLabel(
+  state: DirectionalPathState | undefined,
+  nodes: HistoryNodeMaps,
+) {
+  if (!state) return "Unknown, no fresh observation";
+  const fallback = state.fallbackPath
+    ? ` with ${pathLabel(state.fallbackPath)} fallback`
+    : "";
+  return `${displayPathLabel(state.primaryPath, nodes.byStableID)}${fallback}, ${state.evidence}`;
+}
+
+function compactDirectionalLabel(
+  segment: DirectionalTimelineSegment,
+  nodes: HistoryNodeMaps,
+) {
+  if (segment.noEvidence) return "Unknown / No fresh observation";
+  if (!segment.aToB && !segment.bToA) return "Legacy combined evidence";
+  return `${directionStateLabel(segment.aToB, nodes)} / ${directionStateLabel(segment.bToA, nodes)}`;
+}
+
+function snapshotIsAsymmetric(segment: DirectionalTimelineSegment) {
+  if (!segment.aToB || !segment.bToA) return false;
+  return (
+    directionalStateKey(segment.aToB) !== directionalStateKey(segment.bToA)
+  );
+}
+
+function directionalStateKey(state: DirectionalPathState) {
+  return `${pathEvidenceKey(state.primaryPath)}|${state.fallbackPath ? pathEvidenceKey(state.fallbackPath) : "none"}`;
+}
+
+function directionPathMetadata(path: PathObservation) {
+  return [
+    path.peerRelayVni !== undefined ? `VNI ${path.peerRelayVni}` : undefined,
+    path.peerRelayEndpoint,
+    path.directEndpoint,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 interface HistoryNodeMaps {
   byID: Map<string, HistoryNodeReference>;
