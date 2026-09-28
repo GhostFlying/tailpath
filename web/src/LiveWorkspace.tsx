@@ -1,7 +1,7 @@
 import { CircleAlert, Waypoints } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { PathKind } from "./api/types";
+import type { PathKind, TopologyEdge } from "./api/types";
 import { GraphLegend } from "./components/GraphLegend";
 import { Inspector } from "./components/Inspector";
 import { TopologyFilters } from "./components/TopologyFilters";
@@ -13,6 +13,7 @@ import {
 import { useTopology, type ConnectionState } from "./hooks/useTopology";
 import {
   edgeIsVisible,
+  edgePathKinds,
   emptyTrafficReason,
   visibleTopologyNodeIDs,
   type EmptyTrafficReason,
@@ -244,10 +245,10 @@ const emptyTrafficCopy: Record<
   },
 };
 
-function pathCounts(edges: { path: { kind: PathKind } }[]) {
+function pathCounts(edges: TopologyEdge[]) {
   return edges.reduce<Record<PathKind, number>>(
     (counts, edge) => {
-      counts[edge.path.kind] += 1;
+      for (const kind of edgePathKinds(edge)) counts[kind] += 1;
       return counts;
     },
     { direct: 0, derp: 0, peer_relay: 0, unknown: 0 },

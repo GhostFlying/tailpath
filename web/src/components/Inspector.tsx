@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowDownLeft,
+  ArrowRight,
   ArrowUpRight,
   Clock3,
   Network,
@@ -10,17 +11,22 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getEdgeHistory } from "../api/client";
 import type {
-  EdgeHistory,
+  DirectionalPathState,
   PathCandidate,
+  PathObservation,
   Topology,
   TopologyEdge,
   TopologyNode,
 } from "../api/types";
 import { MetadataConflictList } from "./MetadataConflictList";
 import { formatAgo, formatRate, nodeLabel, pathLabel } from "../lib/format";
-import { peerRelayCandidateKey, peerRelayCandidates } from "../lib/graph";
+import {
+  edgeDirections,
+  edgeIsAsymmetric,
+  peerRelayCandidateKey,
+  peerRelayCandidates,
+} from "../lib/graph";
 import { platformPresentation } from "../lib/platform";
 import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
 
@@ -32,7 +38,6 @@ interface Props {
 }
 
 export function Inspector({ topology, edge, node, onClose }: Props) {
-  const history = useEdgeHistory(edge?.id ?? null);
   if (!edge && !node) return null;
   return (
     <aside className="inspector" aria-label="Topology details">
@@ -45,7 +50,7 @@ export function Inspector({ topology, edge, node, onClose }: Props) {
         <X size={18} />
       </button>
       {edge ? (
-        <EdgeDetails topology={topology} edge={edge} history={history} />
+        <EdgeDetails topology={topology} edge={edge} />
       ) : node ? (
         <NodeDetails topology={topology} node={node} />
       ) : null}
@@ -56,11 +61,9 @@ export function Inspector({ topology, edge, node, onClose }: Props) {
 function EdgeDetails({
   topology,
   edge,
-  history,
 }: {
   topology: Topology;
   edge: TopologyEdge;
-  history: EdgeHistory | null;
 }) {
   const candidates = peerRelayCandidates(edge);
   const switching = edge.pathState === "switching" || candidates.length > 1;
@@ -71,6 +74,9 @@ function EdgeDetails({
   useEffect(() => {
     setSelectedCandidate(firstCandidateKey);
   }, [edge.id, edge.pathState, firstCandidateKey]);
+  if (edgeDirections(edge).length) {
+    return <DirectionalEdgeDetails topology={topology} edge={edge} />;
+  }
   const source = topology.nodes.find((node) => node.id === edge.source);
   const target = topology.nodes.find((node) => node.id === edge.target);
   const relay = edge.path.peerRelayStableNodeId
@@ -222,32 +228,273 @@ function EdgeDetails({
           </p>
         ) : null}
       </section>
-      {history?.pathEvents.length ? (
-        <section className="history-section">
-          <h3>Recent paths</h3>
-          {history.pathEvents
-            .slice(-5)
-            .reverse()
-            .map((event, index) => (
-              <div
-                className="history-row"
-                key={`${event.observedAt}-${event.path.kind}-${index}`}
-              >
-                <span>
-                  {event.pathState === "switching"
-                    ? "Peer Relay · Switching"
-                    : pathLabel(event.path)}
-                </span>
-                <small>{event.observations.length} sources</small>
-                <time dateTime={event.observedAt}>
-                  {formatAgo(event.observedAt)}
-                </time>
-              </div>
-            ))}
-        </section>
-      ) : null}
     </>
   );
+}
+
+function DirectionalEdgeDetails({
+  topology,
+  edge,
+}: {
+  topology: Topology;
+  edge: TopologyEdge;
+}) {
+  const directions = edgeDirections(edge);
+  const source = topology.nodes.find((node) => node.id === edge.source);
+  const target = topology.nodes.find((node) => node.id === edge.target);
+  const endpointEvidence = edge.observations.filter(
+    (observation) => !observation.relaySession,
+  );
+  const relayEvidence = edge.observations.filter((observation) =>
+    Boolean(observation.relaySession),
+  );
+  const hasFallback = directions.some((direction) => direction.fallbackPath);
+  const slots = [
+    {
+      from: edge.source,
+      to: edge.target,
+      state: directions.find(
+        (direction) =>
+          direction.fromNodeId === edge.source &&
+          direction.toNodeId === edge.target,
+      ),
+      rate: edge.aToBBytesPerSecond,
+    },
+    {
+      from: edge.target,
+      to: edge.source,
+      state: directions.find(
+        (direction) =>
+          direction.fromNodeId === edge.target &&
+          direction.toNodeId === edge.source,
+      ),
+      rate: edge.bToABytesPerSecond,
+    },
+  ];
+  return (
+    <>
+      <p className="panel-kicker">Traffic relationship</p>
+      <h2>
+        {source ? nodeLabel(source) : edge.source} <span>↔</span>{" "}
+        {target ? nodeLabel(target) : edge.target}
+      </h2>
+      <div className="directional-status">
+        <span className="directional-status-icon" aria-hidden="true">
+          ⇄
+        </span>
+        <span>
+          <strong>
+            {edgeIsAsymmetric(edge)
+              ? "Asymmetric paths"
+              : "Same path both directions"}
+          </strong>
+          <small>
+            {edgeIsAsymmetric(edge)
+              ? "Each endpoint currently reports a different route."
+              : directions.length === 1
+                ? "One direction has fresh path evidence."
+                : "Both endpoints report the same logical route."}
+          </small>
+        </span>
+        <span className={`state-badge ${edge.state}`}>{edge.state}</span>
+      </div>
+
+      <section
+        className="direction-path-section"
+        aria-label="Directional paths"
+      >
+        {slots.map((slot) => (
+          <DirectionalPathCard
+            key={`${slot.from}:${slot.to}`}
+            topology={topology}
+            from={slot.from}
+            to={slot.to}
+            state={slot.state}
+            rate={slot.rate}
+          />
+        ))}
+      </section>
+
+      {hasFallback ? (
+        <p className="fallback-explanation">
+          DERP fallback is an inferred parallel route. Relationship traffic is
+          counted once; the fallback line does not represent extra application
+          traffic.
+        </p>
+      ) : null}
+
+      <dl className="details-list directional-summary">
+        <Detail
+          label="Last active"
+          value={formatAgo(edge.lastActive)}
+          icon={<Clock3 size={15} />}
+        />
+      </dl>
+
+      <EvidenceGroup
+        title="Endpoint path evidence"
+        empty="No endpoint provenance is available."
+        topology={topology}
+        observations={endpointEvidence}
+      />
+      <EvidenceGroup
+        title="Relay identity evidence"
+        empty="No relay session identity evidence is available."
+        topology={topology}
+        observations={relayEvidence}
+      />
+    </>
+  );
+}
+
+function DirectionalPathCard({
+  topology,
+  from,
+  to,
+  state,
+  rate,
+}: {
+  topology: Topology;
+  from: string;
+  to: string;
+  state?: DirectionalPathState;
+  rate: number;
+}) {
+  const fromNode = topology.nodes.find((node) => node.id === from);
+  const toNode = topology.nodes.find((node) => node.id === to);
+  return (
+    <article
+      className={`direction-path-card ${state ? state.primaryPath.kind : "unknown"}`}
+    >
+      <header>
+        <span className="direction-endpoints">
+          <strong>{fromNode ? nodeLabel(fromNode) : from}</strong>
+          <ArrowRight size={15} aria-hidden="true" />
+          <strong>{toNode ? nodeLabel(toNode) : to}</strong>
+        </span>
+        <b>{formatRate(rate)}</b>
+      </header>
+      {state ? (
+        <>
+          <div className="direction-primary">
+            <span>Primary</span>
+            <strong>{pathLabel(state.primaryPath)}</strong>
+            <EvidenceBadge evidence={state.evidence} />
+            <PathMetadata topology={topology} path={state.primaryPath} />
+          </div>
+          {state.fallbackPath ? (
+            <div className="direction-fallback">
+              <span>DERP fallback</span>
+              <strong>{pathLabel(state.fallbackPath)}</strong>
+              <EvidenceBadge evidence={state.evidence} />
+              {state.inferenceRule ? <code>{state.inferenceRule}</code> : null}
+            </div>
+          ) : null}
+          <small className="direction-observer">
+            Reported by {nodeName(topology, state.observerId)} ·{" "}
+            {formatAgo(state.receivedAt)}
+          </small>
+        </>
+      ) : (
+        <div className="direction-unknown">
+          <strong>Unknown</strong>
+          <span>No fresh observation from this endpoint.</span>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function EvidenceBadge({
+  evidence,
+}: {
+  evidence: DirectionalPathState["evidence"];
+}) {
+  return (
+    <span className={`evidence-badge ${evidence}`}>{capitalize(evidence)}</span>
+  );
+}
+
+function PathMetadata({
+  topology,
+  path,
+}: {
+  topology: Topology;
+  path: PathObservation;
+}) {
+  const relay = path.peerRelayStableNodeId
+    ? topology.nodes.find(
+        (node) => node.stableNodeId === path.peerRelayStableNodeId,
+      )
+    : undefined;
+  const values = [
+    relay ? nodeLabel(relay) : path.peerRelayStableNodeId,
+    path.peerRelayVni !== undefined ? `VNI ${path.peerRelayVni}` : undefined,
+    path.peerRelayEndpoint,
+    path.directEndpoint,
+  ].filter(Boolean);
+  return values.length ? <small>{values.join(" · ")}</small> : null;
+}
+
+function EvidenceGroup({
+  title,
+  empty,
+  topology,
+  observations,
+}: {
+  title: string;
+  empty: string;
+  topology: Topology;
+  observations: TopologyEdge["observations"];
+}) {
+  return (
+    <section className="evidence-section">
+      <h3>{title}</h3>
+      {observations.length ? (
+        observations.map((observation) => (
+          <div
+            className="evidence-row"
+            key={`${observation.observerId}:${observation.relaySession?.sessionId ?? "peer"}`}
+          >
+            {observation.clockSkewed ? (
+              <TriangleAlert size={15} aria-label="Runtime clock skew" />
+            ) : (
+              <RadioTower size={15} />
+            )}
+            <span>{nodeName(topology, observation.observerId)}</span>
+            <small>{pathLabel(observation.path)}</small>
+            {observation.relaySession ? (
+              <div className="relay-evidence-details">
+                <span>
+                  Session <code>{observation.relaySession.sessionId}</code>
+                </span>
+                <span>VNI {observation.relaySession.vni}</span>
+                <IdentityBadge
+                  status={observation.relaySession.sourceIdentityStatus}
+                  compact
+                />
+                <IdentityBadge
+                  status={observation.relaySession.targetIdentityStatus}
+                  compact
+                />
+              </div>
+            ) : null}
+          </div>
+        ))
+      ) : (
+        <p className="evidence-empty">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+function nodeName(topology: Topology, id: string) {
+  const node = topology.nodes.find((candidate) => candidate.id === id);
+  return node ? nodeLabel(node) : id;
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function RelayCandidate({
@@ -404,22 +651,6 @@ function NodeDetails({
       <MetadataConflictList conflicts={node.directory?.conflicts ?? []} />
     </>
   );
-}
-
-function useEdgeHistory(edgeID: string | null) {
-  const [history, setHistory] = useState<EdgeHistory | null>(null);
-  useEffect(() => {
-    setHistory(null);
-    if (!edgeID) return;
-    const controller = new AbortController();
-    void getEdgeHistory(edgeID, controller.signal)
-      .then(setHistory)
-      .catch(() => {
-        if (!controller.signal.aborted) setHistory(null);
-      });
-    return () => controller.abort();
-  }, [edgeID]);
-  return history;
 }
 
 function formatClockSkew(milliseconds: number) {

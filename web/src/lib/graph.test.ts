@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Topology, TopologyEdge, TopologyNode } from "../api/types";
 import {
   buildElements,
+  edgeIsAsymmetric,
   edgeIsVisible,
+  edgePathKinds,
   emptyTrafficReason,
   edgeIdealLength,
   edgeIdealLengthForWidth,
@@ -268,6 +270,148 @@ describe("buildElements", () => {
     ).toBe(true);
   });
 
+  it("keeps identical directional paths collapsed into one logical route", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", { kind: "direct", directEndpoint: "a:41641" }),
+        direction("b", "a", { kind: "direct", directEndpoint: "b:51234" }),
+      ]),
+    ];
+
+    const rendered = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter((element) => element.group === "edges");
+
+    expect(edgeIsAsymmetric(fixture.edges[0])).toBe(false);
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0].data?.label).toBe("15 KB/s");
+    expect(String(rendered[0].classes)).toContain("flow-forward");
+    expect(String(rendered[0].classes)).toContain("flow-reverse");
+  });
+
+  it("expands different directional primaries and labels each rate once", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 4293,
+        }),
+        direction("b", "a", { kind: "derp", derpRegion: "hkg" }),
+      ]),
+    ];
+
+    const rendered = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    });
+    const edges = rendered.filter((element) => element.group === "edges");
+
+    expect(edgeIsAsymmetric(fixture.edges[0])).toBe(true);
+    expect(edges).toHaveLength(4);
+    expect(edges.filter((element) => element.data?.label)).toHaveLength(2);
+    expect(new Set(edges.map((element) => element.data?.label))).toEqual(
+      new Set(["12 KB/s", "3.0 KB/s", ""]),
+    );
+    expect(
+      edges.every((element) =>
+        String(element.classes).includes("directional-route"),
+      ),
+    ).toBe(true);
+  });
+
+  it("renders DERP fallback as an unmetered dashed route", () => {
+    const fixture = topology();
+    const relay = {
+      kind: "peer_relay" as const,
+      peerRelayStableNodeId: "c",
+      peerRelayVni: 8,
+    };
+    const fallback = { kind: "derp" as const, derpRegion: "tok" };
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", relay, fallback),
+        direction("b", "a", relay, fallback),
+      ]),
+    ];
+
+    const rendered = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    });
+    const fallbackEdges = rendered.filter((element) =>
+      String(element.classes).includes("fallback-route"),
+    );
+
+    expect(edgeIsAsymmetric(fixture.edges[0])).toBe(false);
+    expect(fallbackEdges).toHaveLength(2);
+    expect(fallbackEdges.every((element) => !element.data?.label)).toBe(true);
+    expect(
+      fallbackEdges.every(
+        (element) => element.data?.trafficWidth === minimumTrafficWidth,
+      ),
+    ).toBe(true);
+    expect(
+      rendered.some((element) => element.data?.label === "DERP fallback · tok"),
+    ).toBe(true);
+  });
+
+  it("matches filters against either primary or fallback without double counting", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction(
+          "a",
+          "b",
+          { kind: "peer_relay", peerRelayVni: 8 },
+          { kind: "derp", derpRegion: "hkg" },
+        ),
+      ]),
+    ];
+
+    expect(edgePathKinds(fixture.edges[0])).toEqual(
+      new Set(["peer_relay", "derp"]),
+    );
+    expect(edgeIsVisible(fixture.edges[0], "peer_relay", true)).toBe(true);
+    expect(edgeIsVisible(fixture.edges[0], "derp", true)).toBe(true);
+    expect(edgeIsVisible(fixture.edges[0], "direct", true)).toBe(false);
+  });
+
+  it("does not mirror a lone directional observation", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+        }),
+      ]),
+    ];
+    const edges = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter((element) => element.group === "edges");
+
+    expect(edges).toHaveLength(2);
+    expect(
+      edges.every((element) =>
+        String(element.classes).includes("directional-route"),
+      ),
+    ).toBe(true);
+    expect(
+      edges.every(
+        (element) => !String(element.classes).includes("flow-reverse"),
+      ),
+    ).toBe(true);
+  });
+
   it.each([
     ["partial", "Unresolved client", "/identity-partial.svg"],
     ["anonymous", "Anonymous client", "/identity-anonymous.svg"],
@@ -436,4 +580,31 @@ function edge(
     lastActive: "2026-08-23T00:00:00Z",
     observations: [],
   };
+}
+
+function direction(
+  fromNodeId: string,
+  toNodeId: string,
+  primaryPath: TopologyEdge["path"],
+  fallbackPath?: TopologyEdge["path"],
+) {
+  return {
+    fromNodeId,
+    toNodeId,
+    primaryPath,
+    fallbackPath,
+    evidence: fallbackPath ? ("inferred" as const) : ("observed" as const),
+    inferenceRule: fallbackPath ? "tailscale-status-fallback-v1" : undefined,
+    observerId: fromNodeId,
+    collectedAt: "2026-08-23T00:00:00Z",
+    receivedAt: "2026-08-23T00:00:01Z",
+    clockSkewed: false,
+  };
+}
+
+function withDirections(
+  value: TopologyEdge,
+  directions: NonNullable<TopologyEdge["directions"]>,
+): TopologyEdge {
+  return { ...value, directions };
 }
