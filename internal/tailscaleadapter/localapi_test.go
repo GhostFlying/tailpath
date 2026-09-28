@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"tailscale.com/ipn/ipnstate"
+
+	"github.com/GhostFlying/tailpath/internal/tailscalestatus"
 )
 
 func TestPeerRelayIP(t *testing.T) {
@@ -45,10 +47,11 @@ func TestPeerRelayEndpointParsesBoundedVNI(t *testing.T) {
 }
 
 func TestPathObservationCarriesPeerRelayVNI(t *testing.T) {
-	path := pathObservation(&ipnstate.PeerStatus{PeerRelay: "100.64.0.8:41641:vni:7"}, map[string]string{
-		"100.64.0.8": "relay-stable-id",
+	path := pathObservation(&ipnstate.PeerStatus{PeerRelay: "100.64.0.8:41641:vni:7"}, map[string]tailscalestatus.RelayIdentity{
+		"100.64.0.8": {StableNodeID: "relay-stable-id", Resolution: "tailscale_ip"},
 	})
-	if path.PeerRelayStableNodeID != "relay-stable-id" || path.PeerRelayVNI == nil || *path.PeerRelayVNI != 7 {
+	if path.PeerRelayStableNodeID != "relay-stable-id" || path.PeerRelayEndpoint != "100.64.0.8:41641" ||
+		path.PeerRelayResolution != "tailscale_ip" || path.PeerRelayVNI == nil || *path.PeerRelayVNI != 7 {
 		t.Fatalf("peer relay path = %#v", path)
 	}
 }

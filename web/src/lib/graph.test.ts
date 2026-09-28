@@ -213,6 +213,61 @@ describe("buildElements", () => {
     expect(rendered?.data?.persistable).toBeUndefined();
   });
 
+  it("renders all switching relay candidates while labeling traffic once", () => {
+    const fixture = topology();
+    const known = {
+      kind: "peer_relay" as const,
+      peerRelayStableNodeId: "c",
+      peerRelayEndpoint: "203.0.113.8:40000",
+      peerRelayResolution: "endpoint_match" as const,
+      peerRelayVni: 4293,
+    };
+    const pending = {
+      kind: "peer_relay" as const,
+      peerRelayEndpoint: "198.51.100.9:40000",
+      peerRelayVni: 8,
+    };
+    fixture.edges = [
+      {
+        ...edge("relay", "a", "b", "peer_relay"),
+        path: known,
+        pathState: "switching",
+        pathCandidates: [
+          {
+            path: known,
+            lastObservedAt: "2026-08-23T00:00:00Z",
+            observerCount: 2,
+          },
+          {
+            path: pending,
+            lastObservedAt: "2026-08-23T00:00:01Z",
+            observerCount: 2,
+          },
+        ],
+        conflicts: [pending],
+        aToBBytesPerSecond: 1200,
+        bToABytesPerSecond: 800,
+      },
+    ];
+    const elements = buildElements(fixture, {
+      pathFilter: "peer_relay",
+      showRecent: true,
+      query: "",
+    });
+    const nodes = elements.filter((element) => element.group === "nodes");
+    const edges = elements.filter((element) => element.group === "edges");
+    expect(nodes.some((element) => element.data?.id === "c")).toBe(true);
+    expect(
+      nodes.find((element) => element.data?.candidateState === "pending")?.data
+        ?.label,
+    ).toBe("Peer Relay");
+    expect(edges).toHaveLength(4);
+    expect(edges.filter((element) => element.data?.label)).toHaveLength(1);
+    expect(
+      edges.some((element) => String(element.classes).includes("pending")),
+    ).toBe(true);
+  });
+
   it.each([
     ["partial", "Unresolved client", "/identity-partial.svg"],
     ["anonymous", "Anonymous client", "/identity-anonymous.svg"],

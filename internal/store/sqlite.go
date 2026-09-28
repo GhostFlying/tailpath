@@ -117,12 +117,12 @@ func (s *SQLite) RecordWithMetadata(
 	transitions []domain.PathTransition,
 	metadata *domain.HistoryMetadata,
 ) (bool, error) {
-	payload, err := json.Marshal(reportWithoutRelayEndpoints(report))
+	payload, err := json.Marshal(reportWithRedactedRelayHints(report))
 	if err != nil {
 		return false, err
 	}
 	if runtimeState != nil {
-		runtimeState, err = checkpointWithoutRelayHints(runtimeState)
+		runtimeState, err = checkpointWithoutRelayDiscoHints(runtimeState)
 		if err != nil {
 			return false, fmt.Errorf("sanitize runtime checkpoint: %w", err)
 		}
@@ -184,14 +184,12 @@ func (s *SQLite) RecordWithMetadata(
 	return true, nil
 }
 
-func reportWithoutRelayEndpoints(report domain.ReportEnvelope) domain.ReportEnvelope {
+func reportWithRedactedRelayHints(report domain.ReportEnvelope) domain.ReportEnvelope {
 	if len(report.RelaySessions) == 0 {
 		return report
 	}
 	report.RelaySessions = append([]domain.RelaySessionObservation(nil), report.RelaySessions...)
 	for index := range report.RelaySessions {
-		report.RelaySessions[index].Source.Endpoint = ""
-		report.RelaySessions[index].Target.Endpoint = ""
 		report.RelaySessions[index].Source.DiscoShort = relayHintPresence(report.RelaySessions[index].Source.DiscoShort)
 		report.RelaySessions[index].Target.DiscoShort = relayHintPresence(report.RelaySessions[index].Target.DiscoShort)
 	}
@@ -205,29 +203,29 @@ func relayHintPresence(value string) string {
 	return "present"
 }
 
-func checkpointWithoutRelayHints(payload []byte) ([]byte, error) {
+func checkpointWithoutRelayDiscoHints(payload []byte) ([]byte, error) {
 	var value any
 	if err := json.Unmarshal(payload, &value); err != nil {
 		return nil, err
 	}
-	removeRelayHints(value)
+	removeRelayDiscoHints(value)
 	return json.Marshal(value)
 }
 
-func removeRelayHints(value any) {
+func removeRelayDiscoHints(value any) {
 	switch value := value.(type) {
 	case map[string]any:
 		for key, child := range value {
 			switch key {
-			case "endpoint", "sourceEndpoint", "targetEndpoint", "discoShort":
+			case "discoShort":
 				delete(value, key)
 			default:
-				removeRelayHints(child)
+				removeRelayDiscoHints(child)
 			}
 		}
 	case []any:
 		for _, child := range value {
-			removeRelayHints(child)
+			removeRelayDiscoHints(child)
 		}
 	}
 }
@@ -455,7 +453,7 @@ func (s *SQLite) SaveState(ctx context.Context, payload []byte, updatedAt time.T
 }
 
 func (s *SQLite) SaveCheckpoint(ctx context.Context, payload []byte, lastReportRowID int64, updatedAt time.Time) error {
-	sanitized, err := checkpointWithoutRelayHints(payload)
+	sanitized, err := checkpointWithoutRelayDiscoHints(payload)
 	if err != nil {
 		return fmt.Errorf("sanitize runtime checkpoint: %w", err)
 	}
@@ -475,7 +473,7 @@ func (s *SQLite) SaveCheckpointWithMetadata(
 	metadata domain.HistoryMetadata,
 	updatedAt time.Time,
 ) error {
-	sanitized, err := checkpointWithoutRelayHints(payload)
+	sanitized, err := checkpointWithoutRelayDiscoHints(payload)
 	if err != nil {
 		return fmt.Errorf("sanitize runtime checkpoint: %w", err)
 	}

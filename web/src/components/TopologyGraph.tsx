@@ -128,6 +128,14 @@ const styles: StylesheetCSS[] = [
     },
   },
   {
+    selector: "node.peer-relay.candidate-pending",
+    css: {
+      "background-color": "#ffffff",
+      "border-style": "dashed",
+      "border-width": 2,
+    },
+  },
+  {
     selector: "node.path-marker",
     css: {
       width: 18,
@@ -200,6 +208,14 @@ const styles: StylesheetCSS[] = [
       "line-color": "#a4488e",
       "source-arrow-color": "#a4488e",
       "target-arrow-color": "#a4488e",
+    },
+  },
+  {
+    selector: "edge.switching-candidate.pending",
+    css: {
+      "line-opacity": 0.72,
+      "source-arrow-color": "#b86baa",
+      "target-arrow-color": "#b86baa",
     },
   },
   {

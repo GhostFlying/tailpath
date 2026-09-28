@@ -17,8 +17,15 @@ Compose collector 仅为适配不同宿主机的 LocalAPI socket 组 ID 而以 r
 默认服务使用专用 Tailnet identity。与其他服务共用 tailscaled identity 是显式
 降级模式，因为 peer 累计 counter 无法区分 Tailpath 和业务流量。
 
-Tailpath 不记录 auth key 或完整 report body。公网 endpoint、节点标识和流量历史
-只存储在本地 SQLite，不发送产品遥测。
+Tailpath 不记录 auth key 或完整 report body。公网 endpoint、节点标识、流量历史、
+节点的被动公网 endpoint candidate 和选中的 Peer Relay `ip:port` 会保存在本地
+SQLite；已认证的 topology 和 History API 也可能返回这些值，以准确还原 relay
+切换证据。Endpoint 只作为限定范围的证据，绝不成为全局 identity alias。短 disco
+值在 raw journal 中只保留固定的 presence marker，并从 checkpoint 和 History 中
+移除；endpoint 和 disco 值都不会写入日志，也不会发送产品遥测。
+
+因此 SQLite、备份、已认证 API response 和 operator diagnostic export 都属于敏感的
+Tailnet 网络 metadata，应使用与流量历史相同等级的访问与保留控制。
 
 Container 部署应通过 `TS_AUTHKEY=file:/run/secrets/...` 传递 reusable auth key，
 enrollment 后清零 secret。Environment 和 Compose model 中只保存文件路径，不保存

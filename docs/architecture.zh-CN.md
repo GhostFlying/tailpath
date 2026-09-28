@@ -57,13 +57,20 @@ metadata；只有全部成功后才替换内存并发布合并后的 SSE invalid
 会保留 last-good directory layer 并标记 stale。未配置目录启动时清除当前 directory
 layer，但保留 canonical redirect 和既有 History。
 
+存储边界会在 journal、checkpoint 和 path transition 中保留规范化的公网 endpoint
+以及选中的 Peer Relay `ip:port`，因此 History 可以按当时证据准确还原。短 disco
+值仍会在 raw journal 中替换为固定 presence marker，并从 checkpoint 和 API
+projection 中删除。Endpoint 只是证据，不进入全局 identity alias。
+
 路径状态由一个粘性主路径和确定性排序的新鲜冲突证据集合组成。只要主路径仍有
 新鲜证据支持，跨 observer 的 report 到达顺序就不会改变它；失去支持后，endpoint
-证据优先于 relay 侧证据，并以 canonical node ID 确定性打破平局。只有规范化后的
-主路径或冲突集合变化时才写 transition。Direct endpoint、relay VNI、session ID 和
-采样时间只属于 provenance，DERP region 和 Peer Relay StableNodeID 才区分路径。
-只要新鲜 edge provenance 仍引用一个已知 Peer Relay，该 relay node 就会保留在
-可见拓扑中。
+证据优先于 relay 侧证据，并以 canonical node ID 确定性打破平局。Peer Relay
+优先以 StableNodeID 区分，未解析时依次使用选中 endpoint 和 VNI。同一份新鲜
+observer snapshot 中，一个公网 IP 只有唯一 StableNodeID owner 时才允许关联；普通
+Tailscale port 与 relay service port 不要求一致，共享公网 IP 必须保持未解析。存在
+多个新鲜 relay candidate 时状态为 `switching`；Live 和 History 同时保留各 candidate
+的 path、观察时间和 observer 数量，流量仍只属于逻辑 relationship，不按 candidate
+重复计算。
 
 重启从最新 checkpoint 恢复 reporter sequence、observer 自己持有的 inventory
 generation 和 membership、reporter 到 observer 的 ownership、identity alias、节点、

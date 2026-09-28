@@ -174,6 +174,8 @@ func (s *ScaleScenario) ExporterSnapshots(at time.Time, sequence int64) []export
 					DirectEndpoint:        peer.Path.DirectEndpoint,
 					DERPRegion:            peer.Path.DERPRegion,
 					PeerRelayStableNodeID: peer.Path.PeerRelayStableNodeID,
+					PeerRelayEndpoint:     peer.Path.PeerRelayEndpoint,
+					PeerRelayResolution:   peer.Path.PeerRelayResolution,
 					PeerRelayVNI:          peer.Path.PeerRelayVNI,
 				},
 			}
@@ -279,14 +281,15 @@ func (s *ScaleScenario) RefreshRuntimeSequences(
 
 func exporterIdentity(identity domain.NodeIdentity) exporter.NodeIdentity {
 	return exporter.NodeIdentity{
-		StableNodeID: identity.StableNodeID,
-		NodeID:       identity.NodeID,
-		NodeKey:      identity.NodeKey,
-		DiscoKey:     identity.DiscoKey,
-		Hostname:     identity.Hostname,
-		DNSName:      identity.DNSName,
-		OS:           identity.OS,
-		TailscaleIPs: append([]string(nil), identity.TailscaleIPs...),
+		StableNodeID:    identity.StableNodeID,
+		NodeID:          identity.NodeID,
+		NodeKey:         identity.NodeKey,
+		DiscoKey:        identity.DiscoKey,
+		Hostname:        identity.Hostname,
+		DNSName:         identity.DNSName,
+		OS:              identity.OS,
+		TailscaleIPs:    append([]string(nil), identity.TailscaleIPs...),
+		PublicEndpoints: append([]string(nil), identity.PublicEndpoints...),
 	}
 }
 

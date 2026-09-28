@@ -63,7 +63,7 @@ func peerIdentity(peer *ipnstate.PeerStatus) exporter.NodeIdentity {
 	return tailscalestatus.PeerIdentity(peer)
 }
 
-func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]string) exporter.Path {
+func pathObservation(peer *ipnstate.PeerStatus, relayByIP map[string]tailscalestatus.RelayIdentity) exporter.Path {
 	return tailscalestatus.Path(peer, relayByIP)
 }
 
@@ -71,11 +71,12 @@ func domainIdentity(identity exporter.NodeIdentity) domain.NodeIdentity {
 	return domain.NodeIdentity{
 		StableNodeID: identity.StableNodeID, NodeID: identity.NodeID, NodeKey: identity.NodeKey,
 		DiscoKey: identity.DiscoKey, Hostname: identity.Hostname, DNSName: identity.DNSName, OS: identity.OS,
-		TailscaleIPs: append([]string(nil), identity.TailscaleIPs...),
+		TailscaleIPs:    append([]string(nil), identity.TailscaleIPs...),
+		PublicEndpoints: append([]string(nil), identity.PublicEndpoints...),
 	}
 }
 
-func relayIdentities(status *ipnstate.Status) map[string]string {
+func relayIdentities(status *ipnstate.Status) map[string]tailscalestatus.RelayIdentity {
 	return tailscalestatus.RelayIdentities(status)
 }
 

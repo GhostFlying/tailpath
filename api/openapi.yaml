@@ -455,6 +455,14 @@ components:
           items:
             type: string
             minLength: 1
+        publicEndpoints:
+          type: array
+          description: >-
+            Passive public ip:port endpoint candidates observed for this node.
+            They are durable path evidence and never canonical identity aliases.
+          items:
+            type: string
+            minLength: 1
     PeerObservation:
       type: object
       required: [peer, rxBytes, txBytes, rxDelta, txDelta, sampleDurationMs, path, lastActive]
@@ -561,7 +569,7 @@ components:
         endpoint:
           type: string
           minLength: 1
-          description: Current underlay endpoint; accepted only as volatile provenance.
+          description: Current underlay endpoint; durable scoped provenance, never a global alias.
     IdentityStatus:
       type: string
       enum: [resolved, partial, anonymous, conflict]
@@ -577,6 +585,12 @@ components:
           type: string
         peerRelayStableNodeId:
           type: string
+        peerRelayEndpoint:
+          type: string
+          description: Normalized selected Peer Relay underlay ip:port.
+        peerRelayResolution:
+          type: string
+          enum: [relay_session, tailscale_ip, endpoint_match]
         peerRelayVni:
           type: integer
           format: int64
@@ -585,6 +599,21 @@ components:
     PathKind:
       type: string
       enum: [direct, derp, peer_relay, unknown]
+    PathState:
+      type: string
+      enum: [stable, switching]
+    PathCandidate:
+      type: object
+      required: [path, lastObservedAt, observerCount]
+      properties:
+        path:
+          $ref: '#/components/schemas/PathObservation'
+        lastObservedAt:
+          type: string
+          format: date-time
+        observerCount:
+          type: integer
+          minimum: 0
     ReportReceipt:
       type: object
       required: [accepted, resyncRequired, controlStableNodeIds, heartbeatIntervalMs]
@@ -660,6 +689,12 @@ components:
           description: True when either endpoint is the dedicated Tailpath control identity.
         path:
           $ref: '#/components/schemas/PathObservation'
+        pathState:
+          $ref: '#/components/schemas/PathState'
+        pathCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathCandidate'
         state:
           type: string
           enum: [active, recent]
@@ -703,7 +738,10 @@ components:
     RelaySessionProvenance:
       type: object
       required: [sessionId, vni, sourceIdentityStatus, targetIdentityStatus]
-      description: Sanitized third-party provenance; underlay endpoints are never exposed.
+      description: >-
+        Scoped third-party provenance. Short disco values and relay-client
+        endpoints are omitted from this projection; selected Peer Relay
+        endpoints are exposed through PathObservation.
       properties:
         sessionId:
           type: string
@@ -884,6 +922,12 @@ components:
           format: date-time
         path:
           $ref: '#/components/schemas/PathObservation'
+        pathState:
+          $ref: '#/components/schemas/PathState'
+        pathCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathCandidate'
         conflicts:
           type: array
           items:

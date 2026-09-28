@@ -84,7 +84,7 @@ func TestRelayScaleScenarioAggregatesThirdPartyEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if containsRelayScaleCanary(payload) {
+	if containsRelayEndpointCanary(payload) || containsRelayDiscoCanary(payload) {
 		t.Fatal("topology exposed relay underlay endpoint or disco canary")
 	}
 }
@@ -101,7 +101,7 @@ func TestRelayScaleScenarioRejectsInvalidShape(t *testing.T) {
 	}
 }
 
-func TestRelayScaleScenarioPersistsSanitizedHistoryAcrossRestart(t *testing.T) {
+func TestRelayScaleScenarioPersistsEndpointEvidenceAcrossRestart(t *testing.T) {
 	scenario, err := NewRelayScaleScenario(DefaultRelayScaleConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -131,9 +131,9 @@ func TestRelayScaleScenarioPersistsSanitizedHistoryAcrossRestart(t *testing.T) {
 	before := application.Aggregator.Snapshot()
 	assertRelayScaleTopology(t, before)
 	assertRelayScaleTrafficIsNotSummed(t, scenario, before)
-	assertRelayScaleExportSanitized(t, database, before, at)
-	assertRelayScaleFilesSanitized(t, databasePath)
-	if containsRelayScaleCanary(logs.Bytes()) {
+	assertRelayScaleExportScoped(t, database, before, at)
+	assertRelayScaleFilesRetainEndpoints(t, databasePath)
+	if containsRelayEndpointCanary(logs.Bytes()) || containsRelayDiscoCanary(logs.Bytes()) {
 		t.Fatal("successful relay ingest logged endpoint or disco canary")
 	}
 	beforeDigest := topologyDigest(t, before)
@@ -155,8 +155,8 @@ func TestRelayScaleScenarioPersistsSanitizedHistoryAcrossRestart(t *testing.T) {
 	if afterDigest := topologyDigest(t, after); afterDigest != beforeDigest {
 		t.Fatalf("topology digest changed across restart: before=%s after=%s", beforeDigest, afterDigest)
 	}
-	assertRelayScaleExportSanitized(t, restartedDatabase, after, at)
-	assertRelayScaleFilesSanitized(t, databasePath)
+	assertRelayScaleExportScoped(t, restartedDatabase, after, at)
+	assertRelayScaleFilesRetainEndpoints(t, databasePath)
 }
 
 func assertRelayScaleTopology(t *testing.T, topology domain.Topology) {
@@ -182,13 +182,13 @@ func assertRelayScaleTrafficIsNotSummed(t *testing.T, scenario *RelayScaleScenar
 	}
 }
 
-func assertRelayScaleExportSanitized(t *testing.T, database *store.SQLite, topology domain.Topology, at time.Time) {
+func assertRelayScaleExportScoped(t *testing.T, database *store.SQLite, topology domain.Topology, at time.Time) {
 	t.Helper()
 	payload, err := json.Marshal(topology)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if containsRelayScaleCanary(payload) {
+	if containsRelayEndpointCanary(payload) || containsRelayDiscoCanary(payload) {
 		t.Fatal("topology export contains endpoint or disco canary")
 	}
 	history, err := database.EdgeHistory(context.Background(), topology.Edges[0].ID, at.Add(-time.Hour))
@@ -203,13 +203,14 @@ func assertRelayScaleExportSanitized(t *testing.T, database *store.SQLite, topol
 	if err != nil {
 		t.Fatal(err)
 	}
-	if containsRelayScaleCanary(payload) {
+	if containsRelayEndpointCanary(payload) || containsRelayDiscoCanary(payload) {
 		t.Fatal("History export contains endpoint or disco canary")
 	}
 }
 
-func assertRelayScaleFilesSanitized(t *testing.T, databasePath string) {
+func assertRelayScaleFilesRetainEndpoints(t *testing.T, databasePath string) {
 	t.Helper()
+	endpointFound := false
 	for _, path := range []string{databasePath, databasePath + "-wal", databasePath + "-shm"} {
 		payload, err := os.ReadFile(path)
 		if err != nil {
@@ -218,14 +219,21 @@ func assertRelayScaleFilesSanitized(t *testing.T, databasePath string) {
 			}
 			t.Fatal(err)
 		}
-		if containsRelayScaleCanary(payload) {
-			t.Fatalf("%s contains endpoint or disco canary", filepath.Base(path))
+		if containsRelayDiscoCanary(payload) {
+			t.Fatalf("%s contains disco canary", filepath.Base(path))
 		}
+		endpointFound = endpointFound || containsRelayEndpointCanary(payload)
+	}
+	if !endpointFound {
+		t.Fatal("durable relay data does not contain an endpoint canary")
 	}
 }
 
-func containsRelayScaleCanary(payload []byte) bool {
+func containsRelayEndpointCanary(payload []byte) bool {
 	return bytes.Contains(payload, []byte(RelayScaleEndpointCanary)) ||
-		bytes.Contains(payload, []byte("2001:db8::")) ||
-		bytes.Contains(payload, []byte(RelayScaleDiscoCanary))
+		bytes.Contains(payload, []byte("2001:db8::"))
+}
+
+func containsRelayDiscoCanary(payload []byte) bool {
+	return bytes.Contains(payload, []byte(RelayScaleDiscoCanary))
 }

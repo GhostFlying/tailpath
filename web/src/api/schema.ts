@@ -255,6 +255,8 @@ export interface components {
             /** @description Reported operating system for display only; never identity evidence. */
             os?: string;
             tailscaleIps?: string[];
+            /** @description Passive public ip:port endpoint candidates observed for this node. They are durable path evidence and never canonical identity aliases. */
+            publicEndpoints?: string[];
         };
         PeerObservation: {
             peer: components["schemas"]["NodeIdentity"];
@@ -302,7 +304,7 @@ export interface components {
             sessionClientId: string;
             identity?: components["schemas"]["NodeIdentity"];
             discoShort?: string;
-            /** @description Current underlay endpoint; accepted only as volatile provenance. */
+            /** @description Current underlay endpoint; durable scoped provenance, never a global alias. */
             endpoint?: string;
         };
         /** @enum {string} */
@@ -312,11 +314,23 @@ export interface components {
             directEndpoint?: string;
             derpRegion?: string;
             peerRelayStableNodeId?: string;
+            /** @description Normalized selected Peer Relay underlay ip:port. */
+            peerRelayEndpoint?: string;
+            /** @enum {string} */
+            peerRelayResolution?: "relay_session" | "tailscale_ip" | "endpoint_match";
             /** Format: int64 */
             peerRelayVni?: number;
         };
         /** @enum {string} */
         PathKind: "direct" | "derp" | "peer_relay" | "unknown";
+        /** @enum {string} */
+        PathState: "stable" | "switching";
+        PathCandidate: {
+            path: components["schemas"]["PathObservation"];
+            /** Format: date-time */
+            lastObservedAt: string;
+            observerCount: number;
+        };
         ReportReceipt: {
             accepted: boolean;
             resyncRequired: boolean;
@@ -353,6 +367,8 @@ export interface components {
             /** @description True when either endpoint is the dedicated Tailpath control identity. */
             systemTelemetry: boolean;
             path: components["schemas"]["PathObservation"];
+            pathState?: components["schemas"]["PathState"];
+            pathCandidates?: components["schemas"]["PathCandidate"][];
             /** @enum {string} */
             state: "active" | "recent";
             /** Format: double */
@@ -374,7 +390,7 @@ export interface components {
             clockSkewed: boolean;
             relaySession?: components["schemas"]["RelaySessionProvenance"];
         };
-        /** @description Sanitized third-party provenance; underlay endpoints are never exposed. */
+        /** @description Scoped third-party provenance. Short disco values and relay-client endpoints are omitted from this projection; selected Peer Relay endpoints are exposed through PathObservation. */
         RelaySessionProvenance: {
             sessionId: string;
             /** Format: int64 */
@@ -460,6 +476,8 @@ export interface components {
             /** Format: date-time */
             observedAt: string;
             path: components["schemas"]["PathObservation"];
+            pathState?: components["schemas"]["PathState"];
+            pathCandidates?: components["schemas"]["PathCandidate"][];
             conflicts: components["schemas"]["PathObservation"][];
             observations: components["schemas"]["ObservationProvenance"][];
         };

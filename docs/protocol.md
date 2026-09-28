@@ -42,6 +42,13 @@ LocalAPI values are normalized to `linux`, `macos`, `windows`, `ios`, or
 identity, aliases, or merge decisions, and protocol-v1 reports that omit it
 remain valid.
 
+Node identities may also include passive `publicEndpoints` as normalized
+public `ip:port` values from the runtime status view. They are durable path
+evidence, not canonical aliases. A selected Peer Relay IP may identify a peer
+only when that public IP belongs to exactly one StableNodeID in the same fresh
+observer snapshot. The ordinary Tailscale endpoint port and relay service port
+are not required to match. Shared-IP evidence remains unresolved.
+
 Every envelope has a UUID report ID, reporter instance UUID, monotonic sequence,
 and collection timestamp. Normal messages may contain several observer peer
 views, each with its own collection timestamp so one skewed runtime cannot
@@ -94,11 +101,13 @@ transport identity is authenticated with WhoIs independently of the trusted
 observer identity described in a report.
 
 Relay client resolution is `resolved`, `partial`, `anonymous`, or `conflict`.
-Topology and History may expose that status together with sanitized session ID
-and VNI provenance. Underlay endpoints are removed before durable storage and
-never appear in API responses or logs. The raw journal stores only whether a
-short disco hint was present, not its value, so restart replay preserves
-`partial` status without turning the hint into durable identity evidence.
+Topology and History may expose that status together with session ID and VNI
+provenance. Normalized public endpoints and selected Peer Relay endpoints are
+durable so Live and History can reproduce switching evidence. Authenticated
+path responses may expose that network metadata. The raw journal stores only
+whether a short disco hint was present, not its value, so restart replay
+preserves `partial` status without turning the hint into durable identity
+evidence. Neither endpoint nor disco values are written to logs.
 
 Collectors keep only the newest unsent state during an outage. Reconnect sends
 a fresh hello and baseline; a long outage delta is not presented as current

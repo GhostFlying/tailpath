@@ -62,9 +62,11 @@ its canonical node with a durable redirect, one logical edge, and stable
 checkpoint/restart state. A reversed canonical edge test verifies that both
 traffic direction and source/target identity status are swapped together.
 
-Durable relay tests scan the SQLite database and WAL for synthetic endpoint and
-disco canaries, exercise checkpoint restart before and after a scoped merge,
-and query the removed physical edge through its redirect. A seven-day test
+Durable relay tests require synthetic endpoint canaries in SQLite while proving
+short disco canaries remain absent, exercise checkpoint restart before and
+after a scoped merge, and query the removed physical edge through its redirect.
+Selected relay-path tests verify the exact endpoint, switching candidates, and
+resolution method survive History reconstruction. A seven-day test
 runs third-party relay traffic through real minute/hour rollup and retention,
 then verifies directional totals and the sanitized pre-window path anchor.
 
@@ -72,9 +74,9 @@ The separate fixed-seed relay scale scenario sends 1,000 concurrent
 third-party sessions through eight relay runtimes while retaining 250 canonical
 nodes and 1,000 client-to-client logical edges. It exercises real
 `relay_session_update` reconciliation, atomic SQLite ingest, checkpoints,
-restart, History provenance, and directional de-duplication. Database, WAL,
-topology, History, and logs are scanned for documentation-range endpoint and
-disco canaries.
+restart, History provenance, and directional de-duplication. Database and WAL
+must retain documentation-range endpoint canaries but omit disco canaries;
+topology, History, and logs continue to omit scoped relay-client endpoints.
 
 The v0.4 exporter gate projects the same fixed-seed mixed-path topology through
 250 public `Source` registrations sharing one `SnapshotSink` and reporter
