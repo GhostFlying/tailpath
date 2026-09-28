@@ -1376,7 +1376,19 @@ function routeEdgesAroundObstacles(cy: Core) {
     const rightVirtual =
       Number(!right.source().data("persistable")) +
       Number(!right.target().data("persistable"));
-    return leftVirtual - rightVirtual || left.id().localeCompare(right.id());
+    const leftLength = Math.hypot(
+      left.target().position("x") - left.source().position("x"),
+      left.target().position("y") - left.source().position("y"),
+    );
+    const rightLength = Math.hypot(
+      right.target().position("x") - right.source().position("x"),
+      right.target().position("y") - right.source().position("y"),
+    );
+    return (
+      leftVirtual - rightVirtual ||
+      rightLength - leftLength ||
+      left.id().localeCompare(right.id())
+    );
   });
   edges.forEach((edge) => {
     const source = edge.source().position();
