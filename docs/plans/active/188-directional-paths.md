@@ -134,58 +134,51 @@ later pages cannot drift as wall time advances.
 
 ## Current state
 
-The API/storage slice is implemented. Collector snapshots now carry optional
-fallback and evidence metadata, native and tsnet sources share the versioned
-twelve-second monotonic inference tracker, and aggregation projects only
-endpoint observations into two directions. Schema migration 6 persists and
-legacy-backfills directions. The complete path-history API uses stable keyset
-pagination and generated Go/TypeScript models are current.
+The API/storage and Live slices are implemented. Collector snapshots now carry
+optional fallback and evidence metadata, native and tsnet sources share the
+versioned twelve-second monotonic inference tracker, and aggregation projects
+only endpoint observations into two directions. Schema migration 6 persists
+and legacy-backfills directions. The complete path-history API uses stable
+keyset pagination and generated Go/TypeScript models are current.
 
-The ready-for-review stack received fifty-six actionable inline findings
-across its review passes. Remediation remains dependency ordered. The API slice now
+Live now collapses equivalent directions, expands asymmetric primary/fallback
+states into destination-arrow route chains, and renders DERP fallback as an
+unmetered dashed route. The inspector fixes two direction slots, leaves a
+missing direction unknown, labels evidence, and separates endpoint path
+evidence from relay-session identity evidence. Legacy edges without directions
+retain their compatibility candidate view.
+
+The ready-for-review stack received ten actionable inline findings on
+2026-09-28. Remediation is in progress in dependency order. The API slice now
 clears relay inference when a peer disappears, freezes pagination boundaries,
-returns historical node references on every page, accepts the detail response's
-absolute window end, records resolved relay endpoint/VNI changes, and rejects
-inferred evidence without a versioned rule. It also clears directions when the
-last endpoint observation is withdrawn, indexes primary and fallback kinds for
-History filters, and rejects fresh reports that claim migration-only legacy
-evidence. Path-history cursors are bound to the canonical edge, so aliases
-remain valid while a cursor cannot silently advance a different edge. Failed
-native or tsnet status polls reset relay inference continuity before the next
-sample. Cursors also retain the first page's row-ID high-water mark, excluding
-events that commit concurrently after the selected history snapshot. The
-optional `directional-path-evidence` capability lets new exporters omit
-fallback and evidence fields when reporting to an older strict-decoding
-protocol-v1 server. Migration 6 leaves irreversible v5 compaction unchanged and labels
-retained backfill as legacy instead of claiming to restore deleted transitions.
-Earlier Live and History findings, including event-index anchoring during
-pagination, are fixed and remain to be rebased onto this API head.
+and returns the historical node references needed by every page. The Live slice
+must correct directional arrow semantics, partial-evidence wording, recent-path
+arrows, and relay resolution metadata. The History slice must preserve unknown
+directions in summaries, render complete per-direction evidence, and avoid
+temporarily replacing the newest compatibility events with an incomplete old
+page.
 
 ## Next step
 
-Update PR #189, safely rebase PRs #190 and #191, then rerun the complete
-repository and browser gates.
+Fix and test the four Live review findings, update PR #190, then safely rebase
+PR #191 before addressing its History review findings.
 
 ## Verification
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
-  window end, node references first encountered on a paginated page, a shared
-  detail/path absolute boundary, resolved relay endpoint/VNI transitions, and
-  mandatory inference rules at both validation boundaries. Additional coverage
-  clears withdrawn directions, indexes event and anchor fallbacks, and rejects
-  legacy evidence at both live-report boundaries. Cursor coverage accepts a
-  canonical alias, rejects cross-edge reuse, and excludes an in-window event
-  committed after the first page. Native and tsnet source tests
-  prove a failed status poll prevents the next DERP sample from inheriting
-  pre-gap relay evidence. Exporter negotiation tests verify current servers
-  receive directional fields while older protocol-v1 servers receive none of
-  the three new JSON fields.
+  window end, and node references first encountered on a paginated page.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 73 current Vitest tests pass.
+- TypeScript check and all 78 current Vitest tests pass.
+- Focused directional Live Playwright coverage passes on desktop Chromium at
+  1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
+  overflow, single-counted traffic, and no console errors.
+- The full 12-case relay UI browser matrix passes on desktop and mobile.
+- The Browser plugin is unavailable in this environment; repository Playwright
+  is the recorded browser-validation fallback.
 
 ## Completion summary
 
