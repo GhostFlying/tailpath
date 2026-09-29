@@ -57,6 +57,8 @@ production strings must be accurate and code-native.
    guessing a previous relay.
 5. `path_events.directions` is an append-only JSON column. Legacy events derive
    best-effort directions from endpoint provenance and are labeled `legacy`.
+   The appended `directions_tracked` marker distinguishes an explicit empty
+   withdrawal from an unprojectable legacy event.
 6. A separate keyset-paginated path-history endpoint removes the existing 500
    event correctness cap while the old embedded detail field remains.
 7. Missing directions are unknown. They do not trigger asymmetric expansion.
@@ -64,7 +66,8 @@ production strings must be accurate and code-native.
 ## Interfaces
 
 Observer peers add optional `fallbackPath`, `pathEvidence`, and
-`pathInferenceRule`. Topology edges and path events add `directions[]`.
+`pathInferenceRule`. Topology edges and path events add `directions[]`; path
+events also expose `directionsTracked` for empty-state interpretation.
 History adds `GET /history/edges/{edgeId}/paths` with window, cursor, and limit,
 returning source/target/related-node references, an anchor, ordered events, and
 next cursor. The first page freezes the selected window end in the cursor so
@@ -138,8 +141,10 @@ The API/storage, Live, and History slices are implemented. Collector snapshots n
 optional fallback and evidence metadata, native and tsnet sources share the
 versioned twelve-second monotonic inference tracker, and aggregation projects
 only endpoint observations into two directions. Schema migration 6 persists
-and legacy-backfills directions. The complete path-history API uses stable
-keyset pagination and generated Go/TypeScript models are current.
+and legacy-backfills directions; append-only migration 7 marks future events
+as directionally tracked without reclassifying ambiguous existing empty rows.
+The complete path-history API uses stable keyset pagination and generated
+Go/TypeScript models are current.
 
 Live now collapses equivalent directions, expands asymmetric primary/fallback
 states into destination-arrow route chains, and renders DERP fallback as an
@@ -283,11 +288,16 @@ review.
   flags as CI: 23 passed and one desktop-only 320px duplicate intentionally
   skipped. WebKit remains assigned to the hosted layout workflow because it is
   not installed in the local browser cache.
-- The main-targeted History replay preserves whether `directions` was omitted
-  by a legacy server or explicitly emitted as an empty withdrawal. An empty
-  directional anchor now remains `Unknown / No fresh observation` instead of
-  resurrecting its compatibility path; focused API, timeline, and 900-event
-  browser regressions cover the window-boundary and legacy paging cases.
+- The main-targeted History replay persists and exposes `directionsTracked`,
+  so an empty directional anchor remains `Unknown / No fresh observation`
+  without misclassifying an unprojectable migrated event. Focused storage,
+  API, timeline, and 900-event browser regressions cover the window-boundary,
+  migration, and legacy paging cases.
+- Generated-file consistency, all Go tests, 102 Vitest tests, the production
+  build, and both 900-event browser regressions pass after migration 7. The
+  complete local browser matrix passed 72 tests and hit one unrelated mobile
+  retry-button detach race; that exact test then passed three consecutive
+  parallel reruns.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.

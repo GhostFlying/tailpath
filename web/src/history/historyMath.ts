@@ -218,8 +218,9 @@ export function buildDirectionalTimeline(
       ? clampTime(ordered[index + 1].event.observedAt, history.from, history.to)
       : history.to;
     const directions = event.directions ?? [];
-    const eventIsDirectional = event.directions !== undefined;
     const eventHasDirections = directions.length > 0;
+    const eventIsDirectional =
+      event.directionsTracked === true || eventHasDirections;
     const missingAfterDirectionalEvidence =
       !eventIsDirectional && hasSeenDirectionalEvent;
     hasSeenDirectionalEvent ||= eventIsDirectional;
@@ -381,7 +382,8 @@ function compactEventDigest(event: PathEvent): string {
 
 export function hasDirectionalHistory(history: EdgeHistory): boolean {
   return [history.pathAnchor, ...history.pathEvents].some(
-    (event) => event?.directions !== undefined,
+    (event) =>
+      event?.directionsTracked === true || (event?.directions?.length ?? 0) > 0,
   );
 }
 

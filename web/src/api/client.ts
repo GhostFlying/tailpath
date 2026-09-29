@@ -73,9 +73,9 @@ function normalizePathEvent(event: NullablePathEvent) {
     ...rest,
     conflicts: event.conflicts ?? [],
     observations: event.observations ?? [],
-    // Presence is meaningful: a current server emits an explicit empty array
-    // when directional evidence was withdrawn, while older servers omit (or
-    // return null for) the field entirely.
+    // Keep older omitted/null fields absent. Current servers use the separate
+    // directionsTracked marker to distinguish empty withdrawals from legacy
+    // events whose direction could not be reconstructed.
     ...(directions == null ? {} : { directions }),
   };
 }

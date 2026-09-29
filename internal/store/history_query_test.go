@@ -295,7 +295,7 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 	}})
 	for index := range 900 {
 		at := now.Add(-10 * time.Minute).Add(time.Duration(index) * time.Millisecond)
-		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(at), path, directions); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions, directions_tracked) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?, 1)`, formatPathEventTime(at), path, directions); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -342,10 +342,10 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 			}
 		}
 		if !insertedMovingWindowEvent {
-			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(-10*time.Minute).Add(250*time.Millisecond)), path, directions); err != nil {
+			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions, directions_tracked) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?, 1)`, formatPathEventTime(now.Add(-10*time.Minute).Add(250*time.Millisecond)), path, directions); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(10*time.Second)), path, directions); err != nil {
+			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions, directions_tracked) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?, 1)`, formatPathEventTime(now.Add(10*time.Second)), path, directions); err != nil {
 				t.Fatal(err)
 			}
 			queryTime = now.Add(30 * time.Second)
@@ -355,6 +355,11 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 	}
 	if len(all) != 900 {
 		t.Fatalf("paged path events = %d, want 900", len(all))
+	}
+	for index := range all {
+		if !all[index].DirectionsTracked {
+			t.Fatalf("event %d lost directional tracking marker", index)
+		}
 	}
 	for index := 1; index < len(all); index++ {
 		if !all[index].ObservedAt.After(all[index-1].ObservedAt) {

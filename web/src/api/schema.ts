@@ -526,6 +526,8 @@ export interface components {
             conflicts: components["schemas"]["PathObservation"][];
             observations: components["schemas"]["ObservationProvenance"][];
             directions?: components["schemas"]["DirectionalPathState"][];
+            /** @description True when the event was recorded with directional tracking; an empty directions array then means explicit withdrawal rather than unrecoverable legacy evidence. */
+            directionsTracked?: boolean;
         };
         PathEventPage: {
             source: components["schemas"]["HistoryNodeReference"];

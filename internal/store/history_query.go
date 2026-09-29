@@ -286,13 +286,14 @@ func (s *SQLite) EdgePathHistoryWindow(
 		anchorArgs = append(anchorArgs, sourceID)
 	}
 	anchorArgs = append(anchorArgs, highWaterID)
-	anchorQuery := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
+	anchorQuery := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions, directions_tracked
 		FROM path_events WHERE observed_at < ? AND edge_id IN (` + edgeClause + `) AND id <= ?
 		ORDER BY observed_at DESC, id DESC LIMIT 1`
 	row := s.db.QueryRowContext(ctx, anchorQuery, anchorArgs...)
 	var storedAnchor storedPathEvent
 	if err := row.Scan(&storedAnchor.edgeID, &storedAnchor.id, &storedAnchor.observedAt,
-		&storedAnchor.path, &storedAnchor.conflicts, &storedAnchor.observations, &storedAnchor.directions); err == nil {
+		&storedAnchor.path, &storedAnchor.conflicts, &storedAnchor.observations, &storedAnchor.directions,
+		&storedAnchor.directionsTracked); err == nil {
 		event, err := decodeStoredPathEvent(storedAnchor, index)
 		if err != nil {
 			return domain.PathEventPage{}, false, err
@@ -307,7 +308,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 	for _, sourceID := range edgeIDs {
 		args = append(args, sourceID)
 	}
-	query := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
+	query := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions, directions_tracked
 		FROM path_events WHERE observed_at >= ? AND observed_at < ? AND edge_id IN (` + edgeClause + `) AND id <= ?`
 	args = append(args, highWaterID)
 	if cursorValue != "" {
@@ -329,7 +330,8 @@ func (s *SQLite) EdgePathHistoryWindow(
 	for rows.Next() {
 		var stored storedPathEvent
 		if err := rows.Scan(&stored.edgeID, &stored.id, &stored.observedAt,
-			&stored.path, &stored.conflicts, &stored.observations, &stored.directions); err != nil {
+			&stored.path, &stored.conflicts, &stored.observations, &stored.directions,
+			&stored.directionsTracked); err != nil {
 			return domain.PathEventPage{}, false, err
 		}
 		event, err := decodeStoredPathEvent(stored, index)
@@ -363,13 +365,14 @@ func (s *SQLite) EdgePathHistoryWindow(
 }
 
 type storedPathEvent struct {
-	edgeID       string
-	id           int64
-	observedAt   string
-	path         []byte
-	conflicts    []byte
-	observations []byte
-	directions   []byte
+	edgeID            string
+	id                int64
+	observedAt        string
+	path              []byte
+	conflicts         []byte
+	observations      []byte
+	directions        []byte
+	directionsTracked bool
 }
 
 func decodeStoredPathEvent(stored storedPathEvent, index historyIndex) (domain.PathEvent, error) {
@@ -404,6 +407,7 @@ func decodeStoredPathEvent(stored storedPathEvent, index historyIndex) (domain.P
 	if event.Directions == nil {
 		event.Directions = []domain.DirectionalPathState{}
 	}
+	event.DirectionsTracked = stored.directionsTracked
 	event.PathState, event.PathCandidates = domain.PathCandidates(event.Path, event.Conflicts, event.Observations)
 	return event, nil
 }
@@ -779,7 +783,7 @@ func (s *SQLite) loadPathSets(ctx context.Context, index historyIndex, from, to 
 }
 
 func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, from, to time.Time, edgeIDs []string) (map[string]*historyPathSet, error) {
-	query := `SELECT edge_id, observed_at, path, conflicts, observations, directions FROM path_events WHERE julianday(observed_at) < julianday(?)`
+	query := `SELECT edge_id, observed_at, path, conflicts, observations, directions, directions_tracked FROM path_events WHERE julianday(observed_at) < julianday(?)`
 	args := []any{formatTime(to)}
 	if len(edgeIDs) != 0 {
 		placeholders := make([]string, len(edgeIDs))
@@ -799,7 +803,8 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 	for rows.Next() {
 		var originalID, rawTime string
 		var rawPath, rawConflicts, rawObservations, rawDirections []byte
-		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections); err != nil {
+		var directionsTracked bool
+		if err := rows.Scan(&originalID, &rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections, &directionsTracked); err != nil {
 			return nil, err
 		}
 		edgeID := index.edgeAlias[originalID]
@@ -838,6 +843,7 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 		if event.Directions == nil {
 			event.Directions = []domain.DirectionalPathState{}
 		}
+		event.DirectionsTracked = directionsTracked
 		set := result[edgeID]
 		if set == nil {
 			set = &historyPathSet{pathKinds: make(map[domain.PathKind]struct{})}

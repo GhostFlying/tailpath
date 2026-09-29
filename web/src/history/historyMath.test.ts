@@ -215,6 +215,7 @@ describe("path timeline", () => {
       ...history.pathAnchor!,
       path: { kind: "direct" },
       directions: [],
+      directionsTracked: true,
     };
     history.pathEvents = [];
 
@@ -227,6 +228,19 @@ describe("path timeline", () => {
         bToA: undefined,
       }),
     ]);
+  });
+
+  it("keeps an unprojectable migrated event in legacy history", () => {
+    const history = directionalHistory();
+    history.pathAnchor = {
+      ...history.pathAnchor!,
+      path: { kind: "direct" },
+      directions: [],
+      directionsTracked: false,
+    };
+    history.pathEvents = [];
+
+    expect(hasDirectionalHistory(history)).toBe(false);
   });
 
   it("coalesces dense visual segments within a fixed render budget", () => {

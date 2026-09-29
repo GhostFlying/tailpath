@@ -162,6 +162,14 @@ persist both directions and their evidence exactly. A dedicated
 selected window; the older embedded 500-event detail field remains for
 compatibility.
 
+Schema migration 7 adds `path_events.directions_tracked`. Existing schema-v6
+rows default to false because an empty legacy projection cannot be safely
+distinguished from a withdrawal after the fact. New path transitions write
+true, including explicit empty-direction withdrawals. History therefore uses
+an empty tracked event as `Unknown / No fresh observation`, while an empty
+untracked event remains legacy combined evidence; non-empty legacy projections
+remain available through their per-direction `legacy` evidence labels.
+
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including
 direction reversal when a canonical endpoint order changes. A durable edge map

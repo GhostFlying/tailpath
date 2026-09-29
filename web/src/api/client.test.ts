@@ -43,7 +43,7 @@ describe("getEdgeHistory", () => {
 });
 
 describe("getEdgePathHistory", () => {
-  it("preserves absent legacy and explicit empty directional collections", async () => {
+  it("preserves absent legacy and tracked empty directional collections", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
         source: { id: "node-a", label: "Node A" },
@@ -62,6 +62,7 @@ describe("getEdgePathHistory", () => {
             ...pathEvent(),
             observedAt: "2026-08-30T00:02:00Z",
             directions: [],
+            directionsTracked: true,
           },
         ],
         nextCursor: "next page",
@@ -90,6 +91,7 @@ describe("getEdgePathHistory", () => {
     });
     expect(page.events[0]).not.toHaveProperty("directions");
     expect(page.events[1].directions).toEqual([]);
+    expect(page.events[1].directionsTracked).toBe(true);
     expect(page.nextCursor).toBe("next page");
   });
 });

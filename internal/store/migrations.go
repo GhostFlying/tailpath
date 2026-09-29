@@ -10,7 +10,7 @@ import (
 	"github.com/GhostFlying/tailpath/internal/domain"
 )
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 type migration func(*sql.Tx) error
 
@@ -21,6 +21,14 @@ var migrations = []migration{
 	migrateCanonicalHourRollups,
 	migrateHistoryEvidence,
 	migrateDirectionalPaths,
+	migrateDirectionalTracking,
+}
+
+func migrateDirectionalTracking(tx *sql.Tx) error {
+	// Schema-v6 rows are retained as untracked: a non-empty legacy projection
+	// remains usable, while an empty projection must not be confused with an
+	// explicit withdrawal written by the directional aggregator.
+	return ensureColumn(tx, "path_events", "directions_tracked", "INTEGER NOT NULL DEFAULT 0")
 }
 
 func migrateDirectionalPaths(tx *sql.Tx) error {
