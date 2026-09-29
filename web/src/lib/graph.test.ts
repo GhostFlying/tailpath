@@ -47,6 +47,25 @@ describe("buildElements", () => {
     expect(String(edge?.classes)).toContain("flow-reverse");
   });
 
+  it("does not infer forward flow from reverse-only traffic", () => {
+    const fixture = topology();
+    fixture.edges[0].aToBBytesPerSecond = 0;
+    fixture.edges[0].bToABytesPerSecond = 3_000;
+    fixture.edges[0] = withDirections(fixture.edges[0], [
+      direction("a", "b", { kind: "direct" }),
+      direction("b", "a", { kind: "direct" }),
+    ]);
+
+    const rendered = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).find((element) => element.group === "edges");
+
+    expect(String(rendered?.classes)).not.toContain("flow-forward");
+    expect(String(rendered?.classes)).toContain("flow-reverse");
+  });
+
   it("keeps path text out of peer relay rate labels", () => {
     const relay = buildElements(
       {

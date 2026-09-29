@@ -187,7 +187,7 @@ const styles: StylesheetCSS[] = [
     css: { "source-arrow-shape": "triangle" },
   },
   {
-    selector: "edge.directional-route",
+    selector: "edge.directional-route.active",
     css: { "target-arrow-shape": "triangle" },
   },
   {
@@ -254,13 +254,16 @@ const styles: StylesheetCSS[] = [
       "line-color": "#bd7b00",
       "source-arrow-color": "#bd7b00",
       "target-arrow-color": "#bd7b00",
-      "target-arrow-shape": "triangle",
       "line-opacity": 0.78,
       "arrow-scale": 0.62,
     },
   },
   {
-    selector: "edge.fallback-route:not(.directional-route)",
+    selector: "edge.fallback-route.active",
+    css: { "target-arrow-shape": "triangle" },
+  },
+  {
+    selector: "edge.fallback-route.active:not(.directional-route)",
     css: { "source-arrow-shape": "triangle" },
   },
   {
