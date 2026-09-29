@@ -202,7 +202,9 @@ const styles: StylesheetCSS[] = [
     selector: "edge.directional-route.route-b",
     css: {
       "curve-style": "unbundled-bezier",
-      "control-point-distances": -28,
+      // Reciprocal endpoints reverse Cytoscape's perpendicular basis, so the
+      // same signed distance places this direction on the opposite visual lane.
+      "control-point-distances": 28,
       "control-point-weights": 0.5,
     },
   },
