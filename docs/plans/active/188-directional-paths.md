@@ -157,7 +157,7 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack received fifty-three actionable inline findings, all now
+The ready-for-review stack received fifty-six actionable inline findings, all now
 addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
@@ -173,7 +173,11 @@ is withdrawn and uses full timestamp precision when retaining path anchors.
 Path-history cursors carry the canonical edge ID, accepting aliases of that
 edge while rejecting reuse against another edge. A failed native or tsnet
 status poll resets relay inference continuity, so the next DERP sample cannot
-inherit relay evidence from before the observation gap. The
+inherit relay evidence from before the observation gap. Each path cursor also
+retains the first page's row-ID high-water mark, excluding in-window events
+that commit after the selected snapshot. The optional
+`directional-path-evidence` capability lets a new exporter omit all three new
+peer fields when reporting to an older strict-decoding protocol-v1 server. The
 Live slice now derives arrows from each observed direction's own rate,
 distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
@@ -218,7 +222,7 @@ jumping the index backward.
 ## Next step
 
 Run the complete repository gate, update the rebased PR stack, then reply to and
-resolve the three newly addressed review threads before requesting a fresh
+resolve the two newly addressed API review threads before requesting a fresh
 review.
 
 ## Verification
@@ -231,8 +235,11 @@ review.
   rejection of inferred-without-rule or fresh legacy evidence at both report
   boundaries, Direct address-versus-port changes, and exact nanosecond window
   bounds across migrated RFC3339Nano timestamps. Cursor coverage accepts a
-  canonical alias and rejects cross-edge reuse. Native and tsnet adapter tests
+  canonical alias, rejects cross-edge reuse, and excludes an in-window event
+  committed after the first page. Native and tsnet adapter tests
   prove failed polls break inference continuity.
+- Exporter negotiation tests verify current servers receive directional fields
+  while older protocol-v1 servers receive none of the three new JSON fields.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy and flow rates, exact relay resolution metadata, fallback
   evidence wording, and desktop/mobile rendering.
