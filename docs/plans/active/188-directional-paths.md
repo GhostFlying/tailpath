@@ -148,7 +148,7 @@ missing direction unknown, labels evidence, and separates endpoint path
 evidence from relay-session identity evidence. Legacy edges without directions
 retain their compatibility candidate view.
 
-The ready-for-review stack has received forty-six actionable inline findings.
+The ready-for-review stack has received fifty actionable inline findings.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
@@ -162,7 +162,10 @@ recent-path inspector, treats complete relay identity as the shared Live and
 recent-event comparison key, and separates reciprocal route geometry. Obstacle
 routing now coordinates reciprocal curves on the same signed side instead of
 letting independently selected offsets cancel, and logical edge selection is
-reapplied whenever collapsed and expanded route IDs replace one another.
+reapplied whenever collapsed and expanded route IDs replace one another. The
+default directional Bézier geometry participates in obstacle and route-crossing
+checks even before inline rerouting, and the legend classifies DERP fallback as
+path evidence rather than traffic activity.
 
 ## Next step
 

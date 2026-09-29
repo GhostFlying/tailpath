@@ -73,6 +73,13 @@ test("presents scoped relay clients and live provenance", async ({
   await expect(graph).toHaveAttribute("data-edge-count", "1");
   await expect(graph).toHaveAttribute("data-node-count", "3");
   await expect(graph).toHaveAttribute("data-relay-platform-icon-count", "1");
+  const legend = page.getByLabel("Topology legend");
+  await expect(
+    legend.locator(".legend-section").filter({ hasText: "Path" }),
+  ).toContainText("DERP fallback");
+  await expect(
+    legend.locator(".legend-section").filter({ hasText: "Activity" }),
+  ).not.toContainText("DERP fallback");
   await page.screenshot({
     path: testInfo.outputPath(
       `relay-platform-icon-${testInfo.project.name}.png`,
