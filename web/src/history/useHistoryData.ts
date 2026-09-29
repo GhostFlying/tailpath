@@ -146,6 +146,11 @@ export function useHistoryDetail(
         let cursor = "";
         let anchor = history.pathAnchor;
         const events: EdgeHistory["pathEvents"] = [];
+        let source = history.source;
+        let target = history.target;
+        const relatedNodes = new Map(
+          history.relatedNodes.map((node) => [node.id, node]),
+        );
         try {
           do {
             const page = await getEdgePathHistory(
@@ -156,20 +161,30 @@ export function useHistoryDetail(
             );
             if (controller.signal.aborted) return;
             if (!cursor && page.anchor) anchor = page.anchor;
+            if (page.source) source = page.source;
+            if (page.target) target = page.target;
+            for (const node of page.relatedNodes) {
+              relatedNodes.set(node.id, node);
+            }
             events.push(...page.events);
             cursor = page.nextCursor ?? "";
-            const nextHistory = {
-              ...history,
-              pathAnchor: anchor,
-              pathEvents: [...events],
-              pathEventsTruncated: false,
-            };
+            const complete = !cursor;
             setState((current) => ({
               ...current,
-              history: nextHistory,
-              pathsLoading: Boolean(cursor),
+              history: complete
+                ? {
+                    ...history,
+                    source,
+                    target,
+                    relatedNodes: [...relatedNodes.values()],
+                    pathAnchor: anchor,
+                    pathEvents: [...events],
+                    pathEventsTruncated: false,
+                  }
+                : history,
+              pathsLoading: !complete,
               pathEventsLoaded: events.length,
-              pathEventsComplete: !cursor,
+              pathEventsComplete: complete,
             }));
           } while (cursor);
         } catch (error: unknown) {

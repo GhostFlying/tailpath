@@ -588,11 +588,7 @@ function DirectionalSnapshotContent({
                   <code>{state.inferenceRule}</code>
                 ) : null}
               </span>
-              <span
-                className={`history-evidence-badge ${state?.evidence ?? "unknown"}`}
-              >
-                {state ? capitalize(state.evidence) : "Unknown"}
-              </span>
+              <DirectionEvidence state={state} nodes={nodes} />
             </div>
           ))}
         </div>
@@ -779,10 +775,69 @@ function directionPathMetadata(path: PathObservation) {
   return [
     path.peerRelayVni !== undefined ? `VNI ${path.peerRelayVni}` : undefined,
     path.peerRelayEndpoint,
+    peerRelayResolutionLabel(path.peerRelayResolution),
     path.directEndpoint,
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function peerRelayResolutionLabel(
+  resolution: PathObservation["peerRelayResolution"],
+) {
+  switch (resolution) {
+    case "relay_session":
+      return "Resolution: relay session";
+    case "tailscale_ip":
+      return "Resolution: Tailscale IP";
+    case "endpoint_match":
+      return "Resolution: endpoint match";
+    default:
+      return undefined;
+  }
+}
+
+function DirectionEvidence({
+  state,
+  nodes,
+}: {
+  state?: DirectionalPathState;
+  nodes: HistoryNodeMaps;
+}) {
+  if (!state) {
+    return (
+      <span className="directional-state-evidence">
+        <span className="history-evidence-badge unknown">Unknown</span>
+        <small>No fresh observation</small>
+      </span>
+    );
+  }
+  const observer = nodes.byID.get(state.observerId)?.label ?? state.observerId;
+  return (
+    <span className="directional-state-evidence">
+      <span className={`history-evidence-badge ${state.evidence}`}>
+        {capitalize(state.evidence)}
+      </span>
+      <small>Observer {observer}</small>
+      <small>
+        Collected{" "}
+        <time dateTime={state.collectedAt}>
+          {formatTimelineTime(state.collectedAt, true)}
+        </time>
+      </small>
+      <small>
+        Received{" "}
+        <time dateTime={state.receivedAt}>
+          {formatTimelineTime(state.receivedAt, true)}
+        </time>
+      </small>
+      {state.clockSkewed ? (
+        <small className="direction-clock-warning">
+          <TriangleAlert size={12} aria-hidden="true" /> Collector clock warning
+        </small>
+      ) : null}
+    </span>
+  );
 }
 
 function capitalize(value: string) {

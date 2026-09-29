@@ -1159,7 +1159,7 @@
   display: grid;
   grid-template-columns:
     minmax(150px, 1.1fr) minmax(150px, 1fr) minmax(120px, 0.85fr)
-    82px;
+    minmax(170px, 1.1fr);
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid #e1e5e7;
@@ -1206,6 +1206,25 @@
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.directional-state-evidence {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  align-content: start;
+}
+
+.directional-state-evidence .history-evidence-badge {
+  justify-self: start;
+}
+
+.direction-clock-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9a6200 !important;
+  font-weight: 700;
 }
 
 .history-evidence-badge.inferred {
@@ -2108,9 +2127,10 @@
     padding-top: 7px;
   }
 
-  .history-provenance-sheet .history-evidence-badge {
-    grid-column: 2;
-    grid-row: 2;
+  .history-provenance-sheet .directional-state-evidence {
+    grid-column: 1 / -1;
+    border-top: 1px solid #e1e5e7;
+    padding-top: 7px;
   }
 
   .history-provenance-sheet .directional-history-evidence {
