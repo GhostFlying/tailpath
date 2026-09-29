@@ -500,9 +500,12 @@ type PathTransition struct {
 }
 
 type PathEventPage struct {
-	Anchor     *PathEvent  `json:"anchor,omitempty"`
-	Events     []PathEvent `json:"events"`
-	NextCursor string      `json:"nextCursor,omitempty"`
+	Source       HistoryNodeReference   `json:"source"`
+	Target       HistoryNodeReference   `json:"target"`
+	RelatedNodes []HistoryNodeReference `json:"relatedNodes"`
+	Anchor       *PathEvent             `json:"anchor,omitempty"`
+	Events       []PathEvent            `json:"events"`
+	NextCursor   string                 `json:"nextCursor,omitempty"`
 }
 
 type EdgeHistory struct {

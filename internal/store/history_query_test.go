@@ -233,8 +233,8 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 	}
 	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathPeerRelay})
 	directions, _ := json.Marshal([]domain.DirectionalPathState{{
-		FromNodeID: "n_a", ToNodeID: "n_b", ObserverID: "n_a", Evidence: domain.PathEvidenceObserved,
-		PrimaryPath: domain.PathObservation{Kind: domain.PathPeerRelay},
+		FromNodeID: "n_a", ToNodeID: "n_b", ObserverID: "n_c", Evidence: domain.PathEvidenceObserved,
+		PrimaryPath: domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "c"},
 		CollectedAt: now.Add(-10 * time.Minute), ReceivedAt: now.Add(-10 * time.Minute),
 	}})
 	for index := range 900 {
@@ -246,16 +246,39 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 
 	var all []domain.PathEvent
 	cursor := ""
+	queryTime := now
+	insertedMovingWindowEvent := false
 	for {
 		page, found, err := database.EdgePathHistoryWindow(
-			context.Background(), "n_a--n_b", domain.History15Minutes, now, cursor, 200, false,
+			context.Background(), "n_a--n_b", domain.History15Minutes, queryTime, cursor, 200, false,
 		)
 		if err != nil || !found {
 			t.Fatalf("found=%v err=%v", found, err)
 		}
+		if len(all) == 0 {
+			if page.Source.ID != "n_a" || page.Target.ID != "n_b" {
+				t.Fatalf("page endpoints = %#v/%#v", page.Source, page.Target)
+			}
+			foundRelated := false
+			for _, node := range page.RelatedNodes {
+				if node.ID == "n_c" && node.StableNodeID == "c" {
+					foundRelated = true
+				}
+			}
+			if !foundRelated {
+				t.Fatalf("page related nodes = %#v, want n_c", page.RelatedNodes)
+			}
+		}
 		all = append(all, page.Events...)
 		if page.NextCursor == "" {
 			break
+		}
+		if !insertedMovingWindowEvent {
+			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatTime(now.Add(10*time.Second)), path, directions); err != nil {
+				t.Fatal(err)
+			}
+			queryTime = now.Add(30 * time.Second)
+			insertedMovingWindowEvent = true
 		}
 		cursor = page.NextCursor
 	}

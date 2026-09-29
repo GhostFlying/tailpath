@@ -81,3 +81,8 @@ checkpoint。新 reporter 进程只能通过完整 hello 接管 observer；旧 s
 不能重新取得 ownership。每分钟的 maintenance 只删除已被 committed checkpoint 覆盖
 的 raw report。SQLite 还保存十秒 traffic bucket，以及带 supporting provenance 的
 聚合路径变更。
+
+History 的有向路径接口使用 `(observed_at, id)` keyset 分页，并把第一页的窗口结束
+时间冻结在 cursor 中，保证后续页面不会随墙钟前进而移动查询边界。每一页同时返回
+source、target 和渲染本页事件所需的历史 related node references，不依赖当前 identity
+状态补全旧 observer 或 Peer Relay。

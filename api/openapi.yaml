@@ -1027,8 +1027,16 @@ components:
             $ref: '#/components/schemas/DirectionalPathState'
     PathEventPage:
       type: object
-      required: [events]
+      required: [source, target, relatedNodes, events]
       properties:
+        source:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        target:
+          $ref: '#/components/schemas/HistoryNodeReference'
+        relatedNodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryNodeReference'
         anchor:
           $ref: '#/components/schemas/PathEvent'
         events:
