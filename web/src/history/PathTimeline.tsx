@@ -608,9 +608,26 @@ function DirectionalSnapshotContent({
               <span>
                 {displayPathLabel(observation.path, nodes.byStableID)}
               </span>
-              <time dateTime={observation.receivedAt}>
-                {formatTimelineTime(observation.receivedAt, true)}
-              </time>
+              <span className="directional-observation-times">
+                <small>
+                  Collected{" "}
+                  <time dateTime={observation.collectedAt}>
+                    {formatTimelineTime(observation.collectedAt, true)}
+                  </time>
+                </small>
+                <small>
+                  Received{" "}
+                  <time dateTime={observation.receivedAt}>
+                    {formatTimelineTime(observation.receivedAt, true)}
+                  </time>
+                </small>
+                {observation.clockSkewed ? (
+                  <small className="direction-clock-warning">
+                    <TriangleAlert size={12} aria-hidden="true" /> Collector
+                    clock warning
+                  </small>
+                ) : null}
+              </span>
               {observation.relaySession ? (
                 <RelaySessionDetails
                   history={history}
