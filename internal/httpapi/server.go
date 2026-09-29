@@ -290,6 +290,15 @@ func (s *Server) getEdgePathHistory(response http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
+	windowEnd := time.Now().UTC()
+	if rawWindowEnd := request.URL.Query().Get("to"); rawWindowEnd != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, rawWindowEnd)
+		if err != nil {
+			writeProblem(response, http.StatusBadRequest, "invalid history window end", "to must be an RFC3339 timestamp")
+			return
+		}
+		windowEnd = parsed.UTC()
+	}
 	limit := 500
 	if rawLimit := request.URL.Query().Get("limit"); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
@@ -300,7 +309,7 @@ func (s *Server) getEdgePathHistory(response http.ResponseWriter, request *http.
 		limit = parsed
 	}
 	page, found, err := s.app.EdgePathHistoryWindow(
-		request.Context(), edgeID, window, request.URL.Query().Get("cursor"), limit, includeSystemTelemetry,
+		request.Context(), edgeID, window, windowEnd, request.URL.Query().Get("cursor"), limit, includeSystemTelemetry,
 	)
 	if errors.Is(err, store.ErrInvalidHistoryCursor) {
 		writeProblem(response, http.StatusBadRequest, "invalid history cursor", "")

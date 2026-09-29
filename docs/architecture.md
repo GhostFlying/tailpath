@@ -154,9 +154,11 @@ correct direction before deduplicating alias buckets, use keyset pagination,
 and cap compatibility detail responses at 200 traffic points and 500 path
 transitions. The directional path endpoint uses `(observed_at, id)` keyset
 pagination with the first page's window end frozen into the cursor, so a client
-can retrieve every transition in one stable selected window. Each page carries
-the source, target, and related historical node references needed to render its
-events without consulting current identity state. A path
+can retrieve every transition in one stable selected window. The first request
+accepts the edge-detail response's absolute `to` boundary, keeping traffic,
+timeline, and last-path state on the same interval. Each page carries the source,
+target, and related historical node references needed to render its events
+without consulting current identity state. A path
 anchor records the latest logical-edge state across all aliases at the start of
 a window without replaying topology. Detail responses include source, target,
 observer, and Peer Relay node references so provenance never depends on a

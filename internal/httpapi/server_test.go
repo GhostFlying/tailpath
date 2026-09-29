@@ -427,6 +427,7 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 		"/api/v1/history/edges/n_a--n_b",
 		"/api/v1/history/edges/n_a--n_b/paths?window=1h&limit=501",
 		"/api/v1/history/edges/n_a--n_b/paths?window=1h&cursor=invalid",
+		"/api/v1/history/edges/n_a--n_b/paths?window=1h&to=not-a-time",
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, requestPath, nil)
@@ -484,6 +485,16 @@ func TestHistoryAPIsValidateQueriesAndDistinguishKnownEmpty(t *testing.T) {
 	var pathPage domain.PathEventPage
 	if err := json.NewDecoder(recorder.Body).Decode(&pathPage); err != nil || len(pathPage.Events) != 1 || pathPage.Events[0].Directions == nil {
 		t.Fatalf("path history page = %#v, err=%v", pathPage, err)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/history/edges/n_a--n_b/paths?window=1h&to="+now.Add(-90*time.Minute).Format(time.RFC3339Nano), nil)
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("bounded path history status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&pathPage); err != nil || len(pathPage.Events) != 0 {
+		t.Fatalf("bounded path history page = %#v, err=%v", pathPage, err)
 	}
 
 	recorder = httptest.NewRecorder()

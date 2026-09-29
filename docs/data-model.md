@@ -152,11 +152,12 @@ are equivalent, preserving the earliest event as the window anchor. History
 node, list, and detail queries exclude system telemetry by default; the
 diagnostic query option includes it without changing stored provenance.
 
-Schema migration 6 repairs retained schema-v5 events in parsed chronological
-order without rewriting the released migration, adds a directional JSON column
-to path events, and derives best-effort endpoint directions from retained
-provenance. Derived rows are marked `legacy` and never invent a fallback. New
-events persist both directions and their evidence exactly. A dedicated
+Schema migration 6 does not rewrite or replay the released schema-v5
+compaction: any transition already removed before migration cannot be restored
+without fabricating evidence. It adds a directional JSON column to retained
+path events and derives best-effort endpoint directions from their provenance.
+Derived rows are marked `legacy` and never invent a fallback. New events
+persist both directions and their evidence exactly. A dedicated
 `(observed_at, id)` keyset-paginated endpoint exposes every transition in a
 selected window; the older embedded 500-event detail field remains for
 compatibility.
