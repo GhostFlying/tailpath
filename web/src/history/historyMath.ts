@@ -5,6 +5,7 @@ import type {
   PathKind,
   TrafficBucket,
 } from "../api/types";
+import { pathIdentityKey } from "../lib/pathIdentity";
 
 export interface ChartPoint {
   at: string;
@@ -244,22 +245,7 @@ export function hasDirectionalHistory(history: EdgeHistory): boolean {
 }
 
 export function pathEvidenceKey(path: PathEvent["path"]): string {
-  switch (path.kind) {
-    case "direct":
-      return "direct";
-    case "derp":
-      return `derp:${path.derpRegion?.trim().toLowerCase() || "unknown"}`;
-    case "peer_relay":
-      return `peer_relay:${
-        path.peerRelayStableNodeId?.trim() ||
-        path.peerRelayEndpoint?.trim() ||
-        (path.peerRelayVni !== undefined
-          ? `vni:${path.peerRelayVni}`
-          : "unknown")
-      }`;
-    default:
-      return "unknown";
-  }
+  return pathIdentityKey(path);
 }
 
 export function pathColor(kind: PathKind): string {
