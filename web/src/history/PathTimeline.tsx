@@ -335,7 +335,11 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
               <div className="directional-time-axis" aria-hidden="true">
                 {timelineTicks(history.from, history.to).map((tick) => (
                   <span key={tick.toISOString()}>
-                    {formatTimelineTime(tick.toISOString())}
+                    {formatTimelineTick(
+                      tick.toISOString(),
+                      history.from,
+                      history.to,
+                    )}
                   </span>
                 ))}
               </div>
@@ -1371,6 +1375,23 @@ function formatTimelineTime(value: string, seconds = false) {
     hour: "2-digit",
     minute: "2-digit",
     second: seconds ? "2-digit" : undefined,
+    hour12: false,
+  }).format(new Date(value));
+}
+
+export function formatTimelineTick(value: string, from: string, to: string) {
+  const start = new Date(from);
+  const end = new Date(to);
+  const spansMultipleDays =
+    start.getFullYear() !== end.getFullYear() ||
+    start.getMonth() !== end.getMonth() ||
+    start.getDate() !== end.getDate();
+  if (!spansMultipleDays) return formatTimelineTime(value);
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
 }

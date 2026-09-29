@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DirectionalPathState } from "../api/types";
-import { directionFallbackLabel } from "./PathTimeline";
+import { directionFallbackLabel, formatTimelineTick } from "./PathTimeline";
 
 const observedDirection: DirectionalPathState = {
   fromNodeId: "a",
@@ -26,5 +26,29 @@ describe("directionFallbackLabel", () => {
         fallbackPath: { kind: "derp", derpRegion: "hkg" },
       }),
     ).toBe("DERP hkg");
+  });
+});
+
+describe("formatTimelineTick", () => {
+  it("distinguishes equal clock times across a multi-day window", () => {
+    const from = "2026-09-20T00:00:00Z";
+    const to = "2026-09-27T00:00:00Z";
+
+    expect(formatTimelineTick(from, from, to)).not.toBe(
+      formatTimelineTick(to, from, to),
+    );
+  });
+
+  it("keeps same-day ticks compact", () => {
+    const from = "2026-09-20T00:00:00Z";
+    const to = "2026-09-20T06:00:00Z";
+
+    expect(formatTimelineTick(from, from, to)).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(from)),
+    );
   });
 });
