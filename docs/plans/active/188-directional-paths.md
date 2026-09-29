@@ -165,7 +165,8 @@ records resolved relay endpoint/VNI changes, and rejects inferred evidence
 without a versioned rule. It also clears directions when endpoint evidence is
 withdrawn, includes fallback kinds in History filters, rejects fresh legacy
 evidence, preserves Direct address changes while ignoring port churn, and uses
-indexed fixed-width nanosecond timestamps for exact History boundaries. The
+indexed fixed-width nanosecond timestamps scoped to path events for exact
+History boundaries without changing other persisted timestamp formats. The
 Live slice now derives arrows from each observed direction's own rate,
 distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
@@ -175,6 +176,8 @@ describes observed and inferred fallback evidence without conflating them.
 Obstacle routing coordinates reciprocal curves on the same signed side instead
 of letting independently selected offsets cancel, and logical edge selection
 is reapplied whenever collapsed and expanded route IDs replace one another.
+Directional arrows require actual flow, and per-edge DERP marker identities
+cannot join unrelated routes.
 
 History preserves unknown directions in summaries, renders complete
 per-direction evidence and relay resolution metadata, keeps compatibility
@@ -183,7 +186,9 @@ response's absolute end, reports paging through its readiness state, adapts the
 evidence table between 621px and 1100px, and timestamps relay-session evidence
 with an explicit collector clock warning when needed. Its relationship summary
 and exact-time snapshot share the same complete relay identity key, preserving
-endpoint, VNI, and resolution asymmetry.
+endpoint, VNI, and resolution asymmetry. Timeline selection uses a stable event
+identity across pagination replacement, and a missing direction keeps both its
+primary and fallback cells unknown.
 
 ## Next step
 
@@ -207,7 +212,7 @@ remediation, then rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 90 current Vitest tests pass.
+- TypeScript check and all 94 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.

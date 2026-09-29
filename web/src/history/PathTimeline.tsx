@@ -583,7 +583,7 @@ function DirectionalSnapshotContent({
                 )}
               </span>
               <span>
-                {state?.fallbackPath ? pathLabel(state.fallbackPath) : "None"}
+                {directionFallbackLabel(state)}
                 {state?.inferenceRule ? (
                   <code>{state.inferenceRule}</code>
                 ) : null}
@@ -643,6 +643,13 @@ function DirectionalSnapshotContent({
       )}
     </div>
   );
+}
+
+export function directionFallbackLabel(
+  state: DirectionalPathState | undefined,
+): string {
+  if (!state) return "Unknown";
+  return state.fallbackPath ? pathLabel(state.fallbackPath) : "None";
 }
 
 function MobileDirectionalSheet({
