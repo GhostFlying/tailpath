@@ -264,7 +264,7 @@ function DirectionalEdgeDetails({
   const relayEvidence = edge.observations.filter((observation) =>
     Boolean(observation.relaySession),
   );
-  const hasFallback = directions.some((direction) => direction.fallbackPath);
+  const fallbackExplanationText = fallbackExplanation(directions);
   const slots = [
     {
       from: edge.source,
@@ -333,12 +333,8 @@ function DirectionalEdgeDetails({
         ))}
       </section>
 
-      {hasFallback ? (
-        <p className="fallback-explanation">
-          DERP fallback is an inferred parallel route. Relationship traffic is
-          counted once; the fallback line does not represent extra application
-          traffic.
-        </p>
+      {fallbackExplanationText ? (
+        <p className="fallback-explanation">{fallbackExplanationText}</p>
       ) : null}
 
       <dl className="details-list directional-summary">
@@ -364,6 +360,25 @@ function DirectionalEdgeDetails({
       <RecentPaths history={history} />
     </>
   );
+}
+
+export function fallbackExplanation(
+  directions: DirectionalPathState[],
+): string | null {
+  const fallbackEvidence = new Set(
+    directions
+      .filter((direction) => direction.fallbackPath)
+      .map((direction) => direction.evidence),
+  );
+  if (!fallbackEvidence.size) return null;
+
+  const evidenceDescription =
+    fallbackEvidence.size > 1
+      ? "DERP fallback evidence includes observed and inferred parallel routes."
+      : fallbackEvidence.has("inferred")
+        ? "DERP fallback is an inferred parallel route."
+        : "DERP fallback is an observed parallel route.";
+  return `${evidenceDescription} Relationship traffic is counted once; the fallback line does not represent extra application traffic.`;
 }
 
 function RecentPaths({ history }: { history: EdgeHistory | null }) {

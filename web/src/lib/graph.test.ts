@@ -436,6 +436,8 @@ describe("buildElements", () => {
 
   it("does not mirror a lone directional observation", () => {
     const fixture = topology();
+    fixture.edges[0].aToBBytesPerSecond = 0;
+    fixture.edges[0].bToABytesPerSecond = 3_000;
     fixture.edges = [
       withDirections(fixture.edges[0], [
         direction("a", "b", {
@@ -461,6 +463,15 @@ describe("buildElements", () => {
         (element) => !String(element.classes).includes("flow-reverse"),
       ),
     ).toBe(true);
+    expect(
+      edges.every(
+        (element) => !String(element.classes).includes("flow-forward"),
+      ),
+    ).toBe(true);
+    expect(edges.filter((element) => element.data?.label)).toHaveLength(1);
+    expect(edges.find((element) => element.data?.label)?.data?.label).toBe(
+      "3.0 KB/s",
+    );
   });
 
   it.each([
