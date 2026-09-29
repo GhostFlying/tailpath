@@ -209,6 +209,26 @@ describe("path timeline", () => {
     });
   });
 
+  it("preserves an empty directional anchor as a withdrawn state", () => {
+    const history = directionalHistory();
+    history.pathAnchor = {
+      ...history.pathAnchor!,
+      path: { kind: "direct" },
+      directions: [],
+    };
+    history.pathEvents = [];
+
+    expect(hasDirectionalHistory(history)).toBe(true);
+    expect(buildDirectionalTimeline(history)).toEqual([
+      expect.objectContaining({
+        anchored: true,
+        noEvidence: true,
+        aToB: undefined,
+        bToA: undefined,
+      }),
+    ]);
+  });
+
   it("coalesces dense visual segments within a fixed render budget", () => {
     const base = buildDirectionalTimeline(directionalHistory())[1];
     const segments = Array.from({ length: 901 }, (_, index) => ({
