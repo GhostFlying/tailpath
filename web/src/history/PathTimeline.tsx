@@ -31,6 +31,7 @@ import { identityPresentation } from "../lib/identity";
 import {
   buildPathTimeline,
   buildDirectionalTimeline,
+  compatibilityPathEvidenceKey,
   coalesceDirectionalTimeline,
   hasDirectionalHistory,
   pathColor,
@@ -69,12 +70,17 @@ const LegacyPathTimeline = memo(function LegacyPathTimeline({
   const items = useMemo(() => buildPathTimeline(history), [history]);
   const [selectedID, setSelectedID] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [page, setPage] = useState(0);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const selected =
     items.find((item) => item.id === selectedID) ??
     items.find((item) => !item.anchored && item.observations.length > 0) ??
     items[0];
   const nodes = useMemo(() => buildHistoryNodeMaps(history), [history]);
+  const pageCount = Math.max(1, Math.ceil(items.length / eventIndexPageSize));
+  const activePage = Math.min(page, pageCount - 1);
+  const pageStart = activePage * eventIndexPageSize;
+  const visibleItems = items.slice(pageStart, pageStart + eventIndexPageSize);
 
   useEffect(() => {
     if (!mobile) setSheetOpen(false);
@@ -106,50 +112,76 @@ const LegacyPathTimeline = memo(function LegacyPathTimeline({
           No path evidence in this window
         </div>
       ) : (
-        <div className="path-timeline" role="list" aria-label="Path timeline">
-          {items.map((item) => {
-            const Icon = pathIcon(item.path.kind);
-            const active = item.id === selected?.id;
-            const label = displayPathLabel(item.path, nodes.byStableID);
-            const switching = item.pathState === "switching";
-            const observerLabel = `${item.observations.length} observer${item.observations.length === 1 ? "" : "s"}`;
-            return (
+        <>
+          {pageCount > 1 ? (
+            <div className="directional-event-index-toolbar legacy-timeline-pagination">
+              <span>
+                States {pageStart + 1}–{pageStart + visibleItems.length} of{" "}
+                {items.length}
+              </span>
               <button
-                key={item.id}
                 type="button"
-                role="listitem"
-                className={active ? "selected" : ""}
-                style={
-                  {
-                    "--timeline-color": pathColor(item.path.kind),
-                    "--timeline-grow": Math.max(1, item.durationMs),
-                  } as React.CSSProperties
-                }
-                aria-pressed={active}
-                aria-label={`${formatTimelineTime(item.from)}, ${label}${switching ? ", switching" : ""}, ${formatDuration(item.durationMs)}, ${observerLabel}`}
-                onClick={() => select(item)}
+                disabled={activePage === 0}
+                onClick={() => setPage(activePage - 1)}
               >
-                <span className="timeline-time">
-                  <strong>{formatTimelineTime(item.from)}</strong>
-                  <small>
-                    {formatRelativeBoundary(item.from, history.from)}
-                  </small>
-                </span>
-                <span className="timeline-symbol">
-                  <Icon size={19} />
-                </span>
-                <span className="timeline-copy">
-                  <strong title={label}>{label}</strong>
-                  <small>{formatDuration(item.durationMs)}</small>
-                  {switching ? (
-                    <span className="timeline-state">Switching</span>
-                  ) : null}
-                </span>
-                <ChevronRight size={18} />
+                Newer states
               </button>
-            );
-          })}
-        </div>
+              <button
+                type="button"
+                disabled={activePage === pageCount - 1}
+                onClick={() => setPage(activePage + 1)}
+              >
+                Older states
+              </button>
+            </div>
+          ) : null}
+          <div className="path-timeline" role="list" aria-label="Path timeline">
+            {visibleItems.map((item, index) => {
+              const Icon = pathIcon(item.path.kind);
+              const active = item.id === selected?.id;
+              const label = displayPathLabel(item.path, nodes.byStableID);
+              const switching = item.pathState === "switching";
+              const observerLabel = `${item.observations.length} observer${item.observations.length === 1 ? "" : "s"}`;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="listitem"
+                  aria-posinset={pageStart + index + 1}
+                  aria-setsize={items.length}
+                  className={active ? "selected" : ""}
+                  style={
+                    {
+                      "--timeline-color": pathColor(item.path.kind),
+                      "--timeline-grow": Math.max(1, item.durationMs),
+                    } as React.CSSProperties
+                  }
+                  aria-pressed={active}
+                  aria-label={`${formatTimelineTime(item.from)}, ${label}${switching ? ", switching" : ""}, ${formatDuration(item.durationMs)}, ${observerLabel}`}
+                  onClick={() => select(item)}
+                >
+                  <span className="timeline-time">
+                    <strong>{formatTimelineTime(item.from)}</strong>
+                    <small>
+                      {formatRelativeBoundary(item.from, history.from)}
+                    </small>
+                  </span>
+                  <span className="timeline-symbol">
+                    <Icon size={19} />
+                  </span>
+                  <span className="timeline-copy">
+                    <strong title={label}>{label}</strong>
+                    <small>{formatDuration(item.durationMs)}</small>
+                    {switching ? (
+                      <span className="timeline-state">Switching</span>
+                    ) : null}
+                  </span>
+                  <ChevronRight size={18} />
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       {selected && !mobile ? (
         <ProvenanceContent
@@ -1029,8 +1061,8 @@ function ProvenanceContent({
           {selected.observations.map((observation, index) => {
             const node = nodes.byID.get(observation.observerId);
             const supports =
-              pathEvidenceKey(observation.path) ===
-              pathEvidenceKey(selected.path);
+              compatibilityPathEvidenceKey(observation.path) ===
+              compatibilityPathEvidenceKey(selected.path);
             return (
               <div
                 className={`provenance-row ${observation.relaySession ? "relay-session" : ""}`}
