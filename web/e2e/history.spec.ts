@@ -347,6 +347,18 @@ test("keeps directional evidence within an intermediate desktop width", async ({
   test.skip(!testInfo.project.name.startsWith("desktop"));
   await page.setViewportSize({ width: 1000, height: 900 });
   const detail = directionalHistoryFor(edgeSummaries[0], 3);
+  const relay = detail.pathEvents[0].directions[0].primaryPath;
+  detail.pathEvents[2] = {
+    ...detail.pathEvents[2],
+    path: relay,
+    directions: detail.pathEvents[2].directions.map((direction, index) => ({
+      ...direction,
+      primaryPath: { ...relay, peerRelayVni: index === 0 ? 4293 : 8 },
+      fallbackPath: undefined,
+      evidence: "observed" as const,
+      inferenceRule: undefined,
+    })),
+  };
   await page.route(
     "**/api/v1/history/edges/node-mac--node-dev/paths?**",
     (route) =>
@@ -371,6 +383,14 @@ test("keeps directional evidence within an intermediate desktop width", async ({
   );
   const table = page.getByRole("table", { name: "Directional path state" });
   await expect(table).toBeVisible();
+  await expect(page.locator(".history-detail-summary")).toContainText(
+    "Asymmetric paths",
+  );
+  await expect(page.locator(".directional-snapshot-state")).toHaveText(
+    "Asymmetric paths",
+  );
+  await expect(table).toContainText("VNI 4293");
+  await expect(table).toContainText("VNI 8");
   expect(
     await table.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,

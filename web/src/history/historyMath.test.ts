@@ -3,6 +3,7 @@ import type { EdgeHistory } from "../api/types";
 import {
   buildPathTimeline,
   buildDirectionalTimeline,
+  pathEvidenceKey,
   hasDirectionalHistory,
   trafficGeometry,
   trafficPointAtX,
@@ -73,6 +74,19 @@ describe("history chart geometry", () => {
 });
 
 describe("path timeline", () => {
+  it("keeps complete relay identity in evidence equality", () => {
+    const relay = {
+      kind: "peer_relay" as const,
+      peerRelayStableNodeId: "relay-hz",
+      peerRelayEndpoint: "203.0.113.8:41641",
+      peerRelayResolution: "endpoint_match" as const,
+    };
+
+    expect(pathEvidenceKey({ ...relay, peerRelayVni: 4293 })).not.toBe(
+      pathEvidenceKey({ ...relay, peerRelayVni: 8 }),
+    );
+  });
+
   it("computes chronological bounds before returning newest first", () => {
     const history = {
       edgeId: "a--b",
