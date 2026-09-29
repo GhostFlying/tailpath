@@ -59,6 +59,7 @@ func newSource(client statusClient, now func() time.Time) *Source {
 func (s *Source) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 	status, err := s.client.Status(ctx)
 	if err != nil {
+		s.tracker.Reset()
 		if ctx.Err() != nil {
 			return exporter.Snapshot{}, ctx.Err()
 		}

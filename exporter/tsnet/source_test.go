@@ -92,6 +92,40 @@ func TestSourceReturnsBoundedStatusErrors(t *testing.T) {
 	}
 }
 
+func TestSourceBreaksFallbackInferenceAcrossStatusError(t *testing.T) {
+	peerKey := key.NewNode().Public()
+	transport := &statusTransport{status: &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "runtime"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+		},
+	}}
+	source, err := tailpathtsnet.NewLocalClient(&local.Client{Transport: transport, OmitAuth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	transport.err = errors.New("status unavailable")
+	if _, err := source.Snapshot(context.Background()); err == nil {
+		t.Fatal("failed status poll returned no error")
+	}
+	transport.err = nil
+	transport.status.Peer[peerKey].PeerRelay = ""
+	transport.status.Peer[peerKey].Relay = "hgh-custom"
+	snapshot, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := snapshot.Peers[0]
+	if peer.Path.Kind != exporter.PathDERP || peer.FallbackPath != nil ||
+		peer.PathEvidence != exporter.PathEvidenceObserved || peer.PathInferenceRule != "" {
+		t.Fatalf("DERP after failed poll = %#v", peer)
+	}
+}
+
 func TestSourcePreservesContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -329,6 +329,18 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 		if page.NextCursor == "" {
 			break
 		}
+		if cursor == "" {
+			if _, found, err := database.EdgePathHistoryWindow(
+				context.Background(), "n_b--n_old", domain.History15Minutes, queryTime, page.NextCursor, 200, false,
+			); err != nil || !found {
+				t.Fatalf("canonical alias rejected cursor: found=%v err=%v", found, err)
+			}
+			if _, _, err := database.EdgePathHistoryWindow(
+				context.Background(), "n_a--n_c", domain.History15Minutes, queryTime, page.NextCursor, 200, false,
+			); err != ErrInvalidHistoryCursor {
+				t.Fatalf("cross-edge cursor err = %v, want %v", err, ErrInvalidHistoryCursor)
+			}
+		}
 		if !insertedMovingWindowEvent {
 			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(10*time.Second)), path, directions); err != nil {
 				t.Fatal(err)

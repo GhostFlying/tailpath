@@ -36,15 +36,23 @@ func NewTracker() *Tracker {
 	return &Tracker{lastRelay: make(map[string]fallbackState)}
 }
 
+// Reset breaks inference continuity after a failed status sample. A later DERP
+// observation must not be connected to relay evidence from before the gap.
+func (tracker *Tracker) Reset() {
+	clear(tracker.lastRelay)
+}
+
 func Snapshot(status *ipnstate.Status, collectedAt time.Time) (exporter.Snapshot, error) {
 	return NewTracker().Snapshot(status, collectedAt)
 }
 
 func (tracker *Tracker) Snapshot(status *ipnstate.Status, collectedAt time.Time) (exporter.Snapshot, error) {
 	if status == nil {
+		tracker.Reset()
 		return exporter.Snapshot{}, errors.New("tailscale status is unavailable")
 	}
 	if status.Self == nil {
+		tracker.Reset()
 		return exporter.Snapshot{}, errors.New("tailscale status does not include self")
 	}
 	relays := RelayIdentities(status)
