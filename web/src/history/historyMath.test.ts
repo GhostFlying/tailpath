@@ -198,10 +198,59 @@ describe("path timeline", () => {
     expect(rendered.length).toBeLessThanOrEqual(240);
     expect(rendered[0]).toMatchObject({
       from: segments[0].from,
-      to: segments[3].to,
+      sourceSegmentId: segments[3].id,
       coalescedCount: 4,
+      coalescedMixed: false,
     });
     expect(rendered.at(-1)?.to).toBe(segments.at(-1)?.to);
+  });
+
+  it("does not stretch a burst's latest state across an earlier long state", () => {
+    const base = buildDirectionalTimeline(directionalHistory())[1];
+    const start = Date.parse("2026-08-24T00:00:00Z");
+    const segments = [
+      {
+        ...base,
+        id: "direct-long",
+        from: new Date(start).toISOString(),
+        to: new Date(start + 23 * 60 * 60 * 1_000).toISOString(),
+        aToB: {
+          ...base.aToB!,
+          primaryPath: { kind: "direct" as const },
+        },
+      },
+      ...Array.from({ length: 120 }, (_, index) => ({
+        ...base,
+        id: `relay-burst-${index}`,
+        from: new Date(
+          start + 23 * 60 * 60 * 1_000 + index * 30_000,
+        ).toISOString(),
+        to: new Date(
+          start + 23 * 60 * 60 * 1_000 + (index + 1) * 30_000,
+        ).toISOString(),
+        aToB: {
+          ...base.aToB!,
+          primaryPath: {
+            kind: "peer_relay" as const,
+            peerRelayVni: index % 2 ? 8 : 4293,
+          },
+        },
+      })),
+    ];
+
+    const rendered = coalesceDirectionalTimeline(segments, 24);
+    const directBins = rendered.filter(
+      (segment) => segment.aToB?.primaryPath.kind === "direct",
+    );
+
+    expect(rendered).toHaveLength(24);
+    expect(directBins).toHaveLength(23);
+    expect(directBins.every((segment) => !segment.coalescedMixed)).toBe(true);
+    expect(directBins.at(-1)?.to).toBe("2026-08-24T23:00:00.000Z");
+    expect(rendered.at(-1)).toMatchObject({
+      sourceSegmentId: "relay-burst-119",
+      coalescedMixed: true,
+    });
   });
 });
 

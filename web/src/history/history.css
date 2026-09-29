@@ -955,7 +955,8 @@
 
 .directional-lane-segment,
 .directional-fallback-segment,
-.directional-legacy-segment {
+.directional-legacy-segment,
+.directional-dense-segment {
   min-width: 1px;
   position: absolute;
   display: flex;
@@ -1014,6 +1015,21 @@
   border: 1px dashed #87939a;
   color: #58656b;
   background: rgb(239 242 243 / 88%);
+}
+
+.directional-dense-segment {
+  top: 30px;
+  height: 90px;
+  justify-content: center;
+  border: 1px solid #68777e;
+  color: #33444b;
+  background: repeating-linear-gradient(
+    135deg,
+    #dfe6e8 0,
+    #dfe6e8 4px,
+    #f6f8f8 4px,
+    #f6f8f8 8px
+  );
 }
 
 .directional-hit-segments {
