@@ -538,15 +538,16 @@ test("pages a 900-event legacy timeline without unbounded DOM", async ({
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("desktop"));
   const directional = directionalHistoryFor(edgeSummaries[0], 900);
+  const asLegacyEvent = <T extends { directions?: unknown }>(event: T) => {
+    const { directions: _directions, ...legacyEvent } = event;
+    return legacyEvent;
+  };
   const detail = {
     ...directional,
     pathAnchor: directional.pathAnchor
-      ? { ...directional.pathAnchor, directions: [] }
+      ? asLegacyEvent(directional.pathAnchor)
       : undefined,
-    pathEvents: directional.pathEvents.map((event) => ({
-      ...event,
-      directions: [],
-    })),
+    pathEvents: directional.pathEvents.map(asLegacyEvent),
   };
   await page.route(
     "**/api/v1/history/edges/node-mac--node-dev/paths?**",
