@@ -516,6 +516,62 @@ test("loads all 900 directional path events without truncation", async ({
   expect(pageRequests).toBe(2);
 });
 
+test("pages a 900-event legacy timeline without unbounded DOM", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop"));
+  const directional = directionalHistoryFor(edgeSummaries[0], 900);
+  const detail = {
+    ...directional,
+    pathAnchor: directional.pathAnchor
+      ? { ...directional.pathAnchor, directions: [] }
+      : undefined,
+    pathEvents: directional.pathEvents.map((event) => ({
+      ...event,
+      directions: [],
+    })),
+  };
+  await page.route(
+    "**/api/v1/history/edges/node-mac--node-dev/paths?**",
+    (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      return route.fulfill({
+        json: {
+          source: detail.source,
+          target: detail.target,
+          relatedNodes: detail.relatedNodes,
+          anchor: detail.pathAnchor,
+          events: cursor
+            ? detail.pathEvents.slice(500)
+            : detail.pathEvents.slice(0, 500),
+          nextCursor: cursor ? undefined : "second-page",
+        },
+      });
+    },
+  );
+  await page.route("**/api/v1/history/edges/node-mac--node-dev?**", (route) =>
+    route.fulfill({
+      json: {
+        ...detail,
+        pathEvents: detail.pathEvents.slice(-500),
+        pathEventsTruncated: true,
+      },
+    }),
+  );
+
+  await page.goto("/history/edges/node-mac--node-dev?window=24h");
+  await expect(
+    page.getByText("Complete · 900 events", { exact: true }),
+  ).toBeVisible();
+  const timeline = page.getByRole("list", { name: "Path timeline" });
+  await expect(timeline.getByRole("listitem")).toHaveCount(100);
+  const pagination = page.locator(".legacy-timeline-pagination");
+  await expect(pagination).toContainText("States 1–100 of 901");
+  await pagination.getByRole("button", { name: "Older states" }).click();
+  await expect(pagination).toContainText("States 101–200 of 901");
+  await expect(timeline.getByRole("listitem")).toHaveCount(100);
+});
+
 test("separates mobile History identity, recency, and traffic totals", async ({
   page,
 }, testInfo) => {

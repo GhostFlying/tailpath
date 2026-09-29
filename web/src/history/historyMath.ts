@@ -385,6 +385,27 @@ export function pathEvidenceKey(path: PathEvent["path"]): string {
   return pathIdentityKey(path);
 }
 
+export function compatibilityPathEvidenceKey(path: PathEvent["path"]): string {
+  switch (path.kind) {
+    case "direct":
+      return "direct";
+    case "derp":
+      return `derp:${path.derpRegion?.trim().toLowerCase() || "unknown"}`;
+    case "peer_relay": {
+      const stableID = path.peerRelayStableNodeId?.trim();
+      if (stableID) return `peer_relay:${stableID}`;
+      const endpoint = path.peerRelayEndpoint?.trim();
+      if (endpoint) return `peer_relay:endpoint:${endpoint}`;
+      if (path.peerRelayVni !== undefined) {
+        return `peer_relay:vni:${path.peerRelayVni}`;
+      }
+      return "peer_relay:unknown";
+    }
+    default:
+      return "unknown";
+  }
+}
+
 export function pathColor(kind: PathKind): string {
   switch (kind) {
     case "direct":
