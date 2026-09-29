@@ -148,8 +148,7 @@ missing direction unknown, labels evidence, and separates endpoint path
 evidence from relay-session identity evidence. Legacy edges without directions
 retain their compatibility candidate view.
 
-The ready-for-review stack has received twenty-seven actionable inline
-findings.
+The ready-for-review stack has received forty-six actionable inline findings.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
@@ -160,13 +159,15 @@ evidence. The Live slice now derives arrows from directional rates,
 distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
 recent-path inspector, treats complete relay identity as the shared Live and
-recent-event comparison key, and separates reciprocal route geometry.
+recent-event comparison key, and separates reciprocal route geometry. Obstacle
+routing now coordinates reciprocal curves on the same signed side instead of
+letting independently selected offsets cancel, and logical edge selection is
+reapplied whenever collapsed and expanded route IDs replace one another.
 
 ## Next step
 
-Update PR #190, safely rebase PR #191, reuse the complete relay identity in its
-summary and exact-time snapshot, retain the completed History remediation, then
-rerun the complete repository and browser gates.
+Update PR #190, safely rebase PR #191, retain the completed History
+remediation, then rerun the complete repository and browser gates.
 
 ## Verification
 
@@ -181,15 +182,18 @@ rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 82 current Vitest tests pass.
+- TypeScript check and all 87 Live-slice Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
-- The full Live browser matrix passes on desktop and mobile: 64 passed and 30
+- The full Live browser matrix passes on desktop and mobile: 68 passed and 30
   intentionally skipped, including one total-rate label, the restored
   recent-path inspector, distinct VNI identities, and visibly separated
   reciprocal relay lanes. Recent path events also use the complete relay
   identity key.
+- Focused obstacle and relay UI browser coverage passes: 23 passed and one
+  intentionally skipped across desktop and mobile, including reciprocal
+  obstacle routes and selection across route-ID replacement.
 - The Browser plugin is unavailable in this environment; repository Playwright
   is the recorded browser-validation fallback.
 

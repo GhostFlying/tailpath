@@ -672,7 +672,7 @@ export function TopologyGraph(props: Props) {
         `[logicalEdgeId = "${CSS.escape(props.selectedEdgeId)}"]`,
       ).select();
     }
-  }, [props.selectedEdgeId]);
+  }, [elements, props.selectedEdgeId]);
 
   useEffect(() => {
     const cy = graph.current;
@@ -1313,7 +1313,10 @@ interface Bounds {
 interface RoutedPath {
   logicalEdgeID: string;
   nodeIDs: ReadonlySet<string>;
+  sourceID: string;
+  targetID: string;
   points: Point[];
+  curve?: { weight: number; distance: number };
 }
 
 function virtualOffsetAxis(
@@ -1430,23 +1433,60 @@ function routeEdgesAroundObstacles(cy: Core) {
       pathsCross(straightPoints, path.points),
     );
     if (!intersectsObstacle && !intersectsPath) {
-      const path = { logicalEdgeID, nodeIDs, points: straightPoints };
+      const path = {
+        logicalEdgeID,
+        nodeIDs,
+        sourceID: edge.source().id(),
+        targetID: edge.target().id(),
+        points: straightPoints,
+      };
       routedPaths.push(path);
       edge.scratch("tailpathRoute", path);
       return;
     }
+    const reciprocal = routedPaths.find(
+      (path) =>
+        path.logicalEdgeID === logicalEdgeID &&
+        path.sourceID === edge.target().id() &&
+        path.targetID === edge.source().id() &&
+        path.curve,
+    );
+    const reciprocalSide = reciprocal?.curve
+      ? Math.sign(reciprocal.curve.distance)
+      : undefined;
     const route =
-      findClearCurve(source, target, obstacles, unrelatedPaths, edge.id()) ??
+      findClearCurve(
+        source,
+        target,
+        obstacles,
+        unrelatedPaths,
+        logicalEdgeID,
+        reciprocalSide,
+      ) ??
       findClearCurve(
         source,
         target,
         bodyObstacles,
         unrelatedPaths,
-        edge.id(),
+        logicalEdgeID,
+        reciprocalSide,
       ) ??
-      findClearCurve(source, target, bodyObstacles, [], edge.id());
+      findClearCurve(
+        source,
+        target,
+        bodyObstacles,
+        [],
+        logicalEdgeID,
+        reciprocalSide,
+      );
     if (!route) {
-      const path = { logicalEdgeID, nodeIDs, points: straightPoints };
+      const path = {
+        logicalEdgeID,
+        nodeIDs,
+        sourceID: edge.source().id(),
+        targetID: edge.target().id(),
+        points: straightPoints,
+      };
       routedPaths.push(path);
       edge.scratch("tailpathRoute", path);
       return;
@@ -1457,7 +1497,14 @@ function routeEdgesAroundObstacles(cy: Core) {
       "control-point-distances": route.distance,
     });
     edge.scratch("tailpathObstacleRouted", true);
-    const path = { logicalEdgeID, nodeIDs, points: route.points };
+    const path = {
+      logicalEdgeID,
+      nodeIDs,
+      sourceID: edge.source().id(),
+      targetID: edge.target().id(),
+      points: route.points,
+      curve: { weight: route.weight, distance: route.distance },
+    };
     routedPaths.push(path);
     edge.scratch("tailpathRoute", path);
   });
@@ -1468,7 +1515,8 @@ function findClearCurve(
   target: Point,
   obstacles: Bounds[],
   occupiedPaths: RoutedPath[],
-  id: string,
+  routingKey: string,
+  forcedSide?: number,
 ) {
   const dx = target.x - source.x;
   const dy = target.y - source.y;
@@ -1493,10 +1541,15 @@ function findClearCurve(
   const weights = [...new Set([...collisionWeights, 0.5])].sort(
     (left, right) => Math.abs(left - 0.5) - Math.abs(right - 0.5),
   );
-  const preferredSide = stableHash(id) % 2 === 0 ? 1 : -1;
+  // Reciprocal edges reverse the perpendicular basis. Giving every segment of
+  // one logical relationship the same signed preference therefore places the
+  // two directions on opposite physical sides, including when inline obstacle
+  // routing overrides the route-a/route-b stylesheet.
+  const preferredSide = stableHash(routingKey) % 2 === 0 ? 1 : -1;
+  const sides = forcedSide ? [forcedSide] : [preferredSide, -preferredSide];
   const maximumDistance = Math.max(384, length * 0.8);
   for (let magnitude = 64; magnitude <= maximumDistance; magnitude += 32) {
-    for (const side of [preferredSide, -preferredSide]) {
+    for (const side of sides) {
       for (const weight of weights) {
         const distance = magnitude * side;
         const points = curvePoints(source, target, weight, distance);
@@ -1669,6 +1722,7 @@ function updateGraphDiagnostics(
   element.dataset.layoutPositions = positions.join("|");
   element.dataset.layoutRuns = String(runs);
   element.dataset.edgeRateSignature = String(stableHash(edgeRates.join("|")));
+  element.dataset.selectedEdgeCount = String(cy.edges(":selected").length);
   if (measureGeometry)
     element.dataset.edgeHitTargets = JSON.stringify(edgeHitTargets);
   element.dataset.routedEdges = routedEdges.join("|");
