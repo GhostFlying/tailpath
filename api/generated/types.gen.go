@@ -547,8 +547,11 @@ type GetEdgePathHistoryParams struct {
 
 	// IncludeSystemTelemetry Include Tailpath control-plane telemetry for explicit diagnostics.
 	IncludeSystemTelemetry *IncludeSystemTelemetry `form:"includeSystemTelemetry,omitempty" json:"includeSystemTelemetry,omitempty"`
-	Cursor                 *string                 `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit                  *int                    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// To Absolute exclusive window end shared with the edge-detail response.
+	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Cursor *string    `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int       `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetHistoryNodesParams defines parameters for GetHistoryNodes.

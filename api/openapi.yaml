@@ -114,6 +114,12 @@ paths:
             type: string
         - $ref: '#/components/parameters/HistoryWindow'
         - $ref: '#/components/parameters/IncludeSystemTelemetry'
+        - name: to
+          in: query
+          description: Absolute exclusive window end shared with the edge-detail response.
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           schema:

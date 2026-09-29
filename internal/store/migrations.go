@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/GhostFlying/tailpath/internal/domain"
@@ -25,9 +24,6 @@ var migrations = []migration{
 }
 
 func migrateDirectionalPaths(tx *sql.Tx) error {
-	if err := repairHistoryEvidenceOrder(tx); err != nil {
-		return err
-	}
 	if err := ensureColumn(tx, "path_events", "directions", "BLOB NOT NULL DEFAULT '[]'"); err != nil {
 		return err
 	}
@@ -87,108 +83,6 @@ func migrateDirectionalPaths(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE path_events SET directions = ? WHERE id = ?`, payload, item.id); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// repairHistoryEvidenceOrder belongs to migration 6. Migration 5 is released
-// and must keep its original byte-for-byte ordering behavior for existing and
-// newly upgraded databases. Replaying the retained events chronologically here
-// makes both upgrade paths converge without rewriting a released migration.
-func repairHistoryEvidenceOrder(tx *sql.Tx) error {
-	type edgeEndpoints struct{ source, target string }
-	endpoints := make(map[string]edgeEndpoints)
-	edgeRows, err := tx.Query(`SELECT edge_id, source_id, target_id FROM history_edges`)
-	if err != nil {
-		return err
-	}
-	for edgeRows.Next() {
-		var edgeID string
-		var edge edgeEndpoints
-		if err := edgeRows.Scan(&edgeID, &edge.source, &edge.target); err != nil {
-			edgeRows.Close()
-			return err
-		}
-		endpoints[edgeID] = edge
-	}
-	if err := edgeRows.Close(); err != nil {
-		return err
-	}
-	type storedEvent struct {
-		id           int64
-		edgeID       string
-		observedAt   time.Time
-		path         domain.PathObservation
-		observations []domain.ObservationProvenance
-	}
-	rows, err := tx.Query(`SELECT id, edge_id, observed_at, path, observations FROM path_events ORDER BY id`)
-	if err != nil {
-		return err
-	}
-	var events []storedEvent
-	for rows.Next() {
-		var event storedEvent
-		var rawObservedAt string
-		var rawPath, rawObservations []byte
-		if err := rows.Scan(&event.id, &event.edgeID, &rawObservedAt, &rawPath, &rawObservations); err != nil {
-			rows.Close()
-			return err
-		}
-		event.observedAt, err = time.Parse(time.RFC3339Nano, rawObservedAt)
-		if err != nil {
-			rows.Close()
-			return fmt.Errorf("decode path event observed_at %d: %w", event.id, err)
-		}
-		if err := json.Unmarshal(rawPath, &event.path); err != nil {
-			rows.Close()
-			return fmt.Errorf("decode path event %d: %w", event.id, err)
-		}
-		if len(rawObservations) != 0 {
-			if err := json.Unmarshal(rawObservations, &event.observations); err != nil {
-				rows.Close()
-				return fmt.Errorf("decode path event observations %d: %w", event.id, err)
-			}
-		}
-		events = append(events, event)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	sort.SliceStable(events, func(i, j int) bool {
-		if events[i].edgeID != events[j].edgeID {
-			return events[i].edgeID < events[j].edgeID
-		}
-		if !events[i].observedAt.Equal(events[j].observedAt) {
-			return events[i].observedAt.Before(events[j].observedAt)
-		}
-		return events[i].id < events[j].id
-	})
-	previousByEdge := make(map[string]domain.PathEvidenceState)
-	for _, event := range events {
-		state := domain.PathEvidenceState{Path: event.path, Conflicts: []domain.PathObservation{}}
-		if len(event.observations) != 0 {
-			edge := endpoints[event.edgeID]
-			state = domain.ReconcilePathEvidence(edge.source, edge.target, previousByEdge[event.edgeID].Path, event.observations)
-		}
-		previous, exists := previousByEdge[event.edgeID]
-		if exists && domain.SamePathEvidence(previous, state) {
-			if _, err := tx.Exec(`DELETE FROM path_events WHERE id = ?`, event.id); err != nil {
-				return err
-			}
-			continue
-		}
-		rawPath, err := json.Marshal(state.Path)
-		if err != nil {
-			return err
-		}
-		rawConflicts, err := json.Marshal(state.Conflicts)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE path_events SET path = ?, conflicts = ? WHERE id = ?`, rawPath, rawConflicts, event.id); err != nil {
-			return err
-		}
-		previousByEdge[event.edgeID] = state
 	}
 	return nil
 }

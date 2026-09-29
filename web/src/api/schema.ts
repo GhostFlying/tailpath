@@ -704,6 +704,8 @@ export interface operations {
                 window: components["parameters"]["HistoryWindow"];
                 /** @description Include Tailpath control-plane telemetry for explicit diagnostics. */
                 includeSystemTelemetry?: components["parameters"]["IncludeSystemTelemetry"];
+                /** @description Absolute exclusive window end shared with the edge-detail response. */
+                to?: string;
                 cursor?: string;
                 limit?: number;
             };
