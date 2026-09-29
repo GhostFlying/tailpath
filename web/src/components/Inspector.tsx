@@ -32,6 +32,7 @@ import {
 } from "../lib/graph";
 import { platformPresentation } from "../lib/platform";
 import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
+import { pathIdentityKey } from "../lib/pathIdentity";
 
 interface Props {
   topology: Topology;
@@ -411,17 +412,6 @@ function pathEventLabel(event: PathEvent) {
 
 function directionalStateKey(state: DirectionalPathState) {
   return `${pathIdentityKey(state.primaryPath)}|${state.fallbackPath ? pathIdentityKey(state.fallbackPath) : "none"}`;
-}
-
-function pathIdentityKey(path: PathObservation) {
-  switch (path.kind) {
-    case "derp":
-      return `derp:${path.derpRegion ?? "unknown"}`;
-    case "peer_relay":
-      return `peer-relay:${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? path.peerRelayVni ?? "unknown"}`;
-    default:
-      return path.kind;
-  }
 }
 
 function DirectionalPathCard({
