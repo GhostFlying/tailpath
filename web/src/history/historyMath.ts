@@ -209,7 +209,7 @@ export function buildDirectionalTimeline(
       new Date(right.event.observedAt).getTime(),
   );
   const eventIDs = stablePathEventIDs(ordered);
-  let hasSeenDirectionalEvidence = false;
+  let hasSeenDirectionalEvent = false;
   return ordered.map(({ event, anchored, noEvidence }, index) => {
     const from = anchored
       ? history.from
@@ -218,10 +218,11 @@ export function buildDirectionalTimeline(
       ? clampTime(ordered[index + 1].event.observedAt, history.from, history.to)
       : history.to;
     const directions = event.directions ?? [];
+    const eventIsDirectional = event.directions !== undefined;
     const eventHasDirections = directions.length > 0;
     const missingAfterDirectionalEvidence =
-      !eventHasDirections && hasSeenDirectionalEvidence;
-    hasSeenDirectionalEvidence ||= eventHasDirections;
+      !eventIsDirectional && hasSeenDirectionalEvent;
+    hasSeenDirectionalEvent ||= eventIsDirectional;
     return {
       id: eventIDs[index],
       observedAt: event.observedAt,
@@ -243,7 +244,10 @@ export function buildDirectionalTimeline(
           direction.toNodeId === history.source.id,
       ),
       anchored,
-      noEvidence: noEvidence || missingAfterDirectionalEvidence,
+      noEvidence:
+        noEvidence ||
+        (eventIsDirectional && !eventHasDirections) ||
+        missingAfterDirectionalEvidence,
     };
   });
 }
@@ -377,7 +381,7 @@ function compactEventDigest(event: PathEvent): string {
 
 export function hasDirectionalHistory(history: EdgeHistory): boolean {
   return [history.pathAnchor, ...history.pathEvents].some(
-    (event) => (event?.directions?.length ?? 0) > 0,
+    (event) => event?.directions !== undefined,
   );
 }
 

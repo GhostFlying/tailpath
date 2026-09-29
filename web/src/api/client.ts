@@ -68,11 +68,15 @@ type NullableEdgeHistory = Omit<
 };
 
 function normalizePathEvent(event: NullablePathEvent) {
+  const { directions, ...rest } = event;
   return {
-    ...event,
+    ...rest,
     conflicts: event.conflicts ?? [],
     observations: event.observations ?? [],
-    directions: event.directions ?? [],
+    // Presence is meaningful: a current server emits an explicit empty array
+    // when directional evidence was withdrawn, while older servers omit (or
+    // return null for) the field entirely.
+    ...(directions == null ? {} : { directions }),
   };
 }
 

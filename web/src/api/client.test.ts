@@ -43,7 +43,7 @@ describe("getEdgeHistory", () => {
 });
 
 describe("getEdgePathHistory", () => {
-  it("requests a stable cursor page and normalizes directional collections", async () => {
+  it("preserves absent legacy and explicit empty directional collections", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
         source: { id: "node-a", label: "Node A" },
@@ -57,6 +57,11 @@ describe("getEdgePathHistory", () => {
             conflicts: null,
             observations: null,
             directions: null,
+          },
+          {
+            ...pathEvent(),
+            observedAt: "2026-08-30T00:02:00Z",
+            directions: [],
           },
         ],
         nextCursor: "next page",
@@ -77,13 +82,14 @@ describe("getEdgePathHistory", () => {
       "/api/v1/history/edges/node-a--node-b/paths?window=24h&limit=200&to=2026-08-30T00%3A02%3A03.456Z&cursor=cursor+value",
       expect.objectContaining({ headers: { Accept: "application/json" } }),
     );
-    expect(page.anchor?.directions).toEqual([]);
+    expect(page.anchor?.directions).toBeUndefined();
     expect(page.relatedNodes).toEqual([]);
     expect(page.events[0]).toMatchObject({
       conflicts: [],
       observations: [],
-      directions: [],
     });
+    expect(page.events[0]).not.toHaveProperty("directions");
+    expect(page.events[1].directions).toEqual([]);
     expect(page.nextCursor).toBe("next page");
   });
 });
