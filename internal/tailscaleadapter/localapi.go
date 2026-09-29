@@ -30,6 +30,7 @@ func NewLocalSourceWithClient(client *local.Client) *LocalSource {
 func (s *LocalSource) Snapshot(ctx context.Context) (exporter.Snapshot, error) {
 	status, err := s.client.Status(ctx)
 	if err != nil {
+		s.tracker.Reset()
 		return exporter.Snapshot{}, err
 	}
 	return s.tracker.Snapshot(status, time.Now())

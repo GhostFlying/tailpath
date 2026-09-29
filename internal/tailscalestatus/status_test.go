@@ -232,3 +232,31 @@ func TestTrackerClearsRelayWhenPeerDisappears(t *testing.T) {
 		t.Fatalf("reappeared DERP = %#v", peer)
 	}
 }
+
+func TestTrackerResetBreaksRelayInferenceContinuity(t *testing.T) {
+	tracker := NewTracker()
+	peerKey := key.NewNode().Public()
+	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	status := &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "self"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+		},
+	}
+	if _, err := tracker.Snapshot(status, at); err != nil {
+		t.Fatal(err)
+	}
+
+	tracker.Reset()
+	status.Peer[peerKey].PeerRelay = ""
+	status.Peer[peerKey].Relay = "hgh-custom"
+	snapshot, err := tracker.Snapshot(status, at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := snapshot.Peers[0]
+	if peer.Path.Kind != exporter.PathDERP || peer.FallbackPath != nil ||
+		peer.PathEvidence != exporter.PathEvidenceObserved || peer.PathInferenceRule != "" {
+		t.Fatalf("DERP after reset = %#v", peer)
+	}
+}

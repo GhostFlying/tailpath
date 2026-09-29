@@ -3,18 +3,73 @@ package tailscaleadapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/netip"
 	"reflect"
+	"strings"
 	"testing"
 
 	"tailscale.com/client/local"
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/udprelay/status"
 	"tailscale.com/types/key"
 
 	"github.com/GhostFlying/tailpath/exporter"
 	"github.com/GhostFlying/tailpath/internal/collector"
 )
+
+type statusFailureTransport struct {
+	status *ipnstate.Status
+	err    error
+}
+
+func (transport *statusFailureTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	if transport.err != nil {
+		return nil, transport.err
+	}
+	payload, err := json.Marshal(transport.status)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(string(payload))),
+	}, nil
+}
+
+func TestLocalSourceBreaksFallbackInferenceAcrossStatusError(t *testing.T) {
+	peerKey := key.NewNode().Public()
+	transport := &statusFailureTransport{status: &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "runtime"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
+			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+		},
+	}}
+	source := NewLocalSourceWithClient(&local.Client{Transport: transport, OmitAuth: true})
+	if _, err := source.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	transport.err = errors.New("status unavailable")
+	if _, err := source.Snapshot(context.Background()); err == nil {
+		t.Fatal("failed status poll returned no error")
+	}
+	transport.err = nil
+	transport.status.Peer[peerKey].PeerRelay = ""
+	transport.status.Peer[peerKey].Relay = "hgh-custom"
+	snapshot, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := snapshot.Peers[0]
+	if peer.Path.Kind != exporter.PathDERP || peer.FallbackPath != nil ||
+		peer.PathEvidence != exporter.PathEvidenceObserved || peer.PathInferenceRule != "" {
+		t.Fatalf("DERP after failed poll = %#v", peer)
+	}
+}
 
 func TestPeerRelaySnapshotClassifiesCapability(t *testing.T) {
 	tests := []struct {

@@ -244,7 +244,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 		if err != nil {
 			return domain.PathEventPage{}, false, err
 		}
-		if cursor.Window != window {
+		if cursor.Window != window || cursor.EdgeID != canonicalID {
 			return domain.PathEventPage{}, false, ErrInvalidHistoryCursor
 		}
 		to = cursor.WindowEnd
@@ -334,6 +334,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 			ID:         last.id,
 			WindowEnd:  to,
 			Window:     window,
+			EdgeID:     canonicalID,
 		})
 	}
 	for _, item := range items {
@@ -1019,6 +1020,7 @@ type pathEventCursor struct {
 	ID         int64                `json:"i"`
 	WindowEnd  time.Time            `json:"u"`
 	Window     domain.HistoryWindow `json:"w"`
+	EdgeID     string               `json:"e"`
 }
 
 func encodePathEventCursor(cursor pathEventCursor) string {
@@ -1030,7 +1032,7 @@ func decodePathEventCursor(value string) (pathEventCursor, error) {
 	var cursor pathEventCursor
 	payload, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil || json.Unmarshal(payload, &cursor) != nil || cursor.ObservedAt.IsZero() ||
-		cursor.ID < 1 || cursor.WindowEnd.IsZero() || !cursor.Window.Valid() {
+		cursor.ID < 1 || cursor.WindowEnd.IsZero() || !cursor.Window.Valid() || cursor.EdgeID == "" {
 		return cursor, ErrInvalidHistoryCursor
 	}
 	return cursor, nil
