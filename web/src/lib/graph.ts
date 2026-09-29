@@ -413,13 +413,21 @@ function routesFor(edge: TopologyEdge): RenderedRoute[] {
   const asymmetric = edgeIsAsymmetric(edge);
   if (!asymmetric) {
     const direction = directions[0];
+    const fromSource = direction.fromNodeId === edge.source;
+    const directionRate = fromSource
+      ? edge.aToBBytesPerSecond
+      : edge.bToABytesPerSecond;
     const routes: RenderedRoute[] = [
       {
         id: "combined-primary",
         from: direction.fromNodeId,
         to: direction.toNodeId,
         path: direction.primaryPath,
-        rate: edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
+        rate:
+          directions.length === 1
+            ? directionRate
+            : edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
+        labelRate: edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
         showLabel: true,
         directional: directions.length === 1,
         fallback: false,
