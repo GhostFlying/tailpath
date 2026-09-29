@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DirectionalPathState } from "../api/types";
-import { fallbackExplanation } from "./Inspector";
+import type { DirectionalPathState, PathEvent } from "../api/types";
+import { fallbackExplanation, pathEventLabel } from "./Inspector";
 
 function direction(evidence: "observed" | "inferred"): DirectionalPathState {
   return {
@@ -35,5 +35,20 @@ describe("fallbackExplanation", () => {
     expect(
       fallbackExplanation([direction("observed"), direction("inferred")]),
     ).toContain("observed and inferred parallel routes");
+  });
+});
+
+describe("pathEventLabel", () => {
+  it("keeps fallback details on a partial event", () => {
+    const state = direction("inferred");
+    const event: PathEvent = {
+      observedAt: "2026-09-29T00:00:00Z",
+      path: state.primaryPath,
+      conflicts: [],
+      observations: [],
+      directions: [state],
+    };
+
+    expect(pathEventLabel(event)).toBe("Partial · Peer Relay + DERP fallback");
   });
 });
