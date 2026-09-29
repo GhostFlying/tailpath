@@ -65,6 +65,24 @@ func TestInferredPathEvidenceRequiresVersionedRule(t *testing.T) {
 	}
 }
 
+func TestLiveReportRejectsLegacyPathEvidence(t *testing.T) {
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	report := ReportEnvelope{
+		Version: ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: at, Kind: ReportObserverHello,
+		Observers: []ObserverReport{{
+			Observer: NodeIdentity{StableNodeID: "a"}, InventoryGeneration: "inventory",
+			Peers: []PeerObservation{{
+				Peer: NodeIdentity{StableNodeID: "b"}, Path: PathObservation{Kind: PathDirect},
+				PathEvidence: PathEvidenceLegacy, LastActive: at,
+			}},
+		}},
+	}
+	if err := report.Validate(); err == nil {
+		t.Fatal("fresh report with legacy path evidence was accepted")
+	}
+}
+
 func TestIdentityDoesNotRequireHostname(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	report := ReportEnvelope{

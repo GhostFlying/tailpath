@@ -1102,7 +1102,9 @@ func validateAndCloneSnapshot(snapshot Snapshot, fallback time.Time) (Snapshot, 
 			peer.PathEvidence = PathEvidenceObserved
 		}
 		switch peer.PathEvidence {
-		case PathEvidenceObserved, PathEvidenceInferred, PathEvidenceLegacy:
+		case PathEvidenceObserved, PathEvidenceInferred:
+		case PathEvidenceLegacy:
+			return Snapshot{}, fmt.Errorf("peer %d legacy path evidence is reserved for stored history", index)
 		default:
 			return Snapshot{}, fmt.Errorf("peer %d path evidence %q is invalid", index, peer.PathEvidence)
 		}

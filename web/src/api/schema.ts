@@ -344,7 +344,10 @@ export interface components {
         };
         /** @enum {string} */
         PathKind: "direct" | "derp" | "peer_relay" | "unknown";
-        /** @enum {string} */
+        /**
+         * @description Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
+         * @enum {string}
+         */
         PathEvidence: "observed" | "inferred" | "legacy";
         DirectionalPathState: {
             fromNodeId: string;

@@ -894,7 +894,7 @@ func TestInventoryReplacementWithdrawsOnlyObserverProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	edge := aggregator.Snapshot().Edges[0]
-	if edge.Observations == nil || len(edge.Observations) != 0 || edge.Path.Kind != domain.PathDirect {
+	if edge.Observations == nil || len(edge.Observations) != 0 || edge.Path.Kind != domain.PathDirect || len(edge.Directions) != 0 {
 		t.Fatalf("withdrawn inventory edge = %#v", edge)
 	}
 	if got := len(aggregator.Snapshot().Nodes); got != 2 {
@@ -1088,7 +1088,7 @@ func TestObserverWithdrawalIsImmediateIdempotentAndFenced(t *testing.T) {
 	after := aggregator.Snapshot()
 	if len(after.Edges) != 1 || after.Edges[0].State != domain.EdgeRecent ||
 		after.Edges[0].AToBBytesPerSecond != 0 || after.Edges[0].BToABytesPerSecond != 0 ||
-		len(after.Edges[0].Observations) != 0 || after.Observers[0].Online {
+		len(after.Edges[0].Observations) != 0 || len(after.Edges[0].Directions) != 0 || after.Observers[0].Online {
 		t.Fatalf("post-withdraw topology = %#v", after)
 	}
 	observerID := aggregator.state.Aliases["stable:a"]

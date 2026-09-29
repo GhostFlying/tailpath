@@ -104,8 +104,10 @@ type DeviceDirectory struct {
 
 // DirectionalPathState defines model for DirectionalPathState.
 type DirectionalPathState struct {
-	ClockSkewed   bool             `json:"clockSkewed"`
-	CollectedAt   time.Time        `json:"collectedAt"`
+	ClockSkewed bool      `json:"clockSkewed"`
+	CollectedAt time.Time `json:"collectedAt"`
+
+	// Evidence Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
 	Evidence      PathEvidence     `json:"evidence"`
 	FallbackPath  *PathObservation `json:"fallbackPath,omitempty"`
 	FromNodeId    string           `json:"fromNodeId"`
@@ -266,14 +268,16 @@ type NodeIdentity struct {
 
 // ObservationProvenance defines model for ObservationProvenance.
 type ObservationProvenance struct {
-	ClockSkewed       bool             `json:"clockSkewed"`
-	CollectedAt       time.Time        `json:"collectedAt"`
-	FallbackPath      *PathObservation `json:"fallbackPath,omitempty"`
-	ObserverId        string           `json:"observerId"`
-	Path              PathObservation  `json:"path"`
-	PathEvidence      *PathEvidence    `json:"pathEvidence,omitempty"`
-	PathInferenceRule *string          `json:"pathInferenceRule,omitempty"`
-	ReceivedAt        time.Time        `json:"receivedAt"`
+	ClockSkewed  bool             `json:"clockSkewed"`
+	CollectedAt  time.Time        `json:"collectedAt"`
+	FallbackPath *PathObservation `json:"fallbackPath,omitempty"`
+	ObserverId   string           `json:"observerId"`
+	Path         PathObservation  `json:"path"`
+
+	// PathEvidence Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
+	PathEvidence      *PathEvidence `json:"pathEvidence,omitempty"`
+	PathInferenceRule *string       `json:"pathInferenceRule,omitempty"`
+	ReceivedAt        time.Time     `json:"receivedAt"`
 
 	// RelaySession Scoped third-party provenance. Short disco values and relay-client endpoints are omitted from this projection; selected Peer Relay endpoints are exposed through PathObservation.
 	RelaySession *RelaySessionProvenance `json:"relaySession,omitempty"`
@@ -328,7 +332,7 @@ type PathEventPage struct {
 	Target       HistoryNodeReference   `json:"target"`
 }
 
-// PathEvidence defines model for PathEvidence.
+// PathEvidence Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
 type PathEvidence string
 
 // PathKind defines model for PathKind.
@@ -358,7 +362,9 @@ type PeerObservation struct {
 	FallbackPath *PathObservation `json:"fallbackPath,omitempty"`
 	LastActive   time.Time        `json:"lastActive"`
 	Path         PathObservation  `json:"path"`
-	PathEvidence *PathEvidence    `json:"pathEvidence,omitempty"`
+
+	// PathEvidence Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
+	PathEvidence *PathEvidence `json:"pathEvidence,omitempty"`
 
 	// PathInferenceRule Versioned rule used when pathEvidence is inferred.
 	PathInferenceRule *string `json:"pathInferenceRule,omitempty"`

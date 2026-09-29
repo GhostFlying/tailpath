@@ -141,20 +141,23 @@ endpoint observations into two directions. Schema migration 6 persists and
 legacy-backfills directions. The complete path-history API uses stable keyset
 pagination and generated Go/TypeScript models are current.
 
-The ready-for-review stack received twenty-two actionable inline findings
-across three review passes. Remediation remains dependency ordered. The API slice now
+The ready-for-review stack received twenty-seven actionable inline findings
+across four review passes. Remediation remains dependency ordered. The API slice now
 clears relay inference when a peer disappears, freezes pagination boundaries,
 returns historical node references on every page, accepts the detail response's
 absolute window end, records resolved relay endpoint/VNI changes, and rejects
-inferred evidence without a versioned rule. Migration 6 leaves irreversible v5
-compaction unchanged and labels retained backfill as legacy instead of claiming
-to restore deleted transitions. Earlier Live and History review findings are
-fixed; the newest Web findings remain to be applied after rebasing.
+inferred evidence without a versioned rule. It also clears directions when the
+last endpoint observation is withdrawn, indexes primary and fallback kinds for
+History filters, and rejects fresh reports that claim migration-only legacy
+evidence. Migration 6 leaves irreversible v5 compaction unchanged and labels
+retained backfill as legacy instead of claiming to restore deleted transitions.
+Earlier Live and History findings are fixed; their newest relay-equality
+findings remain to be applied after rebasing.
 
 ## Next step
 
-Update PR #189, safely rebase PR #190 and PR #191 in order, then fix and test
-the remaining Live and History review findings before rerunning the complete
+Update PR #189, safely rebase PRs #190 and #191, fix complete relay equality in
+their historical summaries, then rerun the complete repository and browser
 gates.
 
 ## Verification
@@ -163,7 +166,9 @@ gates.
   wall clock during 900-event pagination, exclusion of events after the frozen
   window end, node references first encountered on a paginated page, a shared
   detail/path absolute boundary, resolved relay endpoint/VNI transitions, and
-  mandatory inference rules at both validation boundaries.
+  mandatory inference rules at both validation boundaries. Additional coverage
+  clears withdrawn directions, indexes event and anchor fallbacks, and rejects
+  legacy evidence at both live-report boundaries.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.

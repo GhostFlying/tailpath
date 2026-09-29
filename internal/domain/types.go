@@ -323,7 +323,9 @@ func validatePeerPathEvidence(peer PeerObservation) error {
 		evidence = PathEvidenceObserved
 	}
 	switch evidence {
-	case PathEvidenceObserved, PathEvidenceInferred, PathEvidenceLegacy:
+	case PathEvidenceObserved, PathEvidenceInferred:
+	case PathEvidenceLegacy:
+		return errors.New("legacy path evidence is reserved for stored history")
 	default:
 		return fmt.Errorf("unknown path evidence %q", evidence)
 	}

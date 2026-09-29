@@ -832,20 +832,27 @@ func (s *SQLite) loadPathSetsForEdges(ctx context.Context, index historyIndex, f
 			continue
 		}
 		set.events = append(set.events, event)
-		set.pathKinds[event.Path.Kind] = struct{}{}
-		for _, conflict := range event.Conflicts {
-			set.pathKinds[conflict.Kind] = struct{}{}
-		}
+		addHistoryPathKinds(set.pathKinds, event)
 	}
 	for _, set := range result {
 		if set.anchor != nil {
-			set.pathKinds[set.anchor.Path.Kind] = struct{}{}
-			for _, conflict := range set.anchor.Conflicts {
-				set.pathKinds[conflict.Kind] = struct{}{}
-			}
+			addHistoryPathKinds(set.pathKinds, *set.anchor)
 		}
 	}
 	return result, rows.Err()
+}
+
+func addHistoryPathKinds(kinds map[domain.PathKind]struct{}, event domain.PathEvent) {
+	kinds[event.Path.Kind] = struct{}{}
+	for _, conflict := range event.Conflicts {
+		kinds[conflict.Kind] = struct{}{}
+	}
+	for _, direction := range event.Directions {
+		kinds[direction.PrimaryPath.Kind] = struct{}{}
+		if direction.FallbackPath != nil {
+			kinds[direction.FallbackPath.Kind] = struct{}{}
+		}
+	}
 }
 
 func originalEdgeIDs(index historyIndex, canonicalID string) []string {
