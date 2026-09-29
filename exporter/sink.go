@@ -156,10 +156,11 @@ type relayOperation struct {
 }
 
 type transportRuntimeState struct {
-	capabilitiesReady bool
-	failures          int
-	nextAttempt       time.Time
-	degraded          bool
+	capabilitiesReady       bool
+	directionalPathEvidence bool
+	failures                int
+	nextAttempt             time.Time
+	degraded                bool
 }
 
 func NewSnapshotSink(reporter Reporter, options SnapshotSinkOptions) *SnapshotSink {
@@ -585,6 +586,7 @@ func (s *SnapshotSink) flush(
 				return &IncompatibleServerError{Reason: fmt.Sprintf("required feature %q is unavailable", feature)}
 			}
 		}
+		transport.directionalPathEvidence = capabilities.SupportsFeature(FeatureDirectionalPathEvidence)
 		transport.capabilitiesReady = true
 		transport.nextAttempt = time.Time{}
 		s.drainPendingEvents(states)
@@ -736,7 +738,7 @@ func (s *SnapshotSink) sendOperations(
 	reportedAt time.Time,
 ) (bool, error) {
 	for len(operations) > 0 {
-		count := s.batchCount(operations, *sequence+1)
+		count := s.batchCount(operations, *sequence+1, transport.directionalPathEvidence)
 		if count == 0 {
 			s.rejectOversized(operations[0])
 			operations = operations[1:]
@@ -754,11 +756,13 @@ func (s *SnapshotSink) sendOperations(
 	return false, nil
 }
 
-func (s *SnapshotSink) batchCount(operations []observerOperation, sequence int64) int {
+func (s *SnapshotSink) batchCount(operations []observerOperation, sequence int64, directionalPathEvidence bool) int {
 	limit := min(len(operations), s.config.MaxBatchObservers)
 	count := 0
 	for index := 1; index <= limit; index++ {
-		report := s.reportFor(operations[:index], sequence, "00000000-0000-4000-8000-000000000000")
+		report := s.reportFor(
+			operations[:index], sequence, "00000000-0000-4000-8000-000000000000", directionalPathEvidence,
+		)
 		payload, err := json.Marshal(report)
 		if err != nil || len(payload) > s.config.MaxRequestBytes {
 			break
@@ -778,7 +782,7 @@ func (s *SnapshotSink) sendBatch(
 	reportedAt time.Time,
 ) (bool, error) {
 	*sequence++
-	report := s.reportFor(operations, *sequence, newExporterUUID())
+	report := s.reportFor(operations, *sequence, newExporterUUID(), transport.directionalPathEvidence)
 	receipt, err := s.reporter.Send(ctx, report)
 	if err != nil {
 		var status *HTTPStatusError
@@ -823,14 +827,28 @@ func (s *SnapshotSink) sendBatch(
 	return receipt.ResyncRequired && report.Kind != ReportObserverHello, nil
 }
 
-func (s *SnapshotSink) reportFor(operations []observerOperation, sequence int64, reportID string) ReportEnvelope {
+func (s *SnapshotSink) reportFor(
+	operations []observerOperation,
+	sequence int64,
+	reportID string,
+	directionalPathEvidence bool,
+) ReportEnvelope {
 	report := ReportEnvelope{
 		Version: ProtocolVersion, ReportID: reportID, ReporterInstanceID: s.config.ReporterInstanceID,
 		Sequence: sequence, Kind: operations[0].kind,
 		Observers: make([]ObserverReport, len(operations)),
 	}
 	for index, operation := range operations {
-		report.Observers[index] = operation.observer
+		observer := operation.observer
+		if !directionalPathEvidence && len(observer.Peers) > 0 {
+			observer.Peers = append([]PeerObservation(nil), observer.Peers...)
+			for peerIndex := range observer.Peers {
+				observer.Peers[peerIndex].FallbackPath = nil
+				observer.Peers[peerIndex].PathEvidence = ""
+				observer.Peers[peerIndex].PathInferenceRule = ""
+			}
+		}
+		report.Observers[index] = observer
 		if operation.collectedAt.After(report.CollectedAt) {
 			report.CollectedAt = operation.collectedAt
 		}
@@ -943,6 +961,7 @@ func (s *SnapshotSink) transportFailed(
 		return err
 	}
 	transport.capabilitiesReady = false
+	transport.directionalPathEvidence = false
 	transport.failures++
 	delay := s.retryDelay(transport.failures)
 	transport.nextAttempt = now.Add(delay)

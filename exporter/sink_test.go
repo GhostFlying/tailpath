@@ -159,7 +159,11 @@ func newRecordingSinkReporter() *recordingSinkReporter {
 	return &recordingSinkReporter{
 		capabilities: Capabilities{
 			ObserverProtocolVersions: []int{ProtocolVersion},
-			Features:                 []string{FeatureMultiObserver, FeatureObserverWithdrawal},
+			Features: []string{
+				FeatureMultiObserver,
+				FeatureObserverWithdrawal,
+				FeatureDirectionalPathEvidence,
+			},
 		},
 		reportEvents:   make(chan ReportEnvelope, 256),
 		defaultReceipt: ReportReceipt{Accepted: true, HeartbeatIntervalMS: 60000},
@@ -247,6 +251,59 @@ func TestValidateSnapshotRejectsLegacyPathEvidence(t *testing.T) {
 	snapshot.Peers[0].PathEvidence = PathEvidenceLegacy
 	if _, err := validateAndCloneSnapshot(snapshot, time.Now().UTC()); err == nil {
 		t.Fatal("fresh snapshot with legacy path evidence was accepted")
+	}
+}
+
+func TestSnapshotSinkNegotiatesDirectionalPathEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		supported bool
+	}{
+		{name: "current server", supported: true},
+		{name: "older protocol-v1 server"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reporter := newRecordingSinkReporter()
+			if !test.supported {
+				reporter.capabilities.Features = []string{FeatureMultiObserver, FeatureObserverWithdrawal}
+			}
+			source := newChannelSource()
+			at := time.Date(2026, 9, 29, 6, 0, 0, 0, time.UTC)
+			snapshot := runtimeSnapshot(at, "runtime", 0, 0)
+			snapshot.Peers[0].Path = Path{Kind: PathPeerRelay, PeerRelayStableNodeID: "relay"}
+			snapshot.Peers[0].FallbackPath = &Path{Kind: PathDERP, DERPRegion: "hgh-custom"}
+			snapshot.Peers[0].PathEvidence = PathEvidenceInferred
+			snapshot.Peers[0].PathInferenceRule = "tailscale-status-fallback-v1"
+			source.push(snapshot)
+
+			sink := newSnapshotSink(reporter, sinkOptions())
+			if _, err := sink.Register("runtime", source); err != nil {
+				t.Fatal(err)
+			}
+			cancel, done := startSink(t, sink)
+			report := waitReport(t, reporter)
+			stopSink(t, cancel, done)
+			peer := report.Observers[0].Peers[0]
+			if test.supported {
+				if peer.FallbackPath == nil || peer.PathEvidence != PathEvidenceInferred ||
+					peer.PathInferenceRule != "tailscale-status-fallback-v1" {
+					t.Fatalf("negotiated peer = %#v", peer)
+				}
+				return
+			}
+			if peer.FallbackPath != nil || peer.PathEvidence != "" || peer.PathInferenceRule != "" {
+				t.Fatalf("legacy server peer = %#v", peer)
+			}
+			payload, err := json.Marshal(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range []string{"fallbackPath", "pathEvidence", "pathInferenceRule"} {
+				if bytes.Contains(payload, []byte(field)) {
+					t.Fatalf("legacy payload contains %q: %s", field, payload)
+				}
+			}
+		})
 	}
 }
 

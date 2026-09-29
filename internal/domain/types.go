@@ -11,9 +11,10 @@ import (
 const ProtocolVersion = 1
 
 const (
-	FeatureMultiObserver      = "multi-observer"
-	FeatureObserverWithdrawal = "observer-withdrawal"
-	FeatureDeviceDirectory    = "device-directory"
+	FeatureMultiObserver           = "multi-observer"
+	FeatureObserverWithdrawal      = "observer-withdrawal"
+	FeatureDirectionalPathEvidence = "directional-path-evidence"
+	FeatureDeviceDirectory         = "device-directory"
 )
 
 type ServerCapabilities struct {
@@ -24,7 +25,11 @@ type ServerCapabilities struct {
 func CurrentServerCapabilities() ServerCapabilities {
 	return ServerCapabilities{
 		ObserverProtocolVersions: []int{ProtocolVersion},
-		Features:                 []string{FeatureMultiObserver, FeatureObserverWithdrawal},
+		Features: []string{
+			FeatureMultiObserver,
+			FeatureObserverWithdrawal,
+			FeatureDirectionalPathEvidence,
+		},
 	}
 }
 

@@ -12,6 +12,14 @@ incompatible server, not a reason to fall back to weaker lifecycle semantics.
 Existing collectors do not require this preflight and remain compatible with a
 v0.4 server.
 
+`directional-path-evidence` is an optional protocol-v1 feature used during
+rolling upgrades. A server that advertises it accepts `fallbackPath`,
+`pathEvidence`, and `pathInferenceRule` on peer observations. The exporter
+omits all three fields when the feature is absent, including the default
+`observed` evidence value, so a newer exporter can continue reporting primary
+paths to an older strict-decoding protocol-v1 server. The capability is checked
+again after a transport reconnect before those fields are sent.
+
 The public `exporter` package owns the handwritten application contracts for
 snapshots, reports, receipts, capabilities, and HTTP delivery. Generated
 OpenAPI types remain server/client schema artifacts and are not the embedded

@@ -141,7 +141,7 @@ endpoint observations into two directions. Schema migration 6 persists and
 legacy-backfills directions. The complete path-history API uses stable keyset
 pagination and generated Go/TypeScript models are current.
 
-The ready-for-review stack received fifty-three actionable inline findings
+The ready-for-review stack received fifty-six actionable inline findings
 across its review passes. Remediation remains dependency ordered. The API slice now
 clears relay inference when a peer disappears, freezes pagination boundaries,
 returns historical node references on every page, accepts the detail response's
@@ -152,16 +152,19 @@ History filters, and rejects fresh reports that claim migration-only legacy
 evidence. Path-history cursors are bound to the canonical edge, so aliases
 remain valid while a cursor cannot silently advance a different edge. Failed
 native or tsnet status polls reset relay inference continuity before the next
-sample. Migration 6 leaves irreversible v5 compaction unchanged and labels
+sample. Cursors also retain the first page's row-ID high-water mark, excluding
+events that commit concurrently after the selected history snapshot. The
+optional `directional-path-evidence` capability lets new exporters omit
+fallback and evidence fields when reporting to an older strict-decoding
+protocol-v1 server. Migration 6 leaves irreversible v5 compaction unchanged and labels
 retained backfill as legacy instead of claiming to restore deleted transitions.
-Earlier Live and History findings are fixed; the newest History event-index
-anchoring finding remains to be applied after rebasing.
+Earlier Live and History findings, including event-index anchoring during
+pagination, are fixed and remain to be rebased onto this API head.
 
 ## Next step
 
-Update PR #189, safely rebase PRs #190 and #191, keep the History event-index
-page anchored to its selected stable event while pagination expands, then rerun
-the complete repository and browser gates.
+Update PR #189, safely rebase PRs #190 and #191, then rerun the complete
+repository and browser gates.
 
 ## Verification
 
@@ -172,9 +175,12 @@ the complete repository and browser gates.
   mandatory inference rules at both validation boundaries. Additional coverage
   clears withdrawn directions, indexes event and anchor fallbacks, and rejects
   legacy evidence at both live-report boundaries. Cursor coverage accepts a
-  canonical alias and rejects cross-edge reuse. Native and tsnet source tests
+  canonical alias, rejects cross-edge reuse, and excludes an in-window event
+  committed after the first page. Native and tsnet source tests
   prove a failed status poll prevents the next DERP sample from inheriting
-  pre-gap relay evidence.
+  pre-gap relay evidence. Exporter negotiation tests verify current servers
+  receive directional fields while older protocol-v1 servers receive none of
+  the three new JSON fields.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
