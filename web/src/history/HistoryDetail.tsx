@@ -12,6 +12,7 @@ import { IdentityBadge } from "../lib/identity";
 import { pathIdentityKey } from "../lib/pathIdentity";
 import { DirectionalTrafficChart } from "./DirectionalTrafficChart";
 import { PathTimeline } from "./PathTimeline";
+import { hasDirectionalHistory } from "./historyMath";
 
 const windows: HistoryWindow[] = ["15m", "1h", "6h", "24h", "7d"];
 
@@ -57,7 +58,10 @@ export const HistoryDetail = memo(function HistoryDetail({
     ? (history.pathEvents.at(-1) ?? history.pathAnchor)
     : undefined;
   const lastPath = lastEvent?.path;
-  const lastPathSummary = summarizeLastPath(lastEvent);
+  const lastPathSummary = summarizeLastPath(
+    lastEvent,
+    Boolean(history && hasDirectionalHistory(history)),
+  );
   const lastTraffic = history?.lastTrafficAt;
 
   return (
@@ -187,6 +191,7 @@ export const HistoryDetail = memo(function HistoryDetail({
 
 export function summarizeLastPath(
   event: EdgeHistory["pathAnchor"] | undefined,
+  directionalHistory = false,
 ) {
   const directions = event?.directions ?? [];
   if (directions.length === 2) {
@@ -206,6 +211,13 @@ export function summarizeLastPath(
   if (directions.length === 1) {
     return {
       label: "Partial path evidence",
+      asymmetric: false,
+      partial: true,
+    };
+  }
+  if (event && directionalHistory) {
+    return {
+      label: "Unknown / No fresh observation",
       asymmetric: false,
       partial: true,
     };
