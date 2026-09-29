@@ -61,4 +61,21 @@ describe("summarizeLastPath", () => {
       partial: false,
     });
   });
+
+  it("reports an empty directional withdrawal as no fresh observation", () => {
+    const event = {
+      observedAt: "2026-09-29T00:00:00Z",
+      path: { kind: "direct" },
+      conflicts: [],
+      observations: [],
+      directions: [],
+    } as EdgeHistory["pathEvents"][number];
+
+    expect(summarizeLastPath(event, true)).toEqual({
+      label: "Unknown / No fresh observation",
+      asymmetric: false,
+      partial: true,
+    });
+    expect(summarizeLastPath(event, false).label).toBe("Direct");
+  });
 });
