@@ -162,7 +162,7 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack received fifty-seven actionable inline findings, all now
+The ready-for-review stack received fifty-eight actionable inline findings, all now
 addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
@@ -227,6 +227,8 @@ Migrated schema-v6 events with `directionsTracked: false` remain legacy combined
 evidence even when an earlier legacy event has a non-empty directional
 projection. Only tracked empty events, or marker-less empty events following
 directional evidence from an older server, are interpreted as withdrawals.
+Timeline ticks include a local date whenever the selected window crosses a
+calendar-day boundary, keeping multi-day and seven-day axes unambiguous.
 
 ## Next step
 
@@ -308,8 +310,10 @@ exact resulting `main` SHA before digest-pinned dogfood deployment.
   strictly later than the window start, avoiding a zero-duration duplicate.
 - Explicitly untracked empty migrated events remain compatibility evidence after
   a non-empty legacy projection; focused timeline and last-path summary tests
-  cover this mixed legacy sequence. All 106 Vitest tests and the TypeScript and
+  cover this mixed legacy sequence. All 108 Vitest tests and the TypeScript and
   formatting checks pass.
+- Multi-day timeline ticks include the date while same-day ticks retain their
+  compact time-only format; focused formatter tests cover both cases.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.
