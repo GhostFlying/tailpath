@@ -284,15 +284,17 @@ function DirectionalEdgeDetails({
         </span>
         <span>
           <strong>
-            {edgeIsAsymmetric(edge)
-              ? "Asymmetric paths"
-              : "Same path both directions"}
+            {directions.length === 1
+              ? "Partial path evidence"
+              : edgeIsAsymmetric(edge)
+                ? "Asymmetric paths"
+                : "Same path both directions"}
           </strong>
           <small>
-            {edgeIsAsymmetric(edge)
-              ? "Each endpoint currently reports a different route."
-              : directions.length === 1
-                ? "One direction has fresh path evidence."
+            {directions.length === 1
+              ? "One direction has fresh path evidence; the reverse remains unknown."
+              : edgeIsAsymmetric(edge)
+                ? "Each endpoint currently reports a different route."
                 : "Both endpoints report the same logical route."}
           </small>
         </span>
@@ -431,9 +433,25 @@ function PathMetadata({
     relay ? nodeLabel(relay) : path.peerRelayStableNodeId,
     path.peerRelayVni !== undefined ? `VNI ${path.peerRelayVni}` : undefined,
     path.peerRelayEndpoint,
+    peerRelayResolutionLabel(path.peerRelayResolution),
     path.directEndpoint,
   ].filter(Boolean);
   return values.length ? <small>{values.join(" · ")}</small> : null;
+}
+
+function peerRelayResolutionLabel(
+  resolution: PathObservation["peerRelayResolution"],
+) {
+  switch (resolution) {
+    case "relay_session":
+      return "Resolution: relay session";
+    case "tailscale_ip":
+      return "Resolution: Tailscale IP";
+    case "endpoint_match":
+      return "Resolution: endpoint match";
+    default:
+      return undefined;
+  }
 }
 
 function EvidenceGroup({

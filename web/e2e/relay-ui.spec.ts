@@ -246,6 +246,7 @@ test("expands asymmetric live paths and keeps fallback traffic single-counted", 
   await expect(inspector).toContainText("Direct");
   await expect(inspector).toContainText("Observed");
   await expect(inspector).toContainText("VNI 4293");
+  await expect(inspector).toContainText("Resolution: endpoint match");
   await expect(inspector).toContainText("Endpoint path evidence");
   await expect(inspector).toContainText("Relay identity evidence");
   await expect(inspector).not.toContainText("Switching");
@@ -270,6 +271,28 @@ test("expands asymmetric live paths and keeps fallback traffic single-counted", 
     path: testInfo.outputPath(`directional-live-${testInfo.project.name}.png`),
     fullPage: true,
   });
+});
+
+test("keeps a missing reverse direction explicitly unknown", async ({
+  page,
+}) => {
+  const fixture = directionalTopology();
+  fixture.edges[0].directions = fixture.edges[0].directions.slice(0, 1);
+  await page.unroute("**/api/v1/topology");
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+
+  const inspector = page.getByLabel("Topology details");
+  await expect(inspector).toContainText("Partial path evidence");
+  await expect(inspector).toContainText("reverse remains unknown");
+  await expect(inspector).toContainText("No fresh observation");
+  await expect(inspector).not.toContainText("Same path both directions");
 });
 
 test("keeps a dense switching timeline readable", async ({

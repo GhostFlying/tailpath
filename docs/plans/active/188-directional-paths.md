@@ -152,22 +152,25 @@ The ready-for-review stack received ten actionable inline findings on
 2026-09-28. Remediation is in progress in dependency order. The API slice now
 clears relay inference when a peer disappears, freezes pagination boundaries,
 and returns the historical node references needed by every page. The Live slice
-must correct directional arrow semantics, partial-evidence wording, recent-path
-arrows, and relay resolution metadata. The History slice must preserve unknown
+now derives collapsed flow arrows from their actual directional rates, labels
+single-direction state as partial evidence, suppresses arrows on recent routes,
+and exposes the relay resolution method. The History slice must preserve unknown
 directions in summaries, render complete per-direction evidence, and avoid
 temporarily replacing the newest compatibility events with an incomplete old
 page.
 
 ## Next step
 
-Fix and test the four Live review findings, update PR #190, then safely rebase
-PR #191 before addressing its History review findings.
+Update PR #190 with its tested review fixes, then safely rebase PR #191 before
+addressing its three History review findings.
 
 ## Verification
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
   window end, and node references first encountered on a paginated page.
+- Live review-remediation tests cover reverse-only collapsed traffic, partial
+  direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
