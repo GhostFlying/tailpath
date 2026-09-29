@@ -213,7 +213,7 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
   const segments = useMemo(() => buildDirectionalTimeline(history), [history]);
   const [selectedID, setSelectedID] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [eventIndexPage, setEventIndexPage] = useState(-1);
+  const [eventIndexPageFromNewest, setEventIndexPageFromNewest] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
   const selected =
@@ -231,10 +231,12 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
     1,
     Math.ceil(segments.length / eventIndexPageSize),
   );
-  const activeEventIndexPage =
-    eventIndexPage < 0
-      ? eventIndexPageCount - 1
-      : Math.min(eventIndexPage, eventIndexPageCount - 1);
+  const activeEventIndexPage = Math.max(
+    0,
+    eventIndexPageCount -
+      1 -
+      Math.min(eventIndexPageFromNewest, eventIndexPageCount - 1),
+  );
   const eventIndexStart = Math.max(
     0,
     segments.length -
@@ -276,11 +278,10 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
     setSelectedID(sourceID);
     const index = segments.findIndex((candidate) => candidate.id === sourceID);
     if (index >= 0) {
-      setEventIndexPage(
+      setEventIndexPageFromNewest(
         Math.max(
           0,
-          eventIndexPageCount -
-            Math.ceil((segments.length - index) / eventIndexPageSize),
+          Math.ceil((segments.length - index) / eventIndexPageSize) - 1,
         ),
       );
     }
@@ -450,14 +451,20 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
             <button
               type="button"
               disabled={activeEventIndexPage === 0}
-              onClick={() => setEventIndexPage(activeEventIndexPage - 1)}
+              onClick={() =>
+                setEventIndexPageFromNewest(eventIndexPageFromNewest + 1)
+              }
             >
               Previous states
             </button>
             <button
               type="button"
               disabled={activeEventIndexPage === eventIndexPageCount - 1}
-              onClick={() => setEventIndexPage(activeEventIndexPage + 1)}
+              onClick={() =>
+                setEventIndexPageFromNewest(
+                  Math.max(0, eventIndexPageFromNewest - 1),
+                )
+              }
             >
               Next states
             </button>
@@ -470,6 +477,7 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                 role="listitem"
                 aria-posinset={eventIndexStart + index + 1}
                 aria-setsize={segments.length}
+                aria-pressed={segment.id === selected?.id}
                 onClick={() => select(segment)}
               >
                 <time dateTime={segment.from}>

@@ -157,7 +157,7 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack received fifty actionable inline findings, all now
+The ready-for-review stack received fifty-three actionable inline findings, all now
 addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
@@ -169,7 +169,11 @@ evidence, preserves Direct address changes while ignoring port churn, and uses
 indexed fixed-width nanosecond timestamps scoped to path events for exact
 History boundaries without changing other persisted timestamp formats. The
 API also archives an explicit empty-direction transition when endpoint evidence
-is withdrawn and uses full timestamp precision when retaining path anchors. The
+is withdrawn and uses full timestamp precision when retaining path anchors.
+Path-history cursors carry the canonical edge ID, accepting aliases of that
+edge while rejecting reuse against another edge. A failed native or tsnet
+status poll resets relay inference continuity, so the next DERP sample cannot
+inherit relay evidence from before the observation gap. The
 Live slice now derives arrows from each observed direction's own rate,
 distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
@@ -207,12 +211,15 @@ a compact digest instead of the complete event JSON. The legacy timeline uses
 the same 100-row paging bound, and its observer support comparison mirrors the
 server compatibility key so endpoint or VNI changes for an already resolved
 StableNodeID do not incorrectly become contradictory evidence.
+Event-index paging is stored as an offset from the newest state, so prepending
+older pages keeps a selected, focused event on the same visible page instead of
+jumping the index backward.
 
 ## Next step
 
-Run the complete repository gate, update PR #191, then reply to and resolve the
-four newly addressed review threads before requesting a fresh review on the
-Web PRs.
+Run the complete repository gate, update the rebased PR stack, then reply to and
+resolve the three newly addressed review threads before requesting a fresh
+review.
 
 ## Verification
 
@@ -223,7 +230,9 @@ Web PRs.
   transitions, withdrawn directions, primary/fallback History filtering, and
   rejection of inferred-without-rule or fresh legacy evidence at both report
   boundaries, Direct address-versus-port changes, and exact nanosecond window
-  bounds across migrated RFC3339Nano timestamps.
+  bounds across migrated RFC3339Nano timestamps. Cursor coverage accepts a
+  canonical alias and rejects cross-edge reuse. Native and tsnet adapter tests
+  prove failed polls break inference continuity.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy and flow rates, exact relay resolution metadata, fallback
   evidence wording, and desktop/mobile rendering.
@@ -247,7 +256,9 @@ Web PRs.
   including focus-restoring bottom-sheet interaction, 56px label disclosure,
   horizontal-overflow checks, shared traffic selection, and exact-time state.
 - A two-page 900-event browser fixture renders all 900 events and exposes the
-  500-event intermediate loading state without truncation or duplication.
+  500-event intermediate loading state without truncation or duplication. It
+  also selects an embedded state before pagination completes and verifies that
+  the same state remains visible and selected after older events are prepended.
 - A 900-event legacy browser fixture pages the timeline in 100-state windows,
   keeps the mounted list bounded, and preserves access to every state.
 - An uneven-duration dense fixture preserves a 23-hour Direct state and marks
