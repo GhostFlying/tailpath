@@ -493,9 +493,11 @@ test("loads all 900 directional path events without truncation", async ({
   );
   const eventIndex = page.locator(".directional-event-index");
   await eventIndex.locator("summary").click();
+  await expect(eventIndex).toContainText("States 402–501 of 501");
   const loadingIndexItems = eventIndex
     .locator(".directional-event-index-list")
     .getByRole("listitem");
+  await expect(loadingIndexItems).toHaveCount(100);
   const selectedLoadingItem = loadingIndexItems.nth(25);
   const selectedTime = await selectedLoadingItem
     .locator("time")
