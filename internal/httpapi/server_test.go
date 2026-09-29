@@ -112,7 +112,8 @@ func TestCapabilitiesAdvertiseImplementedProtocolFeatures(t *testing.T) {
 	}
 	if !capabilities.SupportsProtocol(domain.ProtocolVersion) ||
 		!capabilities.SupportsFeature(domain.FeatureMultiObserver) ||
-		!capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) {
+		!capabilities.SupportsFeature(domain.FeatureObserverWithdrawal) ||
+		!capabilities.SupportsFeature(domain.FeatureDirectionalPathEvidence) {
 		t.Fatalf("unexpected capabilities: %#v", capabilities)
 	}
 	if capabilities.SupportsFeature(domain.FeatureDeviceDirectory) {

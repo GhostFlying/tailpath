@@ -260,6 +260,19 @@ func (s *SQLite) EdgePathHistoryWindow(
 		placeholders[index] = "?"
 	}
 	edgeClause := strings.Join(placeholders, ",")
+	highWaterID := cursor.HighWaterID
+	if cursorValue == "" {
+		highWaterArgs := make([]any, 0, len(edgeIDs)+1)
+		for _, sourceID := range edgeIDs {
+			highWaterArgs = append(highWaterArgs, sourceID)
+		}
+		highWaterArgs = append(highWaterArgs, formatPathEventTime(to))
+		highWaterQuery := `SELECT COALESCE(MAX(id), 0) FROM path_events
+			WHERE edge_id IN (` + edgeClause + `) AND observed_at < ?`
+		if err := s.db.QueryRowContext(ctx, highWaterQuery, highWaterArgs...).Scan(&highWaterID); err != nil {
+			return domain.PathEventPage{}, false, err
+		}
+	}
 
 	page := domain.PathEventPage{
 		Source:       historyNodeReference(edge.sourceID, index.nodes[edge.sourceID]),
@@ -272,8 +285,9 @@ func (s *SQLite) EdgePathHistoryWindow(
 	for _, sourceID := range edgeIDs {
 		anchorArgs = append(anchorArgs, sourceID)
 	}
+	anchorArgs = append(anchorArgs, highWaterID)
 	anchorQuery := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
-		FROM path_events WHERE observed_at < ? AND edge_id IN (` + edgeClause + `)
+		FROM path_events WHERE observed_at < ? AND edge_id IN (` + edgeClause + `) AND id <= ?
 		ORDER BY observed_at DESC, id DESC LIMIT 1`
 	row := s.db.QueryRowContext(ctx, anchorQuery, anchorArgs...)
 	var storedAnchor storedPathEvent
@@ -294,7 +308,8 @@ func (s *SQLite) EdgePathHistoryWindow(
 		args = append(args, sourceID)
 	}
 	query := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
-		FROM path_events WHERE observed_at >= ? AND observed_at < ? AND edge_id IN (` + edgeClause + `)`
+		FROM path_events WHERE observed_at >= ? AND observed_at < ? AND edge_id IN (` + edgeClause + `) AND id <= ?`
+	args = append(args, highWaterID)
 	if cursorValue != "" {
 		query += ` AND (observed_at > ? OR (observed_at = ? AND id > ?))`
 		args = append(args, formatPathEventTime(cursor.ObservedAt), formatPathEventTime(cursor.ObservedAt), cursor.ID)
@@ -330,11 +345,12 @@ func (s *SQLite) EdgePathHistoryWindow(
 		items = items[:limit]
 		last := items[len(items)-1]
 		page.NextCursor = encodePathEventCursor(pathEventCursor{
-			ObservedAt: last.event.ObservedAt,
-			ID:         last.id,
-			WindowEnd:  to,
-			Window:     window,
-			EdgeID:     canonicalID,
+			ObservedAt:  last.event.ObservedAt,
+			ID:          last.id,
+			WindowEnd:   to,
+			Window:      window,
+			EdgeID:      canonicalID,
+			HighWaterID: highWaterID,
 		})
 	}
 	for _, item := range items {
@@ -1016,11 +1032,12 @@ type historyCursor struct {
 }
 
 type pathEventCursor struct {
-	ObservedAt time.Time            `json:"t"`
-	ID         int64                `json:"i"`
-	WindowEnd  time.Time            `json:"u"`
-	Window     domain.HistoryWindow `json:"w"`
-	EdgeID     string               `json:"e"`
+	ObservedAt  time.Time            `json:"t"`
+	ID          int64                `json:"i"`
+	WindowEnd   time.Time            `json:"u"`
+	Window      domain.HistoryWindow `json:"w"`
+	EdgeID      string               `json:"e"`
+	HighWaterID int64                `json:"h"`
 }
 
 func encodePathEventCursor(cursor pathEventCursor) string {
@@ -1032,7 +1049,8 @@ func decodePathEventCursor(value string) (pathEventCursor, error) {
 	var cursor pathEventCursor
 	payload, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil || json.Unmarshal(payload, &cursor) != nil || cursor.ObservedAt.IsZero() ||
-		cursor.ID < 1 || cursor.WindowEnd.IsZero() || !cursor.Window.Valid() || cursor.EdgeID == "" {
+		cursor.ID < 1 || cursor.WindowEnd.IsZero() || !cursor.Window.Valid() || cursor.EdgeID == "" ||
+		cursor.HighWaterID < cursor.ID {
 		return cursor, ErrInvalidHistoryCursor
 	}
 	return cursor, nil

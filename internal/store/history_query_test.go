@@ -342,6 +342,9 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 			}
 		}
 		if !insertedMovingWindowEvent {
+			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(-10*time.Minute).Add(250*time.Millisecond)), path, directions); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(10*time.Second)), path, directions); err != nil {
 				t.Fatal(err)
 			}
