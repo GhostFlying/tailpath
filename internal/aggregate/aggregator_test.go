@@ -890,8 +890,12 @@ func TestInventoryReplacementWithdrawsOnlyObserverProvenance(t *testing.T) {
 		CollectedAt: now, Kind: domain.ReportInventoryUpdate,
 		Observers: []domain.ObserverReport{{Observer: node("a", "A"), InventoryGeneration: "inventory-empty"}},
 	}
-	if _, err := aggregator.Apply(update); err != nil {
+	result, err := aggregator.ApplyAt(update, now)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(result.PathTransitions) != 1 || len(result.PathTransitions[0].Directions) != 0 {
+		t.Fatalf("inventory withdrawal transitions = %#v, want one empty direction state", result.PathTransitions)
 	}
 	edge := aggregator.Snapshot().Edges[0]
 	if edge.Observations == nil || len(edge.Observations) != 0 || edge.Path.Kind != domain.PathDirect || len(edge.Directions) != 0 {
@@ -1082,7 +1086,8 @@ func TestObserverWithdrawalIsImmediateIdempotentAndFenced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Receipt.Accepted || !result.CheckpointRequired || len(result.Traffic) != 0 || len(result.PathTransitions) != 0 {
+	if !result.Receipt.Accepted || !result.CheckpointRequired || len(result.Traffic) != 0 ||
+		len(result.PathTransitions) != 1 || len(result.PathTransitions[0].Directions) != 0 {
 		t.Fatalf("withdraw result = %#v", result)
 	}
 	after := aggregator.Snapshot()

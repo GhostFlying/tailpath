@@ -577,7 +577,13 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
 	cutoff := now.Add(-7 * 24 * time.Hour)
 	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
-	for _, at := range []time.Time{cutoff.Add(-2 * time.Hour), cutoff.Add(-time.Hour), cutoff.Add(time.Hour)} {
+	latestAnchor := cutoff.Add(-time.Hour).Add(200 * time.Nanosecond)
+	for _, at := range []time.Time{
+		cutoff.Add(-2 * time.Hour),
+		latestAnchor,
+		cutoff.Add(-time.Hour).Add(100 * time.Nanosecond),
+		cutoff.Add(time.Hour),
+	} {
 		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "retained", formatPathEventTime(at), path); err != nil {
 			t.Fatal(err)
 		}
@@ -626,7 +632,7 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 		}
 		retained = append(retained, observedAt)
 	}
-	want := []string{formatPathEventTime(cutoff.Add(-time.Hour)), formatPathEventTime(cutoff.Add(time.Hour))}
+	want := []string{formatPathEventTime(latestAnchor), formatPathEventTime(cutoff.Add(time.Hour))}
 	if len(retained) != len(want) || retained[0] != want[0] || retained[1] != want[1] {
 		t.Fatalf("retained path events = %#v, want %#v", retained, want)
 	}

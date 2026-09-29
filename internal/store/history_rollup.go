@@ -289,8 +289,8 @@ func maintainPathAnchors(ctx context.Context, tx *sql.Tx, cutoff time.Time) erro
 		        ON previous_map.physical_edge_id = previous.edge_id
 		      WHERE previous_map.logical_edge_id = anchor_map.logical_edge_id
 		        AND previous.observed_at < ?
-		      ORDER BY julianday(previous.observed_at) DESC, previous.id DESC LIMIT 1
+		      ORDER BY previous.observed_at DESC, previous.id DESC LIMIT 1
 		    )
-		)`, formatTime(cutoff), formatTime(cutoff), formatTime(cutoff))
+		)`, formatPathEventTime(cutoff), formatTime(cutoff), formatPathEventTime(cutoff))
 	return err
 }
