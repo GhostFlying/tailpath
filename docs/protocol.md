@@ -129,6 +129,13 @@ whether a short disco hint was present, not its value, so restart replay
 preserves `partial` status without turning the hint into durable identity
 evidence. Neither endpoint nor disco values are written to logs.
 
+History path events expose `directionsTracked`. When true, the event was
+recorded by the directional aggregator and an empty `directions` array is an
+explicit withdrawal. When false or absent, an empty array is unrecoverable
+legacy combined evidence and the compatibility path remains the only retained
+description. A non-empty `directions` array remains usable regardless of this
+event-level marker, including best-effort `legacy` projections.
+
 Collectors keep only the newest unsent state during an outage. Reconnect sends
 a fresh hello and baseline; a long outage delta is not presented as current
 traffic. LocalAPI and report failures use jittered exponential retry from two

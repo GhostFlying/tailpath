@@ -1032,6 +1032,9 @@ components:
           maxItems: 2
           items:
             $ref: '#/components/schemas/DirectionalPathState'
+        directionsTracked:
+          type: boolean
+          description: True when the event was recorded with directional tracking; an empty directions array then means explicit withdrawal rather than unrecoverable legacy evidence.
     PathEventPage:
       type: object
       required: [source, target, relatedNodes, events]

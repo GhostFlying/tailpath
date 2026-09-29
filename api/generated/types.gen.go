@@ -313,13 +313,16 @@ type PathCandidate struct {
 
 // PathEvent defines model for PathEvent.
 type PathEvent struct {
-	Conflicts      []PathObservation       `json:"conflicts"`
-	Directions     *[]DirectionalPathState `json:"directions,omitempty"`
-	Observations   []ObservationProvenance `json:"observations"`
-	ObservedAt     time.Time               `json:"observedAt"`
-	Path           PathObservation         `json:"path"`
-	PathCandidates *[]PathCandidate        `json:"pathCandidates,omitempty"`
-	PathState      *PathState              `json:"pathState,omitempty"`
+	Conflicts  []PathObservation       `json:"conflicts"`
+	Directions *[]DirectionalPathState `json:"directions,omitempty"`
+
+	// DirectionsTracked True when the event was recorded with directional tracking; an empty directions array then means explicit withdrawal rather than unrecoverable legacy evidence.
+	DirectionsTracked *bool                   `json:"directionsTracked,omitempty"`
+	Observations      []ObservationProvenance `json:"observations"`
+	ObservedAt        time.Time               `json:"observedAt"`
+	Path              PathObservation         `json:"path"`
+	PathCandidates    *[]PathCandidate        `json:"pathCandidates,omitempty"`
+	PathState         *PathState              `json:"pathState,omitempty"`
 }
 
 // PathEventPage defines model for PathEventPage.

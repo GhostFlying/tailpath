@@ -1107,7 +1107,8 @@ func TestOpenMigratesV4PathStormToStickyEvidence(t *testing.T) {
 	defer database.Close()
 	assertTableCount(t, database, "path_events", 1)
 	var rawPath, rawConflicts, rawDirections []byte
-	if err := database.db.QueryRow(`SELECT path, conflicts, directions FROM path_events`).Scan(&rawPath, &rawConflicts, &rawDirections); err != nil {
+	var directionsTracked bool
+	if err := database.db.QueryRow(`SELECT path, conflicts, directions, directions_tracked FROM path_events`).Scan(&rawPath, &rawConflicts, &rawDirections, &directionsTracked); err != nil {
 		t.Fatal(err)
 	}
 	var migratedPath domain.PathObservation
@@ -1127,6 +1128,81 @@ func TestOpenMigratesV4PathStormToStickyEvidence(t *testing.T) {
 	}
 	if len(directions) != 1 || directions[0].FromNodeID != "n_a" || directions[0].Evidence != domain.PathEvidenceLegacy {
 		t.Fatalf("migrated directions=%#v", directions)
+	}
+	if directionsTracked {
+		t.Fatal("migrated legacy event marked as directionally tracked")
+	}
+}
+
+func TestDirectionalTrackingMigrationDistinguishesLegacyFromWithdrawal(t *testing.T) {
+	path := t.TempDir() + "/history-v6.db"
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := raw.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for migrationIndex := 0; migrationIndex < 6; migrationIndex++ {
+		if err := migrations[migrationIndex](tx); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	pathPayload, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
+	if _, err := tx.Exec(
+		`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', '[]')`,
+		formatPathEventTime(now.Add(-time.Minute)), pathPayload,
+	); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = 6`); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := Open(path, 7*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	history, err := database.EdgeHistory(context.Background(), "n_a--n_b", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.PathEvents) != 1 || history.PathEvents[0].DirectionsTracked {
+		t.Fatalf("migrated v6 event = %#v, want one untracked legacy event", history.PathEvents)
+	}
+
+	tx, err = database.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordPathTransition(context.Background(), tx, domain.PathTransition{
+		EdgeID: "n_a--n_b", ObservedAt: now, Path: domain.PathObservation{Kind: domain.PathUnknown},
+		Directions: []domain.DirectionalPathState{},
+	}); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	history, err = database.EdgeHistory(context.Background(), "n_a--n_b", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.PathEvents) != 2 || !history.PathEvents[1].DirectionsTracked || len(history.PathEvents[1].Directions) != 0 {
+		t.Fatalf("recorded withdrawal = %#v, want tracked empty directions", history.PathEvents)
 	}
 }
 

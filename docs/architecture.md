@@ -160,6 +160,8 @@ timeline, and last-path state on the same interval. Each page carries the source
 target, and related historical node references needed to render its events
 without consulting current identity state. A path
 anchor records the latest logical-edge state across all aliases at the start of
-a window without replaying topology. Detail responses include source, target,
+a window without replaying topology. Its durable `directionsTracked` marker
+distinguishes an explicit empty-direction withdrawal from an unprojectable
+legacy compatibility event. Detail responses include source, target,
 observer, and Peer Relay node references so provenance never depends on a
 second identity lookup.

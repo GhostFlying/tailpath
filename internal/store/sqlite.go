@@ -352,7 +352,7 @@ func recordPathTransition(ctx context.Context, tx *sql.Tx, transition domain.Pat
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES (?, ?, ?, ?, ?, ?)`,
+		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions, directions_tracked) VALUES (?, ?, ?, ?, ?, ?, 1)`,
 		transition.EdgeID, formatPathEventTime(transition.ObservedAt), path, conflicts, observations, directions)
 	return err
 }
@@ -394,7 +394,7 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 	}
 
 	rows, err = s.db.QueryContext(ctx, `
-		SELECT observed_at, path, conflicts, observations, directions FROM path_events
+		SELECT observed_at, path, conflicts, observations, directions, directions_tracked FROM path_events
 		WHERE edge_id = ? AND julianday(observed_at) >= julianday(?) ORDER BY julianday(observed_at), id`, edgeID, formatTime(since))
 	if err != nil {
 		return history, err
@@ -404,7 +404,7 @@ func (s *SQLite) EdgeHistory(ctx context.Context, edgeID string, since time.Time
 		var rawTime string
 		var rawPath, rawConflicts, rawObservations, rawDirections []byte
 		var event domain.PathEvent
-		if err := rows.Scan(&rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections); err != nil {
+		if err := rows.Scan(&rawTime, &rawPath, &rawConflicts, &rawObservations, &rawDirections, &event.DirectionsTracked); err != nil {
 			return history, err
 		}
 		event.ObservedAt, err = time.Parse(time.RFC3339Nano, rawTime)

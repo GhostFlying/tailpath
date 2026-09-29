@@ -480,13 +480,14 @@ type TrafficBucket struct {
 }
 
 type PathEvent struct {
-	ObservedAt     time.Time               `json:"observedAt"`
-	Path           PathObservation         `json:"path"`
-	Conflicts      []PathObservation       `json:"conflicts"`
-	Observations   []ObservationProvenance `json:"observations"`
-	PathState      PathState               `json:"pathState"`
-	PathCandidates []PathCandidate         `json:"pathCandidates"`
-	Directions     []DirectionalPathState  `json:"directions"`
+	ObservedAt        time.Time               `json:"observedAt"`
+	Path              PathObservation         `json:"path"`
+	Conflicts         []PathObservation       `json:"conflicts"`
+	Observations      []ObservationProvenance `json:"observations"`
+	PathState         PathState               `json:"pathState"`
+	PathCandidates    []PathCandidate         `json:"pathCandidates"`
+	Directions        []DirectionalPathState  `json:"directions"`
+	DirectionsTracked bool                    `json:"directionsTracked"`
 }
 
 type AcceptedTraffic struct {
