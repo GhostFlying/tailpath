@@ -31,12 +31,15 @@ import { identityPresentation } from "../lib/identity";
 import {
   buildPathTimeline,
   buildDirectionalTimeline,
+  coalesceDirectionalTimeline,
   hasDirectionalHistory,
   pathColor,
   pathEvidenceKey,
   type PathTimelineItem,
   type DirectionalTimelineSegment,
 } from "./historyMath";
+
+const eventIndexPageSize = 100;
 
 interface Props {
   history: EdgeHistory;
@@ -178,11 +181,43 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
   const segments = useMemo(() => buildDirectionalTimeline(history), [history]);
   const [selectedID, setSelectedID] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [eventIndexPage, setEventIndexPage] = useState(-1);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
   const selected =
     segments.find((segment) => segment.id === selectedID) ?? segments.at(-1);
   const nodes = useMemo(() => buildHistoryNodeMaps(history), [history]);
+  const renderBudget = Math.max(
+    64,
+    Math.min(240, Math.floor((canvasWidth || 720) / 4)),
+  );
+  const renderedSegments = useMemo(
+    () => coalesceDirectionalTimeline(segments, renderBudget),
+    [renderBudget, segments],
+  );
+  const eventIndexPageCount = Math.max(
+    1,
+    Math.ceil(segments.length / eventIndexPageSize),
+  );
+  const activeEventIndexPage =
+    eventIndexPage < 0
+      ? eventIndexPageCount - 1
+      : Math.min(eventIndexPage, eventIndexPageCount - 1);
+  const eventIndexStart = Math.max(
+    0,
+    segments.length -
+      (eventIndexPageCount - activeEventIndexPage) * eventIndexPageSize,
+  );
+  const eventIndexEnd =
+    activeEventIndexPage === eventIndexPageCount - 1
+      ? segments.length
+      : Math.max(
+          0,
+          segments.length -
+            (eventIndexPageCount - activeEventIndexPage - 1) *
+              eventIndexPageSize,
+        );
+  const indexedSegments = segments.slice(eventIndexStart, eventIndexEnd);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -204,6 +239,18 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
 
   function select(segment: DirectionalTimelineSegment) {
     setSelectedID(segment.id);
+    const index = segments.findIndex(
+      (candidate) => candidate.id === segment.id,
+    );
+    if (index >= 0) {
+      setEventIndexPage(
+        Math.max(
+          0,
+          eventIndexPageCount -
+            Math.ceil((segments.length - index) / eventIndexPageSize),
+        ),
+      );
+    }
     onSelectTime(segment.from);
     if (mobile) setSheetOpen(true);
   }
@@ -264,7 +311,7 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                 ))}
               </div>
               <div className="directional-visual-segments" aria-hidden="true">
-                {segments.map((segment) => (
+                {renderedSegments.map((segment) => (
                   <DirectionalSegmentVisual
                     key={segment.id}
                     segment={segment}
@@ -280,11 +327,13 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                 aria-label="Path timeline"
               >
                 <span className="sr-only">
-                  {segments
-                    .map((segment) => compactDirectionalLabel(segment, nodes))
-                    .join("; ")}
+                  {segments.length} recorded path states.
+                  {selected
+                    ? ` Current: ${compactDirectionalLabel(selected, nodes)}.`
+                    : ""}{" "}
+                  Use the event index to inspect every retained event.
                 </span>
-                {segments.map((segment) => {
+                {renderedSegments.map((segment) => {
                   const position = timelinePosition(segment, history);
                   const active = segment.id === selected?.id;
                   const widthPixels = (position.width / 100) * canvasWidth;
@@ -312,11 +361,11 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                         width: `${position.width}%`,
                       }}
                       aria-pressed={active}
-                      aria-label={directionalSegmentLabel(
+                      aria-label={`${segment.coalescedCount ? `${segment.coalescedCount} path changes; latest: ` : ""}${directionalSegmentLabel(
                         segment,
                         history,
                         nodes,
-                      )}
+                      )}`}
                       onClick={() => select(segment)}
                     />
                   );
@@ -359,11 +408,34 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
       {segments.length ? (
         <details className="directional-event-index">
           <summary>{segments.length} recorded path states</summary>
-          <div>
-            {segments.map((segment) => (
+          <div className="directional-event-index-toolbar">
+            <span>
+              States {eventIndexStart + 1}–
+              {eventIndexStart + indexedSegments.length} of {segments.length}
+            </span>
+            <button
+              type="button"
+              disabled={activeEventIndexPage === 0}
+              onClick={() => setEventIndexPage(activeEventIndexPage - 1)}
+            >
+              Previous states
+            </button>
+            <button
+              type="button"
+              disabled={activeEventIndexPage === eventIndexPageCount - 1}
+              onClick={() => setEventIndexPage(activeEventIndexPage + 1)}
+            >
+              Next states
+            </button>
+          </div>
+          <div className="directional-event-index-list" role="list">
+            {indexedSegments.map((segment, index) => (
               <button
                 key={segment.id}
                 type="button"
+                role="listitem"
+                aria-posinset={eventIndexStart + index + 1}
+                aria-setsize={segments.length}
                 onClick={() => select(segment)}
               >
                 <time dateTime={segment.from}>
@@ -401,7 +473,8 @@ function DirectionalSegmentVisual({
   canvasWidth: number;
 }) {
   const position = timelinePosition(segment, history);
-  const showLabel = (position.width / 100) * canvasWidth >= 56;
+  const showLabel =
+    !segment.coalescedCount && (position.width / 100) * canvasWidth >= 56;
   const style = {
     left: `${position.left}%`,
     width: `${position.width}%`,
