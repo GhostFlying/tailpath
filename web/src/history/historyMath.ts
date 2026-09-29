@@ -52,6 +52,7 @@ export interface DirectionalTimelineSegment {
   bToA?: DirectionalPathState;
   anchored: boolean;
   noEvidence: boolean;
+  coalescedCount?: number;
 }
 
 export function trafficGeometry(
@@ -238,6 +239,32 @@ export function buildDirectionalTimeline(
       noEvidence,
     };
   });
+}
+
+export function coalesceDirectionalTimeline(
+  segments: DirectionalTimelineSegment[],
+  limit: number,
+): DirectionalTimelineSegment[] {
+  const safeLimit = Math.max(1, Math.floor(limit));
+  if (segments.length <= safeLimit) return segments;
+
+  const chunkSize = Math.ceil(segments.length / safeLimit);
+  const result: DirectionalTimelineSegment[] = [];
+  for (let start = 0; start < segments.length; start += chunkSize) {
+    const chunk = segments.slice(start, start + chunkSize);
+    const first = chunk[0];
+    const latest = chunk[chunk.length - 1];
+    const fromMs = new Date(first.from).getTime();
+    const toMs = new Date(latest.to).getTime();
+    result.push({
+      ...latest,
+      from: first.from,
+      to: latest.to,
+      durationMs: Math.max(0, toMs - fromMs),
+      coalescedCount: chunk.length,
+    });
+  }
+  return result;
 }
 
 function stablePathEventIDs(
