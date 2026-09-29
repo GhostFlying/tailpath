@@ -192,9 +192,12 @@ with an explicit collector clock warning when needed. Its relationship summary
 and exact-time snapshot share the same complete relay identity key, preserving
 endpoint, VNI, and resolution asymmetry. Timeline selection uses a stable event
 identity across pagination replacement, and a missing direction keeps both its
-primary and fallback cells unknown. Dense timelines are coalesced to a bounded
-pixel budget and the complete event index is mounted in accessible 100-row
-pages, keeping every retained state reachable without unbounded DOM growth.
+primary and fallback cells unknown. Dense timelines are coalesced into
+elapsed-time pixel bins rather than event-count chunks. Uniform bins preserve
+the actual state while mixed bins are explicitly rendered as dense changes, so
+a burst cannot stretch its latest state across an earlier long-lived path. The
+complete event index is mounted in accessible 100-row pages, keeping every
+retained state reachable without unbounded DOM growth.
 
 ## Next step
 
@@ -218,7 +221,7 @@ remediation, then rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 97 current Vitest tests pass.
+- TypeScript check and all 98 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
@@ -235,8 +238,10 @@ remediation, then rerun the complete repository and browser gates.
   horizontal-overflow checks, shared traffic selection, and exact-time state.
 - A two-page 900-event browser fixture renders all 900 events and exposes the
   500-event intermediate loading state without truncation or duplication.
+- An uneven-duration dense fixture preserves a 23-hour Direct state and marks
+  only the final one-hour burst as mixed at a 24-bin render budget.
 - The complete repository gate passed: generated-file consistency, shell
-  harnesses, formatting, `go vet`, all Go tests, TypeScript, 84 Vitest tests,
+  harnesses, formatting, `go vet`, all Go tests, TypeScript, 98 Vitest tests,
   the production Web build, and the browser matrix.
 - The final review-remediated Chromium browser matrix passed with CI
   concurrency: 68 passed and 32 intentionally skipped across desktop and mobile

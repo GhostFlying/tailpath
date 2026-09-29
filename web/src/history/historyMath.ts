@@ -53,6 +53,8 @@ export interface DirectionalTimelineSegment {
   anchored: boolean;
   noEvidence: boolean;
   coalescedCount?: number;
+  coalescedMixed?: boolean;
+  sourceSegmentId?: string;
 }
 
 export function trafficGeometry(
@@ -248,23 +250,96 @@ export function coalesceDirectionalTimeline(
   const safeLimit = Math.max(1, Math.floor(limit));
   if (segments.length <= safeLimit) return segments;
 
-  const chunkSize = Math.ceil(segments.length / safeLimit);
+  const timelineStart = new Date(segments[0].from).getTime();
+  const timelineEnd = new Date(segments.at(-1)?.to ?? segments[0].to).getTime();
+  if (
+    !Number.isFinite(timelineStart) ||
+    !Number.isFinite(timelineEnd) ||
+    timelineEnd <= timelineStart
+  ) {
+    return [coalescedTimelineBin(segments, timelineStart, timelineEnd, 0)];
+  }
+
+  // Allocate the render budget by elapsed time, not event count. Count-based
+  // chunks can make the final state in a burst appear to cover a much longer
+  // preceding state. A mixed pixel bin is rendered as dense activity instead
+  // of claiming that any one constituent state filled the entire interval.
+  const durationMs = timelineEnd - timelineStart;
+  const binCount = Math.min(safeLimit, Math.max(1, Math.ceil(durationMs)));
   const result: DirectionalTimelineSegment[] = [];
-  for (let start = 0; start < segments.length; start += chunkSize) {
-    const chunk = segments.slice(start, start + chunkSize);
-    const first = chunk[0];
-    const latest = chunk[chunk.length - 1];
-    const fromMs = new Date(first.from).getTime();
-    const toMs = new Date(latest.to).getTime();
-    result.push({
-      ...latest,
-      from: first.from,
-      to: latest.to,
-      durationMs: Math.max(0, toMs - fromMs),
-      coalescedCount: chunk.length,
-    });
+  let segmentIndex = 0;
+  for (let binIndex = 0; binIndex < binCount; binIndex += 1) {
+    const binStart =
+      timelineStart + Math.floor((durationMs * binIndex) / binCount);
+    const binEnd =
+      timelineStart + Math.floor((durationMs * (binIndex + 1)) / binCount);
+    while (
+      segmentIndex < segments.length &&
+      new Date(segments[segmentIndex].to).getTime() <= binStart
+    ) {
+      segmentIndex += 1;
+    }
+    const overlapping: DirectionalTimelineSegment[] = [];
+    for (let index = segmentIndex; index < segments.length; index += 1) {
+      const segment = segments[index];
+      const segmentStart = new Date(segment.from).getTime();
+      const segmentEnd = new Date(segment.to).getTime();
+      if (segmentStart >= binEnd) break;
+      if (segmentEnd > binStart) overlapping.push(segment);
+    }
+    if (overlapping.length) {
+      result.push(
+        coalescedTimelineBin(overlapping, binStart, binEnd, binIndex),
+      );
+    }
   }
   return result;
+}
+
+function coalescedTimelineBin(
+  segments: DirectionalTimelineSegment[],
+  fromMs: number,
+  toMs: number,
+  index: number,
+): DirectionalTimelineSegment {
+  const latest = segments.at(-1) ?? segments[0];
+  const stateKeys = new Set(segments.map(directionalTimelineStateKey));
+  return {
+    ...latest,
+    id: `render-bin:${index}:${latest.id}`,
+    sourceSegmentId: latest.sourceSegmentId ?? latest.id,
+    from: Number.isFinite(fromMs)
+      ? new Date(fromMs).toISOString()
+      : latest.from,
+    to: Number.isFinite(toMs) ? new Date(toMs).toISOString() : latest.to,
+    durationMs: Math.max(0, toMs - fromMs),
+    coalescedCount: segments.length,
+    coalescedMixed: stateKeys.size > 1,
+  };
+}
+
+function directionalTimelineStateKey(
+  segment: DirectionalTimelineSegment,
+): string {
+  const directionKey = (state: DirectionalPathState | undefined) =>
+    state
+      ? [
+          state.fromNodeId,
+          state.toNodeId,
+          pathIdentityKey(state.primaryPath),
+          state.fallbackPath ? pathIdentityKey(state.fallbackPath) : "",
+          state.evidence,
+          state.inferenceRule ?? "",
+          state.observerId,
+        ].join("\u001f")
+      : "missing";
+  return [
+    segment.noEvidence ? "no-evidence" : "evidence",
+    directionKey(segment.aToB),
+    directionKey(segment.bToA),
+    pathIdentityKey(segment.event.path),
+    segment.event.pathState ?? "",
+  ].join("\u001e");
 }
 
 function stablePathEventIDs(
