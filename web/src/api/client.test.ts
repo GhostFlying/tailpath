@@ -70,10 +70,11 @@ describe("getEdgePathHistory", () => {
       "cursor value",
       undefined,
       200,
+      "2026-08-30T00:02:03.456Z",
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/history/edges/node-a--node-b/paths?window=24h&limit=200&cursor=cursor+value",
+      "/api/v1/history/edges/node-a--node-b/paths?window=24h&limit=200&to=2026-08-30T00%3A02%3A03.456Z&cursor=cursor+value",
       expect.objectContaining({ headers: { Accept: "application/json" } }),
     );
     expect(page.anchor?.directions).toEqual([]);

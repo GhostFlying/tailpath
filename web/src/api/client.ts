@@ -91,8 +91,10 @@ export function getEdgePathHistory(
   cursor = "",
   signal?: AbortSignal,
   limit = 500,
+  to?: string,
 ): Promise<PathEventPage> {
   const query = new URLSearchParams({ window, limit: String(limit) });
+  if (to) query.set("to", to);
   if (cursor) query.set("cursor", cursor);
   return getJSON<NullablePathEventPage>(
     `/api/v1/history/edges/${encodeURIComponent(edgeId)}/paths?${query.toString()}`,
