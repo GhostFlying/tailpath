@@ -519,6 +519,9 @@ function routeEdgeElement(
   candidateClass = "",
 ): ElementDefinition {
   const isActive = edge.state === "active";
+  const hasForwardFlow = route.directional
+    ? route.rate > 0
+    : edge.aToBBytesPerSecond > 0;
   const label = isActive && showLabel ? formatCompactRate(route.rate) : "";
   return {
     group: "edges",
@@ -541,7 +544,7 @@ function routeEdgeElement(
       route.directional ? "directional-route" : "",
       route.curveClass ?? "",
       route.fallback ? "fallback-route" : "",
-      isActive && route.rate > 0 ? "flow-forward" : "",
+      isActive && hasForwardFlow ? "flow-forward" : "",
       isActive && !route.directional && edge.bToABytesPerSecond > 0
         ? "flow-reverse"
         : "",
