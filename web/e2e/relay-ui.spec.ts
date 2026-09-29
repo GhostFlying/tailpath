@@ -249,6 +249,9 @@ test("expands asymmetric live paths and keeps fallback traffic single-counted", 
   await expect(inspector).toContainText("Resolution: endpoint match");
   await expect(inspector).toContainText("Endpoint path evidence");
   await expect(inspector).toContainText("Relay identity evidence");
+  await expect(inspector.locator(".history-section")).toContainText(
+    "Recent paths",
+  );
   await expect(inspector).not.toContainText("Switching");
   await expect(inspector.locator(".direction-path-card")).toHaveCount(2);
   await expect(inspector.locator(".direction-fallback")).toHaveCount(1);

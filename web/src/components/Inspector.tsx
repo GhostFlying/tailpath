@@ -11,8 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getEdgeHistory } from "../api/client";
 import type {
   DirectionalPathState,
+  EdgeHistory,
+  PathEvent,
   PathCandidate,
   PathObservation,
   Topology,
@@ -38,6 +41,7 @@ interface Props {
 }
 
 export function Inspector({ topology, edge, node, onClose }: Props) {
+  const history = useEdgeHistory(edge?.id ?? null);
   if (!edge && !node) return null;
   return (
     <aside className="inspector" aria-label="Topology details">
@@ -50,7 +54,7 @@ export function Inspector({ topology, edge, node, onClose }: Props) {
         <X size={18} />
       </button>
       {edge ? (
-        <EdgeDetails topology={topology} edge={edge} />
+        <EdgeDetails topology={topology} edge={edge} history={history} />
       ) : node ? (
         <NodeDetails topology={topology} node={node} />
       ) : null}
@@ -61,9 +65,11 @@ export function Inspector({ topology, edge, node, onClose }: Props) {
 function EdgeDetails({
   topology,
   edge,
+  history,
 }: {
   topology: Topology;
   edge: TopologyEdge;
+  history: EdgeHistory | null;
 }) {
   const candidates = peerRelayCandidates(edge);
   const switching = edge.pathState === "switching" || candidates.length > 1;
@@ -75,7 +81,13 @@ function EdgeDetails({
     setSelectedCandidate(firstCandidateKey);
   }, [edge.id, edge.pathState, firstCandidateKey]);
   if (edgeDirections(edge).length) {
-    return <DirectionalEdgeDetails topology={topology} edge={edge} />;
+    return (
+      <DirectionalEdgeDetails
+        topology={topology}
+        edge={edge}
+        history={history}
+      />
+    );
   }
   const source = topology.nodes.find((node) => node.id === edge.source);
   const target = topology.nodes.find((node) => node.id === edge.target);
@@ -228,6 +240,7 @@ function EdgeDetails({
           </p>
         ) : null}
       </section>
+      <RecentPaths history={history} />
     </>
   );
 }
@@ -235,9 +248,11 @@ function EdgeDetails({
 function DirectionalEdgeDetails({
   topology,
   edge,
+  history,
 }: {
   topology: Topology;
   edge: TopologyEdge;
+  history: EdgeHistory | null;
 }) {
   const directions = edgeDirections(edge);
   const source = topology.nodes.find((node) => node.id === edge.source);
@@ -345,8 +360,68 @@ function DirectionalEdgeDetails({
         topology={topology}
         observations={relayEvidence}
       />
+      <RecentPaths history={history} />
     </>
   );
+}
+
+function RecentPaths({ history }: { history: EdgeHistory | null }) {
+  if (!history?.pathEvents.length) return null;
+  return (
+    <section className="history-section">
+      <h3>Recent paths</h3>
+      {history.pathEvents
+        .slice(-5)
+        .reverse()
+        .map((event, index) => (
+          <div
+            className="history-row"
+            key={`${event.observedAt}-${event.path.kind}-${index}`}
+          >
+            <span>{pathEventLabel(event)}</span>
+            <small>{event.observations.length} sources</small>
+            <time dateTime={event.observedAt}>
+              {formatAgo(event.observedAt)}
+            </time>
+          </div>
+        ))}
+    </section>
+  );
+}
+
+function pathEventLabel(event: PathEvent) {
+  const directions = event.directions ?? [];
+  if (directions.length === 1) {
+    return `Partial · ${pathLabel(directions[0].primaryPath)}`;
+  }
+  if (
+    directions.length === 2 &&
+    directionalStateKey(directions[0]) !== directionalStateKey(directions[1])
+  ) {
+    return "Asymmetric paths";
+  }
+  if (directions.length === 2) {
+    const primary = pathLabel(directions[0].primaryPath);
+    return directions[0].fallbackPath ? `${primary} + DERP fallback` : primary;
+  }
+  return event.pathState === "switching"
+    ? "Peer Relay · Switching"
+    : pathLabel(event.path);
+}
+
+function directionalStateKey(state: DirectionalPathState) {
+  return `${pathIdentityKey(state.primaryPath)}|${state.fallbackPath ? pathIdentityKey(state.fallbackPath) : "none"}`;
+}
+
+function pathIdentityKey(path: PathObservation) {
+  switch (path.kind) {
+    case "derp":
+      return `derp:${path.derpRegion ?? "unknown"}`;
+    case "peer_relay":
+      return `peer-relay:${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? path.peerRelayVni ?? "unknown"}`;
+    default:
+      return path.kind;
+  }
 }
 
 function DirectionalPathCard({
@@ -669,6 +744,22 @@ function NodeDetails({
       <MetadataConflictList conflicts={node.directory?.conflicts ?? []} />
     </>
   );
+}
+
+function useEdgeHistory(edgeID: string | null) {
+  const [history, setHistory] = useState<EdgeHistory | null>(null);
+  useEffect(() => {
+    setHistory(null);
+    if (!edgeID) return;
+    const controller = new AbortController();
+    void getEdgeHistory(edgeID, controller.signal)
+      .then(setHistory)
+      .catch(() => {
+        if (!controller.signal.aborted) setHistory(null);
+      });
+    return () => controller.abort();
+  }, [edgeID]);
+  return history;
 }
 
 function formatClockSkew(milliseconds: number) {

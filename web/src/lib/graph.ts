@@ -39,6 +39,7 @@ interface RenderedRoute {
   to: string;
   path: PathObservation;
   rate: number;
+  labelRate?: number;
   showLabel: boolean;
   directional: boolean;
   fallback: boolean;
@@ -456,7 +457,8 @@ function routesFor(edge: TopologyEdge): RenderedRoute[] {
       to: direction.toNodeId,
       path: direction.primaryPath,
       rate: fromSource ? edge.aToBBytesPerSecond : edge.bToABytesPerSecond,
-      showLabel: true,
+      labelRate: edge.aToBBytesPerSecond + edge.bToABytesPerSecond,
+      showLabel: index === 0,
       directional: true,
       fallback: false,
       curveClass: index === 0 ? "route-a" : "route-b",
@@ -522,7 +524,10 @@ function routeEdgeElement(
   const hasForwardFlow = route.directional
     ? route.rate > 0
     : edge.aToBBytesPerSecond > 0;
-  const label = isActive && showLabel ? formatCompactRate(route.rate) : "";
+  const label =
+    isActive && showLabel
+      ? formatCompactRate(route.labelRate ?? route.rate)
+      : "";
   return {
     group: "edges",
     data: {
