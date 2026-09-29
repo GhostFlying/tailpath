@@ -6,9 +6,10 @@ import {
   Waypoints,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
-import type { EdgeHistory, HistoryWindow, PathObservation } from "../api/types";
+import type { EdgeHistory, HistoryWindow } from "../api/types";
 import { formatAgo, formatBytes, pathLabel } from "../lib/format";
 import { IdentityBadge } from "../lib/identity";
+import { pathIdentityKey } from "../lib/pathIdentity";
 import { DirectionalTrafficChart } from "./DirectionalTrafficChart";
 import { PathTimeline } from "./PathTimeline";
 
@@ -191,7 +192,7 @@ export function summarizeLastPath(
   if (directions.length === 2) {
     const keys = directions.map(
       (direction) =>
-        `${historyPathKey(direction.primaryPath)}|${direction.fallbackPath ? historyPathKey(direction.fallbackPath) : "none"}`,
+        `${pathIdentityKey(direction.primaryPath)}|${direction.fallbackPath ? pathIdentityKey(direction.fallbackPath) : "none"}`,
     );
     if (keys[0] !== keys[1]) {
       return { label: "Asymmetric paths", asymmetric: true, partial: false };
@@ -214,13 +215,4 @@ export function summarizeLastPath(
     asymmetric: false,
     partial: false,
   };
-}
-
-function historyPathKey(path: PathObservation) {
-  if (path.kind === "direct") return "direct";
-  if (path.kind === "derp") return `derp:${path.derpRegion ?? "unknown"}`;
-  if (path.kind === "peer_relay") {
-    return `peer-relay:${path.peerRelayStableNodeId ?? path.peerRelayEndpoint ?? path.peerRelayVni ?? "unknown"}`;
-  }
-  return "unknown";
 }
