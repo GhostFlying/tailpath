@@ -148,38 +148,40 @@ missing direction unknown, labels evidence, and separates endpoint path
 evidence from relay-session identity evidence. Legacy edges without directions
 retain their compatibility candidate view.
 
-The ready-for-review stack received ten actionable inline findings on
-2026-09-28. Remediation is in progress in dependency order. The API slice now
-clears relay inference when a peer disappears, freezes pagination boundaries,
-and returns the historical node references needed by every page. The Live slice
-now derives collapsed flow arrows from their actual directional rates, labels
-single-direction state as partial evidence, suppresses arrows on recent routes,
-and exposes the relay resolution method. The History slice must preserve unknown
-directions in summaries, render complete per-direction evidence, and avoid
-temporarily replacing the newest compatibility events with an incomplete old
-page.
+The ready-for-review stack received fifteen actionable inline findings across
+two review passes. The API slice now clears relay inference when a peer
+disappears, freezes pagination boundaries, returns historical node references
+on every page, repairs schema-v5 ordering in migration 6, records resolved relay
+endpoint/VNI changes, and rejects inferred evidence without a versioned rule.
+The Live slice now derives arrows from directional rates, distinguishes partial
+evidence, suppresses recent arrows, exposes relay resolution, renders one total
+rate label per logical relationship, and retains the recent-path inspector.
 
 ## Next step
 
-Update PR #190 with its tested review fixes, then safely rebase PR #191 before
-addressing its three History review findings.
+Update PR #190, safely rebase PR #191, retain its completed History review
+fixes, then rerun the complete repository and browser gates.
 
 ## Verification
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
-  window end, and node references first encountered on a paginated page.
+  window end, node references first encountered on a paginated page, v5 event
+  ordering repair, resolved relay endpoint/VNI transitions, and mandatory
+  inference rules at both validation boundaries.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 78 current Vitest tests pass.
+- TypeScript check and all 79 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
-- The full 12-case relay UI browser matrix passes on desktop and mobile.
+- The full Live browser matrix passes on desktop and mobile: 62 passed and 30
+  intentionally skipped, including one total-rate label and the restored
+  recent-path inspector.
 - The Browser plugin is unavailable in this environment; repository Playwright
   is the recorded browser-validation fallback.
 
