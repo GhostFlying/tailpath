@@ -163,18 +163,18 @@ pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
 records resolved relay endpoint/VNI changes, and rejects inferred evidence
 without a versioned rule. It also clears directions when endpoint evidence is
-withdrawn, includes fallback kinds in History filters, and rejects fresh legacy
-evidence. The Live slice now derives arrows from directional rates,
+withdrawn, includes fallback kinds in History filters, rejects fresh legacy
+evidence, preserves Direct address changes while ignoring port churn, and uses
+indexed fixed-width nanosecond timestamps for exact History boundaries. The
+Live slice now derives arrows from each observed direction's own rate,
 distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
 recent-path inspector, treats complete relay identity as the shared Live and
-recent-event comparison key, and separates reciprocal route geometry. Obstacle
-routing now coordinates reciprocal curves on the same signed side instead of
-letting independently selected offsets cancel, and logical edge selection is
-reapplied whenever collapsed and expanded route IDs replace one another. The
-default directional Bézier geometry participates in obstacle and route-crossing
-checks even before inline rerouting, and the legend classifies DERP fallback as
-path evidence rather than traffic activity.
+recent-event comparison key, separates reciprocal route geometry, and
+describes observed and inferred fallback evidence without conflating them.
+Obstacle routing coordinates reciprocal curves on the same signed side instead
+of letting independently selected offsets cancel, and logical edge selection
+is reapplied whenever collapsed and expanded route IDs replace one another.
 
 History preserves unknown directions in summaries, renders complete
 per-direction evidence and relay resolution metadata, keeps compatibility
@@ -198,14 +198,16 @@ remediation, then rerun the complete repository and browser gates.
   irrecoverable schema-v5 deduplication boundary, resolved relay endpoint/VNI
   transitions, withdrawn directions, primary/fallback History filtering, and
   rejection of inferred-without-rule or fresh legacy evidence at both report
-  boundaries.
+  boundaries, Direct address-versus-port changes, and exact nanosecond window
+  bounds across migrated RFC3339Nano timestamps.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
-  direction copy, exact relay resolution metadata, and desktop/mobile rendering.
+  direction copy and flow rates, exact relay resolution metadata, fallback
+  evidence wording, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 88 current Vitest tests pass.
+- TypeScript check and all 90 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
