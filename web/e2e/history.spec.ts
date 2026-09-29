@@ -278,6 +278,11 @@ test("renders directional history on shared chronological lanes", async ({
     await expect(sheet).toContainText("Received");
     await expect(sheet).toContainText("Resolution: endpoint match");
     await expect(sheet).toContainText("Collector clock warning");
+    const retainedEvidence = sheet.locator(".directional-history-evidence");
+    await expect(retainedEvidence).toContainText("Relay identity");
+    await expect(retainedEvidence).toContainText("Collected");
+    await expect(retainedEvidence).toContainText("Received");
+    await expect(retainedEvidence).toContainText("Collector clock warning");
     await expect(
       sheet.getByRole("button", { name: "Close path evidence" }),
     ).toBeFocused();
@@ -299,6 +304,11 @@ test("renders directional history on shared chronological lanes", async ({
     await expect(table).toContainText("Received");
     await expect(table).toContainText("Resolution: endpoint match");
     await expect(table).toContainText("Collector clock warning");
+    const retainedEvidence = page.locator(".directional-history-evidence");
+    await expect(retainedEvidence).toContainText("Relay identity");
+    await expect(retainedEvidence).toContainText("Collected");
+    await expect(retainedEvidence).toContainText("Received");
+    await expect(retainedEvidence).toContainText("Collector clock warning");
   }
 
   const labelFailures = await page
@@ -329,6 +339,48 @@ test("renders directional history on shared chronological lanes", async ({
     ),
     fullPage: true,
   });
+});
+
+test("keeps directional evidence within an intermediate desktop width", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop"));
+  await page.setViewportSize({ width: 1000, height: 900 });
+  const detail = directionalHistoryFor(edgeSummaries[0], 3);
+  await page.route(
+    "**/api/v1/history/edges/node-mac--node-dev/paths?**",
+    (route) =>
+      route.fulfill({
+        json: {
+          source: detail.source,
+          target: detail.target,
+          relatedNodes: detail.relatedNodes,
+          anchor: detail.pathAnchor,
+          events: detail.pathEvents,
+        },
+      }),
+  );
+  await page.route("**/api/v1/history/edges/node-mac--node-dev?**", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/history/edges/node-mac--node-dev?window=24h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  const table = page.getByRole("table", { name: "Directional path state" });
+  await expect(table).toBeVisible();
+  expect(
+    await table.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("loads all 900 directional path events without truncation", async ({
@@ -368,16 +420,22 @@ test("loads all 900 directional path events without truncation", async ({
     })),
   };
   let pageRequests = 0;
+  let releaseSecondPage: (() => void) | undefined;
+  const secondPageGate = new Promise<void>((resolve) => {
+    releaseSecondPage = resolve;
+  });
   await page.route(
     "**/api/v1/history/edges/node-mac--node-dev/paths?**",
     (route) => {
       pageRequests += 1;
-      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      const query = new URL(route.request().url()).searchParams;
+      expect(query.get("to")).toBe(detail.to);
+      const cursor = query.get("cursor");
       const events = cursor
         ? detail.pathEvents.slice(500)
         : detail.pathEvents.slice(0, 500);
       return (async () => {
-        if (cursor) await new Promise((resolve) => setTimeout(resolve, 500));
+        if (cursor) await secondPageGate;
         await route.fulfill({
           json: {
             source: detail.source,
@@ -405,15 +463,26 @@ test("loads all 900 directional path events without truncation", async ({
   await expect(
     page.getByText("Loading path history · 500 events", { exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "false",
+  );
+  await expect(page.getByLabel("History server connecting")).toBeVisible();
   await expect(page.locator(".history-detail-summary")).toContainText(
     "Peer Relay",
   );
+  releaseSecondPage?.();
   await expect(
     page.getByText("Complete · 900 events", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Path timeline" }).getByRole("listitem"),
   ).toHaveCount(901);
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  await expect(page.getByLabel("History server reachable")).toBeVisible();
   await expect(page.getByText("Latest retained points shown")).toHaveCount(0);
   expect(pageRequests).toBe(2);
 });
@@ -958,6 +1027,19 @@ function directionalHistoryFor(
           collectedAt: observedAt,
           receivedAt: observedAt,
           clockSkewed: false,
+        },
+        {
+          observerId: "relay-hangzhou",
+          path: relay,
+          collectedAt: new Date(Date.parse(observedAt) + 1_000).toISOString(),
+          receivedAt: new Date(Date.parse(observedAt) + 3_000).toISOString(),
+          clockSkewed: index === eventCount - 1,
+          relaySession: {
+            sessionId: `relay-session-${index}`,
+            vni: relay.peerRelayVni,
+            sourceIdentityStatus: "resolved" as const,
+            targetIdentityStatus: "resolved" as const,
+          },
         },
       ],
       directions: [aToB, bToA],

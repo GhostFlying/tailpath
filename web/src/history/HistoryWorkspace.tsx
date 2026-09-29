@@ -80,7 +80,16 @@ export default function HistoryWorkspace() {
     navigate(`/history${search ? `?${search}` : ""}`);
   }
 
-  const ready = isMobile && edgeId ? !detail.loading : !index.loading;
+  const indexRequired = !(isMobile && edgeId);
+  const detailRequired = Boolean(edgeId);
+  const ready =
+    (!indexRequired ||
+      (!index.loading && !index.error && index.page !== null)) &&
+    (!detailRequired ||
+      (!detail.loading &&
+        !detail.pathsLoading &&
+        !detail.error &&
+        detail.history !== null));
 
   return (
     <main
@@ -128,7 +137,12 @@ function historyConnection(
   indexRequired: boolean,
   detailRequired: boolean,
   index: { page: unknown; loading: boolean; error: string | null },
-  detail: { history: unknown; loading: boolean; error: string | null },
+  detail: {
+    history: unknown;
+    loading: boolean;
+    pathsLoading: boolean;
+    error: string | null;
+  },
 ): WorkspaceConnection {
   if ((indexRequired && index.error) || (detailRequired && detail.error)) {
     return {
@@ -143,7 +157,7 @@ function historyConnection(
   if (
     !ready ||
     (indexRequired && index.loading) ||
-    (detailRequired && detail.loading)
+    (detailRequired && (detail.loading || detail.pathsLoading))
   ) {
     return {
       state: "connecting",
