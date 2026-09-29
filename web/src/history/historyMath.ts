@@ -225,7 +225,9 @@ export function buildDirectionalTimeline(
     const eventIsDirectional =
       event.directionsTracked === true || eventHasDirections;
     const missingAfterDirectionalEvidence =
-      !eventIsDirectional && hasSeenDirectionalEvent;
+      event.directionsTracked === undefined &&
+      !eventHasDirections &&
+      hasSeenDirectionalEvent;
     hasSeenDirectionalEvent ||= eventIsDirectional;
     return {
       id: eventIDs[index],

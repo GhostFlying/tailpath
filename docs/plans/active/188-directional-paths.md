@@ -162,7 +162,7 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack received fifty-six actionable inline findings, all now
+The ready-for-review stack received fifty-seven actionable inline findings, all now
 addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
@@ -223,12 +223,16 @@ StableNodeID do not incorrectly become contradictory evidence.
 Event-index paging is stored as an offset from the newest state, so prepending
 older pages keeps a selected, focused event on the same visible page instead of
 jumping the index backward.
+Migrated schema-v6 events with `directionsTracked: false` remain legacy combined
+evidence even when an earlier legacy event has a non-empty directional
+projection. Only tracked empty events, or marker-less empty events following
+directional evidence from an older server, are interpreted as withdrawals.
 
 ## Next step
 
-Run the complete repository gate, update the rebased PR stack, then reply to and
-resolve the two newly addressed API review threads before requesting a fresh
-review.
+Push the final review remediation, resolve its review thread, and request a
+fresh review. After the human rebase-merge, wait for the immutable image for the
+exact resulting `main` SHA before digest-pinned dogfood deployment.
 
 ## Verification
 
@@ -302,6 +306,10 @@ review.
   address while ignoring its port, so retained address changes remain visible.
   A missing anchor synthesizes pre-window Unknown only when the first event is
   strictly later than the window start, avoiding a zero-duration duplicate.
+- Explicitly untracked empty migrated events remain compatibility evidence after
+  a non-empty legacy projection; focused timeline and last-path summary tests
+  cover this mixed legacy sequence. All 106 Vitest tests and the TypeScript and
+  formatting checks pass.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.

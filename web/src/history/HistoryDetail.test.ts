@@ -78,4 +78,21 @@ describe("summarizeLastPath", () => {
     });
     expect(summarizeLastPath(event, false).label).toBe("Direct");
   });
+
+  it("keeps an explicitly untracked empty event as legacy evidence", () => {
+    const event = {
+      observedAt: "2026-09-29T00:00:00Z",
+      path: { kind: "derp", derpRegion: "hkg" },
+      conflicts: [],
+      observations: [],
+      directions: [],
+      directionsTracked: false,
+    } as EdgeHistory["pathEvents"][number];
+
+    expect(summarizeLastPath(event, true)).toEqual({
+      label: "DERP hkg",
+      asymmetric: false,
+      partial: false,
+    });
+  });
 });

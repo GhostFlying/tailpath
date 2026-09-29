@@ -261,6 +261,32 @@ describe("path timeline", () => {
     expect(hasDirectionalHistory(history)).toBe(false);
   });
 
+  it("keeps an explicitly untracked empty event as legacy after projected legacy evidence", () => {
+    const history = directionalHistory();
+    history.pathAnchor = {
+      ...history.pathAnchor!,
+      directionsTracked: false,
+    };
+    history.pathEvents = [
+      {
+        observedAt: "2026-08-24T00:30:00Z",
+        path: { kind: "derp", derpRegion: "hkg" },
+        conflicts: [],
+        observations: [],
+        directions: [],
+        directionsTracked: false,
+      },
+    ];
+
+    expect(hasDirectionalHistory(history)).toBe(true);
+    expect(buildDirectionalTimeline(history).at(-1)).toMatchObject({
+      noEvidence: false,
+      aToB: undefined,
+      bToA: undefined,
+      event: { path: { kind: "derp", derpRegion: "hkg" } },
+    });
+  });
+
   it("coalesces dense visual segments within a fixed render budget", () => {
     const base = buildDirectionalTimeline(directionalHistory())[1];
     const segments = Array.from({ length: 901 }, (_, index) => ({

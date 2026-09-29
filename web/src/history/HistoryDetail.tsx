@@ -215,7 +215,11 @@ export function summarizeLastPath(
       partial: true,
     };
   }
-  if (event && directionalHistory) {
+  if (
+    event &&
+    (event.directionsTracked === true ||
+      (event.directionsTracked === undefined && directionalHistory))
+  ) {
     return {
       label: "Unknown / No fresh observation",
       asymmetric: false,
