@@ -162,8 +162,10 @@ The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
 records resolved relay endpoint/VNI changes, and rejects inferred evidence
-without a versioned rule. The Live slice now derives arrows from directional
-rates, distinguishes partial evidence, suppresses recent arrows, exposes relay
+without a versioned rule. It also clears directions when endpoint evidence is
+withdrawn, includes fallback kinds in History filters, and rejects fresh legacy
+evidence. The Live slice now derives arrows from directional rates,
+distinguishes partial evidence, suppresses recent arrows, exposes relay
 resolution, renders one total rate label per logical relationship, retains the
 recent-path inspector, treats complete relay identity as the shared Live and
 recent-event comparison key, and separates reciprocal route geometry. Obstacle
@@ -179,7 +181,9 @@ per-direction evidence and relay resolution metadata, keeps compatibility
 events visible while pagination runs, fixes the first page to the detail
 response's absolute end, reports paging through its readiness state, adapts the
 evidence table between 621px and 1100px, and timestamps relay-session evidence
-with an explicit collector clock warning when needed.
+with an explicit collector clock warning when needed. Its relationship summary
+and exact-time snapshot share the same complete relay identity key, preserving
+endpoint, VNI, and resolution asymmetry.
 
 ## Next step
 
@@ -192,14 +196,16 @@ remediation, then rerun the complete repository and browser gates.
   wall clock during 900-event pagination, exclusion of events after the frozen
   window end, node references first encountered on a paginated page, the
   irrecoverable schema-v5 deduplication boundary, resolved relay endpoint/VNI
-  transitions, and mandatory inference rules at both validation boundaries.
+  transitions, withdrawn directions, primary/fallback History filtering, and
+  rejection of inferred-without-rule or fresh legacy evidence at both report
+  boundaries.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 87 Live-slice Vitest tests pass.
+- TypeScript check and all 88 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
@@ -222,7 +228,8 @@ remediation, then rerun the complete repository and browser gates.
 - The final review-remediated Chromium browser matrix passed with CI
   concurrency: 68 passed and 32 intentionally skipped across desktop and mobile
   projects, including the absolute paging boundary, incomplete readiness state,
-  intermediate desktop width, and complete relay observation timestamps.
+  intermediate desktop width, complete relay observation timestamps, and
+  4293/8 asymmetry in both the summary and exact-time snapshot.
 - The layout/response/obstacle Chromium gate passed with the same diagnostics
   flags as CI: 23 passed and one desktop-only 320px duplicate intentionally
   skipped. WebKit remains assigned to the hosted layout workflow because it is
