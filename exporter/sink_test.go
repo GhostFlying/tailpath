@@ -230,6 +230,18 @@ func runtimeSnapshot(at time.Time, observer string, peerRx, peerTx int64) Snapsh
 	}
 }
 
+func TestValidateSnapshotRequiresRuleForInferredEvidence(t *testing.T) {
+	snapshot := runtimeSnapshot(time.Now().UTC(), "runtime", 0, 0)
+	snapshot.Peers[0].PathEvidence = PathEvidenceInferred
+	if _, err := validateAndCloneSnapshot(snapshot, time.Now().UTC()); err == nil {
+		t.Fatal("inferred evidence without an inference rule was accepted")
+	}
+	snapshot.Peers[0].PathInferenceRule = "tailscale-status-fallback-v1"
+	if _, err := validateAndCloneSnapshot(snapshot, time.Now().UTC()); err != nil {
+		t.Fatalf("versioned inferred evidence rejected: %v", err)
+	}
+}
+
 func waitReport(t *testing.T, reporter *recordingSinkReporter) ReportEnvelope {
 	t.Helper()
 	select {

@@ -338,6 +338,9 @@ func validatePeerPathEvidence(peer PeerObservation) error {
 	if evidence != PathEvidenceInferred && peer.PathInferenceRule != "" {
 		return errors.New("pathInferenceRule requires inferred path evidence")
 	}
+	if evidence == PathEvidenceInferred && strings.TrimSpace(peer.PathInferenceRule) == "" {
+		return errors.New("inferred path evidence requires pathInferenceRule")
+	}
 	return nil
 }
 

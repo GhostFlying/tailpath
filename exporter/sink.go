@@ -1117,6 +1117,9 @@ func validateAndCloneSnapshot(snapshot Snapshot, fallback time.Time) (Snapshot, 
 		if peer.PathEvidence != PathEvidenceInferred && peer.PathInferenceRule != "" {
 			return Snapshot{}, fmt.Errorf("peer %d inference rule requires inferred evidence", index)
 		}
+		if peer.PathEvidence == PathEvidenceInferred && strings.TrimSpace(peer.PathInferenceRule) == "" {
+			return Snapshot{}, fmt.Errorf("peer %d inferred evidence requires an inference rule", index)
+		}
 	}
 	return result, nil
 }
