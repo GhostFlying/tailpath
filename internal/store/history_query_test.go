@@ -54,6 +54,62 @@ func TestHistoryQueriesResolveRedirectsFilterAndPaginate(t *testing.T) {
 	}
 }
 
+func TestHistoryPathFilterIncludesDirectionalFallbacks(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		at      func(time.Time) time.Time
+		replace bool
+	}{
+		{name: "event", at: func(now time.Time) time.Time { return now.Add(-30 * time.Second) }, replace: true},
+		{name: "anchor", at: func(now time.Time) time.Time { return now.Add(-20 * time.Minute) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, now := seededHistoryDatabase(t)
+			vni := int64(8)
+			directions, err := json.Marshal([]domain.DirectionalPathState{{
+				FromNodeID: "n_a", ToNodeID: "n_c", ObserverID: "n_a",
+				PrimaryPath:  domain.PathObservation{Kind: domain.PathPeerRelay, PeerRelayStableNodeID: "relay", PeerRelayVNI: &vni},
+				FallbackPath: &domain.PathObservation{Kind: domain.PathDERP, DERPRegion: "hkg"},
+				Evidence:     domain.PathEvidenceInferred, InferenceRule: "tailscale-status-fallback-v1",
+				CollectedAt: test.at(now), ReceivedAt: test.at(now),
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.replace {
+				if _, err := database.db.Exec(`UPDATE path_events SET directions = ? WHERE edge_id = 'n_a--n_c'`, directions); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				path, err := json.Marshal(domain.PathObservation{Kind: domain.PathPeerRelay})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := database.db.Exec(
+					`INSERT INTO path_events(edge_id, observed_at, path, observations, directions) VALUES ('n_a--n_c', ?, ?, '[]', ?)`,
+					formatTime(test.at(now)), path, directions,
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			page, err := database.HistoryEdges(context.Background(), domain.HistoryEdgeQuery{
+				Window: domain.History15Minutes, Path: domain.PathDERP, Limit: 50,
+			}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, edge := range page.Edges {
+				found = found || edge.EdgeID == "n_a--n_c"
+			}
+			if !found {
+				t.Fatalf("DERP fallback edge missing from %s filter: %#v", test.name, page.Edges)
+			}
+		})
+	}
+}
+
 func TestHistoryQueriesHideSystemTelemetryUnlessExplicitlyIncluded(t *testing.T) {
 	database, err := Open(":memory:", 7*24*time.Hour)
 	if err != nil {

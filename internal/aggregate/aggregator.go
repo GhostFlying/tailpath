@@ -1652,9 +1652,6 @@ func (a *Aggregator) snapshotEdgeLocked(edge *edgeState, now time.Time) domain.T
 	}
 	result.PathState, result.PathCandidates = domain.PathCandidates(result.Path, result.Conflicts, result.Observations)
 	result.Directions = domain.DirectionalPaths(edge.Source, edge.Target, result.Observations)
-	if len(result.Directions) == 0 {
-		result.Directions = domain.CloneDirectionalPaths(edge.LastKnownDirections)
-	}
 	sort.Slice(result.Observations, func(i, j int) bool {
 		return result.Observations[i].ObserverID < result.Observations[j].ObserverID
 	})

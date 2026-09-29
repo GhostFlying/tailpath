@@ -242,6 +242,14 @@ func TestValidateSnapshotRequiresRuleForInferredEvidence(t *testing.T) {
 	}
 }
 
+func TestValidateSnapshotRejectsLegacyPathEvidence(t *testing.T) {
+	snapshot := runtimeSnapshot(time.Now().UTC(), "runtime", 0, 0)
+	snapshot.Peers[0].PathEvidence = PathEvidenceLegacy
+	if _, err := validateAndCloneSnapshot(snapshot, time.Now().UTC()); err == nil {
+		t.Fatal("fresh snapshot with legacy path evidence was accepted")
+	}
+}
+
 func waitReport(t *testing.T, reporter *recordingSinkReporter) ReportEnvelope {
 	t.Helper()
 	select {

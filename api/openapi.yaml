@@ -650,6 +650,7 @@ components:
       enum: [direct, derp, peer_relay, unknown]
     PathEvidence:
       type: string
+      description: Evidence attached to a path state. Legacy is output-only and is rejected in fresh collector reports.
       enum: [observed, inferred, legacy]
     DirectionalPathState:
       type: object
