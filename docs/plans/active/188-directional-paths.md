@@ -286,8 +286,8 @@ review.
 - The main-targeted History replay preserves whether `directions` was omitted
   by a legacy server or explicitly emitted as an empty withdrawal. An empty
   directional anchor now remains `Unknown / No fresh observation` instead of
-  resurrecting its compatibility path; focused API and timeline regressions
-  cover the window-boundary case.
+  resurrecting its compatibility path; focused API, timeline, and 900-event
+  browser regressions cover the window-boundary and legacy paging cases.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.
