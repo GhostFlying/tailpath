@@ -87,7 +87,7 @@ func TestHistoryPathFilterIncludesDirectionalFallbacks(t *testing.T) {
 				}
 				if _, err := database.db.Exec(
 					`INSERT INTO path_events(edge_id, observed_at, path, observations, directions) VALUES ('n_a--n_c', ?, ?, '[]', ?)`,
-					formatTime(test.at(now)), path, directions,
+					formatPathEventTime(test.at(now)), path, directions,
 				); err != nil {
 					t.Fatal(err)
 				}
@@ -269,7 +269,7 @@ func TestEdgeHistoryWindowCapsPathTransitions(t *testing.T) {
 	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
 	for index := range 501 {
 		at := now.Add(-10 * time.Minute).Add(time.Duration(index) * time.Millisecond)
-		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_a--n_b', ?, ?, '[]')`, formatTime(at), path); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_a--n_b', ?, ?, '[]')`, formatPathEventTime(at), path); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -295,7 +295,7 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 	}})
 	for index := range 900 {
 		at := now.Add(-10 * time.Minute).Add(time.Duration(index) * time.Millisecond)
-		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatTime(at), path, directions); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(at), path, directions); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -330,7 +330,7 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 			break
 		}
 		if !insertedMovingWindowEvent {
-			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatTime(now.Add(10*time.Second)), path, directions); err != nil {
+			if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES ('n_a--n_b', ?, ?, '[]', '[]', ?)`, formatPathEventTime(now.Add(10*time.Second)), path, directions); err != nil {
 				t.Fatal(err)
 			}
 			queryTime = now.Add(30 * time.Second)
@@ -359,7 +359,7 @@ func TestEdgePathHistoryWindowPreservesNanosecondBounds(t *testing.T) {
 	for _, at := range []time.Time{from.Add(-time.Nanosecond), from, to.Add(-time.Nanosecond), to} {
 		if _, err := database.db.Exec(
 			`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_a--n_b', ?, ?, '[]')`,
-			formatTime(at), path,
+			formatPathEventTime(at), path,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -749,7 +749,7 @@ func seededHistoryDatabase(t *testing.T) (*SQLite, time.Time) {
 		}
 	}
 	unknownPath, _ := json.Marshal(domain.PathObservation{Kind: domain.PathUnknown})
-	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_b--n_old', ?, ?, '[]')`, formatTime(now.Add(-20*time.Minute)), unknownPath); err != nil {
+	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_b--n_old', ?, ?, '[]')`, formatPathEventTime(now.Add(-20*time.Minute)), unknownPath); err != nil {
 		t.Fatal(err)
 	}
 	record("pre-merge", "n_b--n_old", "n_b", "n_old", now.Add(-5*time.Minute), 7, 3, domain.PathDirect)

@@ -268,7 +268,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 		Events:       []domain.PathEvent{},
 	}
 	anchorArgs := make([]any, 0, len(edgeIDs)+1)
-	anchorArgs = append(anchorArgs, formatTime(from))
+	anchorArgs = append(anchorArgs, formatPathEventTime(from))
 	for _, sourceID := range edgeIDs {
 		anchorArgs = append(anchorArgs, sourceID)
 	}
@@ -289,7 +289,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 	}
 
 	args := make([]any, 0, len(edgeIDs)+5)
-	args = append(args, formatTime(from), formatTime(to))
+	args = append(args, formatPathEventTime(from), formatPathEventTime(to))
 	for _, sourceID := range edgeIDs {
 		args = append(args, sourceID)
 	}
@@ -297,7 +297,7 @@ func (s *SQLite) EdgePathHistoryWindow(
 		FROM path_events WHERE observed_at >= ? AND observed_at < ? AND edge_id IN (` + edgeClause + `)`
 	if cursorValue != "" {
 		query += ` AND (observed_at > ? OR (observed_at = ? AND id > ?))`
-		args = append(args, formatTime(cursor.ObservedAt), formatTime(cursor.ObservedAt), cursor.ID)
+		args = append(args, formatPathEventTime(cursor.ObservedAt), formatPathEventTime(cursor.ObservedAt), cursor.ID)
 	}
 	query += ` ORDER BY observed_at, id LIMIT ?`
 	args = append(args, limit+1)

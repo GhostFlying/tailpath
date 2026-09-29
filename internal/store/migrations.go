@@ -77,7 +77,7 @@ func migrateDirectionalPaths(tx *sql.Tx) error {
 		}
 		edge := endpoints[edgeID]
 		updates = append(updates, update{
-			id: id, observedAt: formatTime(parsedObservedAt),
+			id: id, observedAt: formatPathEventTime(parsedObservedAt),
 			directions: domain.LegacyDirectionalPaths(edge.source, edge.target, observations),
 		})
 	}
