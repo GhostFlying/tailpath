@@ -187,7 +187,7 @@ const styles: StylesheetCSS[] = [
     css: { "source-arrow-shape": "triangle" },
   },
   {
-    selector: "edge.directional-route.active",
+    selector: "edge.directional-route.active.flow-forward",
     css: { "target-arrow-shape": "triangle" },
   },
   {

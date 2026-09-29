@@ -413,6 +413,41 @@ describe("buildElements", () => {
     ).toBe(true);
   });
 
+  it("keeps directional DERP markers scoped to their relationship", () => {
+    const fixture = topology();
+    const relay = { kind: "peer_relay" as const, peerRelayVni: 8 };
+    const fallback = { kind: "derp" as const, derpRegion: "hkg" };
+    fixture.edges = [
+      withDirections(edge("first", "a", "b", "peer_relay"), [
+        direction("a", "b", relay, fallback),
+      ]),
+      withDirections(edge("second", "c", "d", "peer_relay"), [
+        direction("c", "d", relay, fallback),
+      ]),
+    ];
+
+    const fallbackNodes = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter(
+      (element) =>
+        element.group === "nodes" &&
+        String(element.classes).includes("fallback-node"),
+    );
+
+    expect(fallbackNodes).toHaveLength(2);
+    expect(new Set(fallbackNodes.map((node) => node.data?.id))).toEqual(
+      new Set([
+        "derp:first:hkg:combined-fallback",
+        "derp:second:hkg:combined-fallback",
+      ]),
+    );
+    expect(
+      new Set(fallbackNodes.map((node) => node.data?.logicalEdgeId)),
+    ).toEqual(new Set(["first", "second"]));
+  });
+
   it("matches filters against either primary or fallback without double counting", () => {
     const fixture = topology();
     fixture.edges = [
