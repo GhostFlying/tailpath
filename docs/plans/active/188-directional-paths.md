@@ -298,6 +298,10 @@ review.
   complete local browser matrix passed 72 tests and hit one unrelated mobile
   retry-button detach race; that exact test then passed three consecutive
   parallel reruns.
+- Dense History state identity now includes a Direct endpoint's normalized
+  address while ignoring its port, so retained address changes remain visible.
+  A missing anchor synthesizes pre-window Unknown only when the first event is
+  strictly later than the window start, avoiding a zero-duration duplicate.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.

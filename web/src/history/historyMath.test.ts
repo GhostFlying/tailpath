@@ -167,6 +167,24 @@ describe("path timeline", () => {
     });
   });
 
+  it("does not synthesize unknown when the first event starts the window", () => {
+    const history = directionalHistory();
+    history.pathAnchor = undefined;
+    history.pathEvents[0].observedAt = history.from;
+
+    const timeline = buildDirectionalTimeline(history);
+
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]).toMatchObject({
+      from: history.from,
+      anchored: false,
+      noEvidence: false,
+      aToB: expect.objectContaining({
+        primaryPath: { kind: "direct" },
+      }),
+    });
+  });
+
   it("keeps an existing event identity when older pages are prepended", () => {
     const partial = directionalHistory();
     const selectedEvent = partial.pathEvents[0];
@@ -261,6 +279,50 @@ describe("path timeline", () => {
       coalescedMixed: false,
     });
     expect(rendered.at(-1)?.to).toBe(segments.at(-1)?.to);
+  });
+
+  it("marks Direct address changes but ignores port churn in dense bins", () => {
+    const base = buildDirectionalTimeline(directionalHistory())[1];
+    const directSegment = (
+      id: string,
+      endpoint: string,
+      from: string,
+      to: string,
+    ) => ({
+      ...base,
+      id,
+      from,
+      to,
+      aToB: {
+        ...base.aToB!,
+        primaryPath: { kind: "direct" as const, directEndpoint: endpoint },
+      },
+    });
+    const first = directSegment(
+      "first",
+      "203.0.113.8:41641",
+      "2026-08-24T00:00:00Z",
+      "2026-08-24T00:00:01Z",
+    );
+    const portChange = directSegment(
+      "port-change",
+      "203.0.113.8:53122",
+      "2026-08-24T00:00:01Z",
+      "2026-08-24T00:00:02Z",
+    );
+    const addressChange = directSegment(
+      "address-change",
+      "198.51.100.9:41641",
+      "2026-08-24T00:00:01Z",
+      "2026-08-24T00:00:02Z",
+    );
+
+    expect(
+      coalesceDirectionalTimeline([first, portChange], 1)[0],
+    ).toMatchObject({ coalescedMixed: false });
+    expect(
+      coalesceDirectionalTimeline([first, addressChange], 1)[0],
+    ).toMatchObject({ coalescedMixed: true });
   });
 
   it("does not stretch a burst's latest state across an earlier long state", () => {

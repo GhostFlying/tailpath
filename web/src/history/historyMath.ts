@@ -182,7 +182,10 @@ export function buildDirectionalTimeline(
       anchored: true,
       noEvidence: false,
     });
-  } else if (history.pathEvents.length) {
+  } else if (
+    history.pathEvents.length &&
+    earliestEventTime(history.pathEvents) > new Date(history.from).getTime()
+  ) {
     events.push({
       event: {
         observedAt: history.from,
@@ -336,8 +339,8 @@ function directionalTimelineStateKey(
       ? [
           state.fromNodeId,
           state.toNodeId,
-          pathIdentityKey(state.primaryPath),
-          state.fallbackPath ? pathIdentityKey(state.fallbackPath) : "",
+          timelinePathIdentityKey(state.primaryPath),
+          state.fallbackPath ? timelinePathIdentityKey(state.fallbackPath) : "",
           state.evidence,
           state.inferenceRule ?? "",
           state.observerId,
@@ -347,9 +350,31 @@ function directionalTimelineStateKey(
     segment.noEvidence ? "no-evidence" : "evidence",
     directionKey(segment.aToB),
     directionKey(segment.bToA),
-    pathIdentityKey(segment.event.path),
+    timelinePathIdentityKey(segment.event.path),
     segment.event.pathState ?? "",
   ].join("\u001e");
+}
+
+function timelinePathIdentityKey(path: PathEvent["path"]): string {
+  if (path.kind !== "direct") return pathIdentityKey(path);
+  return `direct:${directEndpointAddress(path.directEndpoint)}`;
+}
+
+function directEndpointAddress(endpoint: string | undefined): string {
+  const value = endpoint?.trim().toLowerCase() ?? "";
+  if (!value) return "unknown";
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(value);
+  if (bracketed) return bracketed[1];
+  const ipv4Port = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(value);
+  return ipv4Port?.[1] ?? value;
+}
+
+function earliestEventTime(events: PathEvent[]): number {
+  return events.reduce(
+    (earliest, event) =>
+      Math.min(earliest, new Date(event.observedAt).getTime()),
+    Number.POSITIVE_INFINITY,
+  );
 }
 
 function stablePathEventIDs(
