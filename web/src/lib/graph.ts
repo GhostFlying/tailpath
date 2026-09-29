@@ -15,6 +15,7 @@ import {
 } from "./format";
 import { identityPresentation, unresolvedNodeLabel } from "./identity";
 import { platformPresentation } from "./platform";
+import { pathIdentityKey } from "./pathIdentity";
 
 export const minimumEdgeCenterDistance = 220;
 export const minimumTrafficWidth = 1.5;
@@ -388,28 +389,9 @@ export function edgePathKinds(edge: TopologyEdge): Set<PathKind> {
 }
 
 function directionPathKey(direction: DirectionalPathState): string {
-  return `${logicalPathKey(direction.primaryPath)}|${
-    direction.fallbackPath ? logicalPathKey(direction.fallbackPath) : "none"
+  return `${pathIdentityKey(direction.primaryPath)}|${
+    direction.fallbackPath ? pathIdentityKey(direction.fallbackPath) : "none"
   }`;
-}
-
-function logicalPathKey(path: PathObservation): string {
-  switch (path.kind) {
-    case "direct":
-      return "direct";
-    case "derp":
-      return `derp:${(path.derpRegion || "unknown").toLowerCase()}`;
-    case "peer_relay":
-      return [
-        "peer-relay",
-        peerRelayCandidateKey(path),
-        `endpoint:${path.peerRelayEndpoint ?? "none"}`,
-        `vni:${path.peerRelayVni ?? "none"}`,
-        `resolution:${path.peerRelayResolution ?? "none"}`,
-      ].join(":");
-    default:
-      return "unknown";
-  }
 }
 
 function routesFor(edge: TopologyEdge): RenderedRoute[] {
