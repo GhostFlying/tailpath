@@ -307,9 +307,12 @@ function intermediatesForRoute(
   const routeSuffix = route.directional || route.fallback ? `:${route.id}` : "";
   if (path.kind === "derp") {
     const region = path.derpRegion || "unknown";
+    const id = routeSuffix
+      ? `derp:${edge.id}:${region}${routeSuffix}`
+      : `derp:${region}`;
     return [
       {
-        id: `derp:${region}${routeSuffix}`,
+        id,
         label: route.fallback ? `DERP fallback · ${region}` : `DERP ${region}`,
         kind: "derp",
         classes: `relay-node derp ${route.fallback ? "fallback-node" : ""}`,
