@@ -157,8 +157,8 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack received forty-six actionable inline findings, all
-now addressed.
+The ready-for-review stack received fifty actionable inline findings, all now
+addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
@@ -182,7 +182,9 @@ is reapplied whenever collapsed and expanded route IDs replace one another.
 Directional arrows require actual flow, and per-edge DERP marker identities
 cannot join unrelated routes, while partial Recent paths retain their fallback
 detail. Direct asymmetric routes also honor the single relationship-label
-assignment.
+assignment. The default reciprocal curves are sampled into the same rendered
+geometry used for obstacle and route-crossing checks, and DERP fallback is
+classified under the Path legend rather than traffic Activity.
 
 History preserves unknown directions in summaries, renders complete
 per-direction evidence and relay resolution metadata, keeps compatibility
@@ -201,13 +203,16 @@ complete event index is mounted in accessible 100-row pages, keeping every
 retained state reachable without unbounded DOM growth. Empty-direction events
 after directional evidence are rendered as withdrawn/unknown rather than
 falling back to the compatibility path, and stable selection keys retain only
-a compact digest instead of the complete event JSON.
+a compact digest instead of the complete event JSON. The legacy timeline uses
+the same 100-row paging bound, and its observer support comparison mirrors the
+server compatibility key so endpoint or VNI changes for an already resolved
+StableNodeID do not incorrectly become contradictory evidence.
 
 ## Next step
 
-Run the complete repository and browser gates, update PR #191, then reply to and
-resolve all forty-six addressed review threads before requesting a fresh
-review.
+Run the complete repository gate, update PR #191, then reply to and resolve the
+four newly addressed review threads before requesting a fresh review on the
+Web PRs.
 
 ## Verification
 
@@ -243,16 +248,19 @@ review.
   horizontal-overflow checks, shared traffic selection, and exact-time state.
 - A two-page 900-event browser fixture renders all 900 events and exposes the
   500-event intermediate loading state without truncation or duplication.
+- A 900-event legacy browser fixture pages the timeline in 100-state windows,
+  keeps the mounted list bounded, and preserves access to every state.
 - An uneven-duration dense fixture preserves a 23-hour Direct state and marks
   only the final one-hour burst as mixed at a 24-bin render budget.
 - The complete repository gate passed: generated-file consistency, shell
   harnesses, formatting, `go vet`, all Go tests, TypeScript, 100 Vitest tests,
   the production Web build, and the browser matrix.
 - The final review-remediated Chromium browser matrix passed with CI
-  concurrency: 72 passed and 32 intentionally skipped across desktop and mobile
+  concurrency: 73 passed and 33 intentionally skipped across desktop and mobile
   projects, including the absolute paging boundary, incomplete readiness state,
-  intermediate desktop width, complete relay observation timestamps, and
-  4293/8 asymmetry in both the summary and exact-time snapshot.
+  intermediate desktop width, complete relay observation timestamps, legacy
+  900-event paging, and 4293/8 asymmetry in both the summary and exact-time
+  snapshot.
 - The layout/response/obstacle Chromium gate passed with the same diagnostics
   flags as CI: 23 passed and one desktop-only 320px duplicate intentionally
   skipped. WebKit remains assigned to the hosted layout workflow because it is

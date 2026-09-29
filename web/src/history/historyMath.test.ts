@@ -3,6 +3,7 @@ import type { EdgeHistory } from "../api/types";
 import {
   buildPathTimeline,
   buildDirectionalTimeline,
+  compatibilityPathEvidenceKey,
   coalesceDirectionalTimeline,
   pathEvidenceKey,
   hasDirectionalHistory,
@@ -85,6 +86,9 @@ describe("path timeline", () => {
 
     expect(pathEvidenceKey({ ...relay, peerRelayVni: 4293 })).not.toBe(
       pathEvidenceKey({ ...relay, peerRelayVni: 8 }),
+    );
+    expect(compatibilityPathEvidenceKey({ ...relay, peerRelayVni: 4293 })).toBe(
+      compatibilityPathEvidenceKey({ ...relay, peerRelayVni: 8 }),
     );
   });
 
