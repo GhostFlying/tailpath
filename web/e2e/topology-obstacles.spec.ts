@@ -75,7 +75,35 @@ test("keeps obstacle routing readable at 320px", async ({ page }, testInfo) => {
   });
 });
 
-async function installObstacleFixture(page: Page) {
+test("keeps obstacle-routed reciprocal lanes separated", async ({ page }) => {
+  const browserErrors = await installObstacleFixture(page, true);
+  await page.goto("/");
+
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  const targets = JSON.parse(
+    (await graph.getAttribute("data-edge-hit-targets")) ?? "[]",
+  ) as Array<{ source: string; target: string; x: number; y: number }>;
+  const forward = targets.find(
+    (target) => target.source === "direct-a" && target.target === "direct-b",
+  );
+  const reverse = targets.find(
+    (target) => target.source === "direct-b" && target.target === "direct-a",
+  );
+
+  expect(forward).toBeDefined();
+  expect(reverse).toBeDefined();
+  expect(
+    Math.hypot(forward!.x - reverse!.x, forward!.y - reverse!.y),
+    JSON.stringify({
+      routed: await graph.getAttribute("data-routed-edges"),
+      targets,
+    }),
+  ).toBeGreaterThan(10);
+  expect(browserErrors).toEqual([]);
+});
+
+async function installObstacleFixture(page: Page, directional = false) {
   const browserErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(message.text());
@@ -103,7 +131,9 @@ async function installObstacleFixture(page: Page) {
         generatedAt: observedAt,
         nodes: [...cachedPositions].map(([id]) => topologyNode(id)),
         edges: [
-          topologyEdge("direct-long", "direct-a", "direct-b", "direct"),
+          directional
+            ? directionalObstacleEdge()
+            : topologyEdge("direct-long", "direct-a", "direct-b", "direct"),
           topologyEdge("derp-long", "derp-a", "derp-b", "derp"),
           topologyEdge(
             "blockers-visible",
@@ -117,6 +147,42 @@ async function installObstacleFixture(page: Page) {
     });
   });
   return browserErrors;
+}
+
+function directionalObstacleEdge() {
+  return {
+    ...topologyEdge("direct-long", "direct-a", "direct-b", "direct"),
+    directions: [
+      {
+        fromNodeId: "direct-a",
+        toNodeId: "direct-b",
+        primaryPath: {
+          kind: "direct" as const,
+          directEndpoint: "198.51.100.1:41641",
+        },
+        fallbackPath: { kind: "derp" as const, derpRegion: "hkg" },
+        evidence: "inferred" as const,
+        inferenceRule: "tailscale-status-fallback-v1",
+        observerId: "direct-a",
+        collectedAt: observedAt,
+        receivedAt: observedAt,
+        clockSkewed: false,
+      },
+      {
+        fromNodeId: "direct-b",
+        toNodeId: "direct-a",
+        primaryPath: {
+          kind: "direct" as const,
+          directEndpoint: "203.0.113.2:41641",
+        },
+        evidence: "observed" as const,
+        observerId: "direct-b",
+        collectedAt: observedAt,
+        receivedAt: observedAt,
+        clockSkewed: false,
+      },
+    ],
+  };
 }
 
 function topologyNode(id: string) {
