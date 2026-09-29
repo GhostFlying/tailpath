@@ -238,10 +238,11 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
   }, [onSelectTime, selected]);
 
   function select(segment: DirectionalTimelineSegment) {
-    setSelectedID(segment.id);
-    const index = segments.findIndex(
-      (candidate) => candidate.id === segment.id,
-    );
+    const sourceID = segment.sourceSegmentId ?? segment.id;
+    const sourceSegment =
+      segments.find((candidate) => candidate.id === sourceID) ?? segment;
+    setSelectedID(sourceID);
+    const index = segments.findIndex((candidate) => candidate.id === sourceID);
     if (index >= 0) {
       setEventIndexPage(
         Math.max(
@@ -251,7 +252,7 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
         ),
       );
     }
-    onSelectTime(segment.from);
+    onSelectTime(sourceSegment.from);
     if (mobile) setSheetOpen(true);
   }
 
@@ -335,7 +336,8 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                 </span>
                 {renderedSegments.map((segment) => {
                   const position = timelinePosition(segment, history);
-                  const active = segment.id === selected?.id;
+                  const active =
+                    (segment.sourceSegmentId ?? segment.id) === selected?.id;
                   const widthPixels = (position.width / 100) * canvasWidth;
                   if (mobile && canvasWidth > 0 && widthPixels < 44) {
                     return (
@@ -361,11 +363,11 @@ const DirectionalPathTimeline = memo(function DirectionalPathTimeline({
                         width: `${position.width}%`,
                       }}
                       aria-pressed={active}
-                      aria-label={`${segment.coalescedCount ? `${segment.coalescedCount} path changes; latest: ` : ""}${directionalSegmentLabel(
-                        segment,
-                        history,
-                        nodes,
-                      )}`}
+                      aria-label={
+                        segment.coalescedMixed
+                          ? `${segment.coalescedCount ?? 2} recorded path states in this interval; select to inspect the latest exact state`
+                          : directionalSegmentLabel(segment, history, nodes)
+                      }
                       onClick={() => select(segment)}
                     />
                   );
@@ -474,12 +476,21 @@ function DirectionalSegmentVisual({
 }) {
   const position = timelinePosition(segment, history);
   const showLabel =
-    !segment.coalescedCount && (position.width / 100) * canvasWidth >= 56;
+    !segment.coalescedMixed && (position.width / 100) * canvasWidth >= 56;
   const style = {
     left: `${position.left}%`,
     width: `${position.width}%`,
   };
   const noDirections = !segment.aToB && !segment.bToA;
+  if (segment.coalescedMixed) {
+    return (
+      <span className="directional-dense-segment" style={style}>
+        {(position.width / 100) * canvasWidth >= 56
+          ? `${segment.coalescedCount ?? 2} path states`
+          : null}
+      </span>
+    );
+  }
   if (noDirections && !segment.noEvidence) {
     return (
       <span className="directional-legacy-segment" style={style}>
