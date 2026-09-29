@@ -491,6 +491,18 @@ test("loads all 900 directional path events without truncation", async ({
   await expect(page.locator(".history-detail-summary")).toContainText(
     "Peer Relay",
   );
+  const eventIndex = page.locator(".directional-event-index");
+  await eventIndex.locator("summary").click();
+  const loadingIndexItems = eventIndex
+    .locator(".directional-event-index-list")
+    .getByRole("listitem");
+  const selectedLoadingItem = loadingIndexItems.nth(25);
+  const selectedTime = await selectedLoadingItem
+    .locator("time")
+    .getAttribute("datetime");
+  expect(selectedTime).toBeTruthy();
+  await selectedLoadingItem.click();
+  await expect(selectedLoadingItem).toHaveAttribute("aria-pressed", "true");
   releaseSecondPage?.();
   await expect(
     page.getByText("Complete · 900 events", { exact: true }),
@@ -499,12 +511,15 @@ test("loads all 900 directional path events without truncation", async ({
     .getByRole("list", { name: "Path timeline" })
     .getByRole("listitem");
   expect(await renderedTimelineStates.count()).toBeLessThanOrEqual(240);
-  const eventIndex = page.locator(".directional-event-index");
-  await eventIndex.locator("summary").click();
   await expect(eventIndex).toContainText("States 802–901 of 901");
   await expect(
     eventIndex.locator(".directional-event-index-list").getByRole("listitem"),
   ).toHaveCount(100);
+  const restoredSelectedItem = eventIndex.locator(
+    `button:has(time[datetime="${selectedTime}"])`,
+  );
+  await expect(restoredSelectedItem).toBeVisible();
+  await expect(restoredSelectedItem).toHaveAttribute("aria-pressed", "true");
   await eventIndex.getByRole("button", { name: "Previous states" }).click();
   await expect(eventIndex).toContainText("States 702–801 of 901");
   await expect(page.locator(".history-shell")).toHaveAttribute(
