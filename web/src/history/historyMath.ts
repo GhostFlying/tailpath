@@ -141,11 +141,12 @@ export function buildPathTimeline(history: EdgeHistory): PathTimelineItem[] {
     ...history.pathEvents.map((event) => ({ event, anchored: false })),
   );
   if (events.length === 0) return [];
+  const eventIDs = stablePathEventIDs(events);
   const chronological = events.map(({ event, anchored }, index) => {
     const from = anchored ? history.from : event.observedAt;
     const to = events[index + 1]?.event.observedAt ?? history.to;
     return {
-      id: `${event.observedAt}:${index}`,
+      id: eventIDs[index],
       observedAt: event.observedAt,
       from,
       to,
@@ -204,6 +205,7 @@ export function buildDirectionalTimeline(
       new Date(left.event.observedAt).getTime() -
       new Date(right.event.observedAt).getTime(),
   );
+  const eventIDs = stablePathEventIDs(ordered);
   return ordered.map(({ event, anchored, noEvidence }, index) => {
     const from = anchored
       ? history.from
@@ -213,7 +215,7 @@ export function buildDirectionalTimeline(
       : history.to;
     const directions = event.directions ?? [];
     return {
-      id: `${event.observedAt}:${index}`,
+      id: eventIDs[index],
       observedAt: event.observedAt,
       from,
       to,
@@ -236,6 +238,21 @@ export function buildDirectionalTimeline(
       noEvidence,
     };
   });
+}
+
+function stablePathEventIDs(
+  events: Array<{ event: PathEvent; anchored: boolean; noEvidence?: boolean }>,
+): string[] {
+  const ids = new Array<string>(events.length);
+  const occurrencesFromNewest = new Map<string, number>();
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const item = events[index];
+    const identity = `${item.anchored ? "anchor" : "event"}:${item.noEvidence ? "empty" : "evidence"}:${JSON.stringify(item.event)}`;
+    const occurrence = occurrencesFromNewest.get(identity) ?? 0;
+    ids[index] = `${identity}:${occurrence}`;
+    occurrencesFromNewest.set(identity, occurrence + 1);
+  }
+  return ids;
 }
 
 export function hasDirectionalHistory(history: EdgeHistory): boolean {

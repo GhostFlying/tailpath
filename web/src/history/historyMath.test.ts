@@ -161,6 +161,28 @@ describe("path timeline", () => {
       bToA: undefined,
     });
   });
+
+  it("keeps an existing event identity when older pages are prepended", () => {
+    const partial = directionalHistory();
+    const selectedEvent = partial.pathEvents[0];
+    const partialID = buildDirectionalTimeline(partial).find(
+      (segment) => segment.event === selectedEvent,
+    )?.id;
+    const full = directionalHistory();
+    full.pathEvents = [
+      {
+        ...selectedEvent,
+        observedAt: "2026-08-24T00:15:00Z",
+        path: { kind: "derp", derpRegion: "hkg" },
+      },
+      selectedEvent,
+    ];
+    const fullID = buildDirectionalTimeline(full).find(
+      (segment) => segment.observedAt === selectedEvent.observedAt,
+    )?.id;
+
+    expect(fullID).toBe(partialID);
+  });
 });
 
 function directionalHistory(): EdgeHistory {
