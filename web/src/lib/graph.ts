@@ -400,7 +400,13 @@ function logicalPathKey(path: PathObservation): string {
     case "derp":
       return `derp:${(path.derpRegion || "unknown").toLowerCase()}`;
     case "peer_relay":
-      return `peer-relay:${peerRelayCandidateKey(path)}`;
+      return [
+        "peer-relay",
+        peerRelayCandidateKey(path),
+        `endpoint:${path.peerRelayEndpoint ?? "none"}`,
+        `vni:${path.peerRelayVni ?? "none"}`,
+        `resolution:${path.peerRelayResolution ?? "none"}`,
+      ].join(":");
     default:
       return "unknown";
   }

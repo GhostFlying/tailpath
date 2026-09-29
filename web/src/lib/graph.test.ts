@@ -344,6 +344,38 @@ describe("buildElements", () => {
     ).toBe(true);
   });
 
+  it("expands the same relay identity when directional VNIs differ", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 4293,
+        }),
+        direction("b", "a", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 8,
+        }),
+      ]),
+    ];
+
+    const edges = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter((element) => element.group === "edges");
+
+    expect(edgeIsAsymmetric(fixture.edges[0])).toBe(true);
+    expect(
+      edges.some((element) => String(element.classes).includes("route-a")),
+    ).toBe(true);
+    expect(
+      edges.some((element) => String(element.classes).includes("route-b")),
+    ).toBe(true);
+  });
+
   it("renders DERP fallback as an unmetered dashed route", () => {
     const fixture = topology();
     const relay = {

@@ -298,6 +298,53 @@ test("keeps a missing reverse direction explicitly unknown", async ({
   await expect(inspector).not.toContainText("Same path both directions");
 });
 
+test("separates reciprocal relay lanes when directional VNIs differ", async ({
+  page,
+}) => {
+  const fixture = directionalTopology();
+  const relay = fixture.edges[0].directions[0].primaryPath;
+  fixture.edges[0].directions = [
+    {
+      ...fixture.edges[0].directions[0],
+      fallbackPath: undefined,
+      evidence: "observed",
+      inferenceRule: undefined,
+    },
+    {
+      ...fixture.edges[0].directions[1],
+      primaryPath: { ...relay, peerRelayVni: 8 },
+    },
+  ];
+  await page.unroute("**/api/v1/topology");
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  const targets = JSON.parse(
+    (await graph.getAttribute("data-edge-hit-targets")) ?? "[]",
+  ) as Array<{ source: string; target: string; x: number; y: number }>;
+  const forward = targets.find(
+    (target) => target.source === "client-a" && target.target === "relay-node",
+  );
+  const reverse = targets.find(
+    (target) => target.source === "relay-node" && target.target === "client-a",
+  );
+  expect(forward).toBeDefined();
+  expect(reverse).toBeDefined();
+  expect(
+    Math.hypot(forward!.x - reverse!.x, forward!.y - reverse!.y),
+  ).toBeGreaterThan(10);
+
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+  const inspector = page.getByLabel("Topology details");
+  await expect(inspector).toContainText("Asymmetric paths");
+  await expect(inspector).toContainText("VNI 4293");
+  await expect(inspector).toContainText("VNI 8");
+});
+
 test("keeps a dense switching timeline readable", async ({
   page,
 }, testInfo) => {
