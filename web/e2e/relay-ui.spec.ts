@@ -319,6 +319,21 @@ test("separates reciprocal relay lanes when directional VNIs differ", async ({
   await page.route("**/api/v1/topology", (route) =>
     route.fulfill({ json: fixture }),
   );
+  const history = relayHistory();
+  await page.unroute("**/api/v1/history/edges/client-a--client-b?**");
+  await page.route("**/api/v1/history/edges/client-a--client-b?**", (route) =>
+    route.fulfill({
+      json: {
+        ...history,
+        pathEvents: [
+          {
+            ...history.pathEvents[0],
+            directions: fixture.edges[0].directions,
+          },
+        ],
+      },
+    }),
+  );
 
   await page.goto("/");
   const graph = page.getByLabel("Live Tailnet topology");
@@ -343,6 +358,12 @@ test("separates reciprocal relay lanes when directional VNIs differ", async ({
   await expect(inspector).toContainText("Asymmetric paths");
   await expect(inspector).toContainText("VNI 4293");
   await expect(inspector).toContainText("VNI 8");
+  await expect(inspector.locator(".history-section")).toContainText(
+    "Recent paths",
+  );
+  await expect(inspector.locator(".history-section")).toContainText(
+    "Asymmetric paths",
+  );
 });
 
 test("keeps a dense switching timeline readable", async ({
