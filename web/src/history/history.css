@@ -1103,14 +1103,45 @@
   cursor: pointer;
 }
 
-.directional-event-index > div {
+.directional-event-index-list {
   max-height: 224px;
   display: grid;
   overflow-y: auto;
   border: 1px solid #d8dee1;
 }
 
-.directional-event-index button {
+.directional-event-index-toolbar {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.directional-event-index-toolbar span {
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.directional-event-index-toolbar button {
+  min-height: 44px;
+  border: 1px solid #cbd4d8;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0 10px;
+  color: #45535a;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.directional-event-index-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.directional-event-index-list button {
   min-height: 44px;
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
@@ -1125,17 +1156,19 @@
   cursor: pointer;
 }
 
-.directional-event-index button:hover,
-.directional-event-index button:focus-visible {
+.directional-event-index-list button:hover,
+.directional-event-index-list button:focus-visible,
+.directional-event-index-toolbar button:hover:not(:disabled),
+.directional-event-index-toolbar button:focus-visible {
   background: #eef6f5;
 }
 
-.directional-event-index time {
+.directional-event-index-list time {
   color: #6b777d;
   font-variant-numeric: tabular-nums;
 }
 
-.directional-event-index button span {
+.directional-event-index-list button span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2125,7 +2158,7 @@
     display: none;
   }
 
-  .directional-event-index button {
+  .directional-event-index-list button {
     grid-template-columns: 112px minmax(0, 1fr);
     padding-inline: 7px;
   }

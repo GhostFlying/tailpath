@@ -3,6 +3,7 @@ import type { EdgeHistory } from "../api/types";
 import {
   buildPathTimeline,
   buildDirectionalTimeline,
+  coalesceDirectionalTimeline,
   pathEvidenceKey,
   hasDirectionalHistory,
   trafficGeometry,
@@ -182,6 +183,25 @@ describe("path timeline", () => {
     )?.id;
 
     expect(fullID).toBe(partialID);
+  });
+
+  it("coalesces dense visual segments within a fixed render budget", () => {
+    const base = buildDirectionalTimeline(directionalHistory())[1];
+    const segments = Array.from({ length: 901 }, (_, index) => ({
+      ...base,
+      id: `event-${index}`,
+      from: new Date(Date.parse(base.from) + index * 1_000).toISOString(),
+      to: new Date(Date.parse(base.from) + (index + 1) * 1_000).toISOString(),
+    }));
+    const rendered = coalesceDirectionalTimeline(segments, 240);
+
+    expect(rendered.length).toBeLessThanOrEqual(240);
+    expect(rendered[0]).toMatchObject({
+      from: segments[0].from,
+      to: segments[3].to,
+      coalescedCount: 4,
+    });
+    expect(rendered.at(-1)?.to).toBe(segments.at(-1)?.to);
   });
 });
 
