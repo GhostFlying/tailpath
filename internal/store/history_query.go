@@ -244,6 +244,10 @@ func (s *SQLite) EdgePathHistoryWindow(
 		if err != nil {
 			return domain.PathEventPage{}, false, err
 		}
+		if cursor.Window != window {
+			return domain.PathEventPage{}, false, ErrInvalidHistoryCursor
+		}
+		to = cursor.WindowEnd
 	}
 	to = to.UTC()
 	from := to.Add(-window.Duration())
@@ -257,7 +261,12 @@ func (s *SQLite) EdgePathHistoryWindow(
 	}
 	edgeClause := strings.Join(placeholders, ",")
 
-	page := domain.PathEventPage{Events: []domain.PathEvent{}}
+	page := domain.PathEventPage{
+		Source:       historyNodeReference(edge.sourceID, index.nodes[edge.sourceID]),
+		Target:       historyNodeReference(edge.targetID, index.nodes[edge.targetID]),
+		RelatedNodes: []domain.HistoryNodeReference{},
+		Events:       []domain.PathEvent{},
+	}
 	anchorArgs := make([]any, 0, len(edgeIDs)+1)
 	anchorArgs = append(anchorArgs, formatTime(from))
 	for _, sourceID := range edgeIDs {
@@ -320,11 +329,19 @@ func (s *SQLite) EdgePathHistoryWindow(
 	if len(items) > limit {
 		items = items[:limit]
 		last := items[len(items)-1]
-		page.NextCursor = encodePathEventCursor(pathEventCursor{ObservedAt: last.event.ObservedAt, ID: last.id})
+		page.NextCursor = encodePathEventCursor(pathEventCursor{
+			ObservedAt: last.event.ObservedAt,
+			ID:         last.id,
+			WindowEnd:  to,
+			Window:     window,
+		})
 	}
 	for _, item := range items {
 		page.Events = append(page.Events, item.event)
 	}
+	page.RelatedNodes = relatedHistoryNodes(index, domain.EdgeHistory{
+		Source: page.Source, Target: page.Target, PathAnchor: page.Anchor, PathEvents: page.Events,
+	})
 	return page, true, nil
 }
 
@@ -991,8 +1008,10 @@ type historyCursor struct {
 }
 
 type pathEventCursor struct {
-	ObservedAt time.Time `json:"t"`
-	ID         int64     `json:"i"`
+	ObservedAt time.Time            `json:"t"`
+	ID         int64                `json:"i"`
+	WindowEnd  time.Time            `json:"u"`
+	Window     domain.HistoryWindow `json:"w"`
 }
 
 func encodePathEventCursor(cursor pathEventCursor) string {
@@ -1003,7 +1022,8 @@ func encodePathEventCursor(cursor pathEventCursor) string {
 func decodePathEventCursor(value string) (pathEventCursor, error) {
 	var cursor pathEventCursor
 	payload, err := base64.RawURLEncoding.DecodeString(value)
-	if err != nil || json.Unmarshal(payload, &cursor) != nil || cursor.ObservedAt.IsZero() || cursor.ID < 1 {
+	if err != nil || json.Unmarshal(payload, &cursor) != nil || cursor.ObservedAt.IsZero() ||
+		cursor.ID < 1 || cursor.WindowEnd.IsZero() || !cursor.Window.Valid() {
 		return cursor, ErrInvalidHistoryCursor
 	}
 	return cursor, nil

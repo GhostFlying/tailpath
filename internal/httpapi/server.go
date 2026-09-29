@@ -323,6 +323,9 @@ func (s *Server) getEdgePathHistory(response http.ResponseWriter, request *http.
 }
 
 func normalizePathEventPage(page *domain.PathEventPage) {
+	if page.RelatedNodes == nil {
+		page.RelatedNodes = []domain.HistoryNodeReference{}
+	}
 	if page.Events == nil {
 		page.Events = []domain.PathEvent{}
 	}

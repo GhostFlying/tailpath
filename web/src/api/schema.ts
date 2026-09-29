@@ -525,6 +525,9 @@ export interface components {
             directions?: components["schemas"]["DirectionalPathState"][];
         };
         PathEventPage: {
+            source: components["schemas"]["HistoryNodeReference"];
+            target: components["schemas"]["HistoryNodeReference"];
+            relatedNodes: components["schemas"]["HistoryNodeReference"][];
             anchor?: components["schemas"]["PathEvent"];
             events: components["schemas"]["PathEvent"][];
             nextCursor?: string;

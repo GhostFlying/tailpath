@@ -66,7 +66,9 @@ production strings must be accurate and code-native.
 Observer peers add optional `fallbackPath`, `pathEvidence`, and
 `pathInferenceRule`. Topology edges and path events add `directions[]`.
 History adds `GET /history/edges/{edgeId}/paths` with window, cursor, and limit,
-returning an anchor, ordered events, and next cursor.
+returning source/target/related-node references, an anchor, ordered events, and
+next cursor. The first page freezes the selected window end in the cursor so
+later pages cannot drift as wall time advances.
 
 ## Accepted design inventory
 
@@ -139,13 +141,26 @@ endpoint observations into two directions. Schema migration 6 persists and
 legacy-backfills directions. The complete path-history API uses stable keyset
 pagination and generated Go/TypeScript models are current.
 
+The ready-for-review stack received ten actionable inline findings on
+2026-09-28. Remediation is in progress in dependency order. The API slice now
+clears relay inference when a peer disappears, freezes pagination boundaries,
+and returns the historical node references needed by every page. The Live slice
+must correct directional arrow semantics, partial-evidence wording, recent-path
+arrows, and relay resolution metadata. The History slice must preserve unknown
+directions in summaries, render complete per-direction evidence, and avoid
+temporarily replacing the newest compatibility events with an incomplete old
+page.
+
 ## Next step
 
-Commit the focused API/storage slice, open its draft PR, then branch the Live
-graph implementation from that commit.
+Fix and test the three API review findings, update PR #189, then safely rebase
+PR #190 and PR #191 in order before addressing their Web review findings.
 
 ## Verification
 
+- Review-remediation tests cover a disappearing/reappearing peer, a moving
+  wall clock during 900-event pagination, exclusion of events after the frozen
+  window end, and node references first encountered on a paginated page.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
   pass.
 - Full `go test ./...` passes.

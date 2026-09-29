@@ -53,10 +53,12 @@ func (tracker *Tracker) Snapshot(status *ipnstate.Status, collectedAt time.Time)
 		Observer:    PeerIdentity(status.Self),
 		Peers:       make([]exporter.PeerSnapshot, 0, len(status.Peer)),
 	}
+	presentPeers := make(map[string]struct{}, len(status.Peer))
 	for _, peer := range status.Peer {
 		if peer == nil {
 			continue
 		}
+		presentPeers[peerIdentityKey(peer)] = struct{}{}
 		path := Path(peer, relays)
 		path, fallback, evidence, rule := tracker.classifyPath(peer, path, collectedAt)
 		snapshot.Peers = append(snapshot.Peers, exporter.PeerSnapshot{
@@ -68,6 +70,11 @@ func (tracker *Tracker) Snapshot(status *ipnstate.Status, collectedAt time.Time)
 			PathEvidence:      evidence,
 			PathInferenceRule: rule,
 		})
+	}
+	for identity := range tracker.lastRelay {
+		if _, present := presentPeers[identity]; !present {
+			delete(tracker.lastRelay, identity)
+		}
 	}
 	return snapshot, nil
 }

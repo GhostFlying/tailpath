@@ -320,9 +320,12 @@ type PathEvent struct {
 
 // PathEventPage defines model for PathEventPage.
 type PathEventPage struct {
-	Anchor     *PathEvent  `json:"anchor,omitempty"`
-	Events     []PathEvent `json:"events"`
-	NextCursor *string     `json:"nextCursor,omitempty"`
+	Anchor       *PathEvent             `json:"anchor,omitempty"`
+	Events       []PathEvent            `json:"events"`
+	NextCursor   *string                `json:"nextCursor,omitempty"`
+	RelatedNodes []HistoryNodeReference `json:"relatedNodes"`
+	Source       HistoryNodeReference   `json:"source"`
+	Target       HistoryNodeReference   `json:"target"`
 }
 
 // PathEvidence defines model for PathEvidence.
