@@ -210,11 +210,15 @@ test("renders directional history on shared chronological lanes", async ({
   page,
 }, testInfo) => {
   const detail = directionalHistoryFor(edgeSummaries[0], 3);
+  detail.pathEvents[2].directions[0].clockSkewed = true;
   await page.route(
     "**/api/v1/history/edges/node-mac--node-dev/paths?**",
     (route) =>
       route.fulfill({
         json: {
+          source: detail.source,
+          target: detail.target,
+          relatedNodes: detail.relatedNodes,
           anchor: detail.pathAnchor,
           events: detail.pathEvents,
         },
@@ -269,6 +273,11 @@ test("renders directional history on shared chronological lanes", async ({
       sheet.getByRole("table", { name: "Directional path state" }),
     ).toContainText("DERP hkg");
     await expect(sheet).toContainText("Inferred");
+    await expect(sheet).toContainText("Observer MacBook");
+    await expect(sheet).toContainText("Collected");
+    await expect(sheet).toContainText("Received");
+    await expect(sheet).toContainText("Resolution: endpoint match");
+    await expect(sheet).toContainText("Collector clock warning");
     await expect(
       sheet.getByRole("button", { name: "Close path evidence" }),
     ).toBeFocused();
@@ -285,6 +294,11 @@ test("renders directional history on shared chronological lanes", async ({
     await expect(table).toContainText("DevBox → MacBook");
     await expect(table).toContainText("DERP hkg");
     await expect(table).toContainText("Inferred");
+    await expect(table).toContainText("Observer MacBook");
+    await expect(table).toContainText("Collected");
+    await expect(table).toContainText("Received");
+    await expect(table).toContainText("Resolution: endpoint match");
+    await expect(table).toContainText("Collector clock warning");
   }
 
   const labelFailures = await page
@@ -323,6 +337,36 @@ test("loads all 900 directional path events without truncation", async ({
   test.skip(!testInfo.project.name.startsWith("desktop"));
   test.setTimeout(30_000);
   const detail = directionalHistoryFor(edgeSummaries[0], 900);
+  const direct = { kind: "direct" as const };
+  const relay = {
+    kind: "peer_relay" as const,
+    peerRelayStableNodeId: "relay-hangzhou-stable",
+    peerRelayEndpoint: "203.0.113.10:41642",
+    peerRelayResolution: "endpoint_match" as const,
+    peerRelayVni: 4293,
+  };
+  detail.pathEvents[499] = {
+    ...detail.pathEvents[499],
+    path: direct,
+    directions: detail.pathEvents[499].directions.map((state) => ({
+      ...state,
+      primaryPath: direct,
+      fallbackPath: undefined,
+      inferenceRule: undefined,
+      evidence: "observed" as const,
+    })),
+  };
+  detail.pathEvents[899] = {
+    ...detail.pathEvents[899],
+    path: relay,
+    directions: detail.pathEvents[899].directions.map((state) => ({
+      ...state,
+      primaryPath: relay,
+      fallbackPath: undefined,
+      inferenceRule: undefined,
+      evidence: "observed" as const,
+    })),
+  };
   let pageRequests = 0;
   await page.route(
     "**/api/v1/history/edges/node-mac--node-dev/paths?**",
@@ -336,6 +380,9 @@ test("loads all 900 directional path events without truncation", async ({
         if (cursor) await new Promise((resolve) => setTimeout(resolve, 500));
         await route.fulfill({
           json: {
+            source: detail.source,
+            target: detail.target,
+            relatedNodes: detail.relatedNodes,
             anchor: detail.pathAnchor,
             events,
             nextCursor: cursor ? undefined : "second-page",
@@ -348,7 +395,7 @@ test("loads all 900 directional path events without truncation", async ({
     route.fulfill({
       json: {
         ...detail,
-        pathEvents: detail.pathEvents.slice(0, 500),
+        pathEvents: detail.pathEvents.slice(-500),
         pathEventsTruncated: true,
       },
     }),
@@ -358,6 +405,9 @@ test("loads all 900 directional path events without truncation", async ({
   await expect(
     page.getByText("Loading path history · 500 events", { exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".history-detail-summary")).toContainText(
+    "Peer Relay",
+  );
   await expect(
     page.getByText("Complete · 900 events", { exact: true }),
   ).toBeVisible();

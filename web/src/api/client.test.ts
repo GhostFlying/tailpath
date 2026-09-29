@@ -46,6 +46,9 @@ describe("getEdgePathHistory", () => {
   it("requests a stable cursor page and normalizes directional collections", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
+        source: { id: "node-a", label: "Node A" },
+        target: { id: "node-b", label: "Node B" },
+        relatedNodes: null,
         anchor: { ...pathEvent(), directions: null },
         events: [
           {
@@ -74,6 +77,7 @@ describe("getEdgePathHistory", () => {
       expect.objectContaining({ headers: { Accept: "application/json" } }),
     );
     expect(page.anchor?.directions).toEqual([]);
+    expect(page.relatedNodes).toEqual([]);
     expect(page.events[0]).toMatchObject({
       conflicts: [],
       observations: [],

@@ -137,7 +137,7 @@ export const HistoryDetail = memo(function HistoryDetail({
               <div className="history-detail-summary">
                 <span>Last path</span>
                 <strong
-                  className={`path-text ${lastPathSummary.asymmetric ? "asymmetric" : (lastPath?.kind ?? "unknown")}`}
+                  className={`path-text ${lastPathSummary.asymmetric ? "asymmetric" : lastPathSummary.partial ? "unknown" : (lastPath?.kind ?? "unknown")}`}
                 >
                   {lastPathSummary.label}
                 </strong>
@@ -184,7 +184,9 @@ export const HistoryDetail = memo(function HistoryDetail({
   );
 });
 
-function summarizeLastPath(event: EdgeHistory["pathAnchor"] | undefined) {
+export function summarizeLastPath(
+  event: EdgeHistory["pathAnchor"] | undefined,
+) {
   const directions = event?.directions ?? [];
   if (directions.length === 2) {
     const keys = directions.map(
@@ -192,16 +194,25 @@ function summarizeLastPath(event: EdgeHistory["pathAnchor"] | undefined) {
         `${historyPathKey(direction.primaryPath)}|${direction.fallbackPath ? historyPathKey(direction.fallbackPath) : "none"}`,
     );
     if (keys[0] !== keys[1]) {
-      return { label: "Asymmetric paths", asymmetric: true };
+      return { label: "Asymmetric paths", asymmetric: true, partial: false };
     }
     return {
       label: pathLabel(directions[0].primaryPath),
       asymmetric: false,
+      partial: false,
+    };
+  }
+  if (directions.length === 1) {
+    return {
+      label: "Partial path evidence",
+      asymmetric: false,
+      partial: true,
     };
   }
   return {
     label: event ? pathLabel(event.path) : "Unknown",
     asymmetric: false,
+    partial: false,
   };
 }
 
