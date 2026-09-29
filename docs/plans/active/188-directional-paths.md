@@ -157,7 +157,8 @@ every event remains available in a 44px-target detail index. Pre-directional
 records retain the legacy newest-first view and explicit combined-evidence
 copy.
 
-The ready-for-review stack has received forty-six actionable inline findings.
+The ready-for-review stack received forty-six actionable inline findings, all
+now addressed.
 The API slice now clears relay inference when a peer disappears, freezes
 pagination boundaries at an explicit detail timestamp, returns historical node
 references on every page, preserves the released schema-v5 migration boundary,
@@ -197,12 +198,16 @@ elapsed-time pixel bins rather than event-count chunks. Uniform bins preserve
 the actual state while mixed bins are explicitly rendered as dense changes, so
 a burst cannot stretch its latest state across an earlier long-lived path. The
 complete event index is mounted in accessible 100-row pages, keeping every
-retained state reachable without unbounded DOM growth.
+retained state reachable without unbounded DOM growth. Empty-direction events
+after directional evidence are rendered as withdrawn/unknown rather than
+falling back to the compatibility path, and stable selection keys retain only
+a compact digest instead of the complete event JSON.
 
 ## Next step
 
-Update PR #190, safely rebase PR #191, retain the completed History
-remediation, then rerun the complete repository and browser gates.
+Run the complete repository and browser gates, update PR #191, then reply to and
+resolve all forty-six addressed review threads before requesting a fresh
+review.
 
 ## Verification
 
@@ -221,7 +226,7 @@ remediation, then rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 98 current Vitest tests pass.
+- TypeScript check and all 100 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
@@ -241,10 +246,10 @@ remediation, then rerun the complete repository and browser gates.
 - An uneven-duration dense fixture preserves a 23-hour Direct state and marks
   only the final one-hour burst as mixed at a 24-bin render budget.
 - The complete repository gate passed: generated-file consistency, shell
-  harnesses, formatting, `go vet`, all Go tests, TypeScript, 98 Vitest tests,
+  harnesses, formatting, `go vet`, all Go tests, TypeScript, 100 Vitest tests,
   the production Web build, and the browser matrix.
 - The final review-remediated Chromium browser matrix passed with CI
-  concurrency: 68 passed and 32 intentionally skipped across desktop and mobile
+  concurrency: 72 passed and 32 intentionally skipped across desktop and mobile
   projects, including the absolute paging boundary, incomplete readiness state,
   intermediate desktop width, complete relay observation timestamps, and
   4293/8 asymmetry in both the summary and exact-time snapshot.
