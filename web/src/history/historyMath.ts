@@ -209,6 +209,7 @@ export function buildDirectionalTimeline(
       new Date(right.event.observedAt).getTime(),
   );
   const eventIDs = stablePathEventIDs(ordered);
+  let hasSeenDirectionalEvidence = false;
   return ordered.map(({ event, anchored, noEvidence }, index) => {
     const from = anchored
       ? history.from
@@ -217,6 +218,10 @@ export function buildDirectionalTimeline(
       ? clampTime(ordered[index + 1].event.observedAt, history.from, history.to)
       : history.to;
     const directions = event.directions ?? [];
+    const eventHasDirections = directions.length > 0;
+    const missingAfterDirectionalEvidence =
+      !eventHasDirections && hasSeenDirectionalEvidence;
+    hasSeenDirectionalEvidence ||= eventHasDirections;
     return {
       id: eventIDs[index],
       observedAt: event.observedAt,
@@ -238,7 +243,7 @@ export function buildDirectionalTimeline(
           direction.toNodeId === history.source.id,
       ),
       anchored,
-      noEvidence,
+      noEvidence: noEvidence || missingAfterDirectionalEvidence,
     };
   });
 }
@@ -349,12 +354,25 @@ function stablePathEventIDs(
   const occurrencesFromNewest = new Map<string, number>();
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const item = events[index];
-    const identity = `${item.anchored ? "anchor" : "event"}:${item.noEvidence ? "empty" : "evidence"}:${JSON.stringify(item.event)}`;
+    const identity = `${item.anchored ? "anchor" : "event"}:${item.noEvidence ? "empty" : "evidence"}:${item.event.observedAt}:${compactEventDigest(item.event)}`;
     const occurrence = occurrencesFromNewest.get(identity) ?? 0;
     ids[index] = `${identity}:${occurrence}`;
     occurrencesFromNewest.set(identity, occurrence + 1);
   }
   return ids;
+}
+
+function compactEventDigest(event: PathEvent): string {
+  const serialized = JSON.stringify(event);
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < serialized.length; index += 1) {
+    const code = serialized.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+    second ^= second >>> 13;
+  }
+  return `${(first >>> 0).toString(16).padStart(8, "0")}${(second >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export function hasDirectionalHistory(history: EdgeHistory): boolean {

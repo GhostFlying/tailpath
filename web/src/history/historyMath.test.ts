@@ -183,6 +183,26 @@ describe("path timeline", () => {
     )?.id;
 
     expect(fullID).toBe(partialID);
+    expect(fullID?.length).toBeLessThan(100);
+  });
+
+  it("marks an empty event after directional evidence as withdrawn", () => {
+    const history = directionalHistory();
+    history.pathEvents.push({
+      observedAt: "2026-08-24T00:45:00Z",
+      path: { kind: "direct" },
+      conflicts: [],
+      observations: [],
+      directions: [],
+    });
+
+    const withdrawal = buildDirectionalTimeline(history).at(-1);
+
+    expect(withdrawal).toMatchObject({
+      noEvidence: true,
+      aToB: undefined,
+      bToA: undefined,
+    });
   });
 
   it("coalesces dense visual segments within a fixed render budget", () => {
