@@ -180,7 +180,8 @@ of letting independently selected offsets cancel, and logical edge selection
 is reapplied whenever collapsed and expanded route IDs replace one another.
 Directional arrows require actual flow, and per-edge DERP marker identities
 cannot join unrelated routes, while partial Recent paths retain their fallback
-detail.
+detail. Direct asymmetric routes also honor the single relationship-label
+assignment.
 
 History preserves unknown directions in summaries, renders complete
 per-direction evidence and relay resolution metadata, keeps compatibility
@@ -217,7 +218,7 @@ remediation, then rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 96 current Vitest tests pass.
+- TypeScript check and all 97 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
