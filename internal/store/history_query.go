@@ -273,8 +273,8 @@ func (s *SQLite) EdgePathHistoryWindow(
 		anchorArgs = append(anchorArgs, sourceID)
 	}
 	anchorQuery := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
-		FROM path_events WHERE julianday(observed_at) < julianday(?) AND edge_id IN (` + edgeClause + `)
-		ORDER BY julianday(observed_at) DESC, id DESC LIMIT 1`
+		FROM path_events WHERE observed_at < ? AND edge_id IN (` + edgeClause + `)
+		ORDER BY observed_at DESC, id DESC LIMIT 1`
 	row := s.db.QueryRowContext(ctx, anchorQuery, anchorArgs...)
 	var storedAnchor storedPathEvent
 	if err := row.Scan(&storedAnchor.edgeID, &storedAnchor.id, &storedAnchor.observedAt,
@@ -294,12 +294,12 @@ func (s *SQLite) EdgePathHistoryWindow(
 		args = append(args, sourceID)
 	}
 	query := `SELECT edge_id, id, observed_at, path, conflicts, observations, directions
-		FROM path_events WHERE julianday(observed_at) >= julianday(?) AND julianday(observed_at) < julianday(?) AND edge_id IN (` + edgeClause + `)`
+		FROM path_events WHERE observed_at >= ? AND observed_at < ? AND edge_id IN (` + edgeClause + `)`
 	if cursorValue != "" {
-		query += ` AND (julianday(observed_at) > julianday(?) OR (julianday(observed_at) = julianday(?) AND id > ?))`
+		query += ` AND (observed_at > ? OR (observed_at = ? AND id > ?))`
 		args = append(args, formatTime(cursor.ObservedAt), formatTime(cursor.ObservedAt), cursor.ID)
 	}
-	query += ` ORDER BY julianday(observed_at), id LIMIT ?`
+	query += ` ORDER BY observed_at, id LIMIT ?`
 	args = append(args, limit+1)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -76,4 +76,8 @@ func TestSameDirectionalPathsTracksResolvedRelayEndpointAndVNI(t *testing.T) {
 	if !SameDirectionalPaths(directLeft, directRight) {
 		t.Fatal("temporary direct port change created a logical transition")
 	}
+	directRight[0].PrimaryPath.DirectEndpoint = "192.0.2.10:54321"
+	if SameDirectionalPaths(directLeft, directRight) {
+		t.Fatal("direct address change was ignored")
+	}
 }
