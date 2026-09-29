@@ -405,10 +405,12 @@ function RecentPaths({ history }: { history: EdgeHistory | null }) {
   );
 }
 
-function pathEventLabel(event: PathEvent) {
+export function pathEventLabel(event: PathEvent) {
   const directions = event.directions ?? [];
   if (directions.length === 1) {
-    return `Partial · ${pathLabel(directions[0].primaryPath)}`;
+    const direction = directions[0];
+    const fallback = direction.fallbackPath ? " + DERP fallback" : "";
+    return `Partial · ${pathLabel(direction.primaryPath)}${fallback}`;
   }
   if (
     directions.length === 2 &&
