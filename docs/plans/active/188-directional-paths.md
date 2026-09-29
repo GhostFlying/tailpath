@@ -174,6 +174,13 @@ default directional Bézier geometry participates in obstacle and route-crossing
 checks even before inline rerouting, and the legend classifies DERP fallback as
 path evidence rather than traffic activity.
 
+History preserves unknown directions in summaries, renders complete
+per-direction evidence and relay resolution metadata, keeps compatibility
+events visible while pagination runs, fixes the first page to the detail
+response's absolute end, reports paging through its readiness state, adapts the
+evidence table between 621px and 1100px, and timestamps relay-session evidence
+with an explicit collector clock warning when needed.
+
 ## Next step
 
 Update PR #190, safely rebase PR #191, retain the completed History
@@ -183,9 +190,9 @@ remediation, then rerun the complete repository and browser gates.
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
-  window end, node references first encountered on a paginated page, v5 event
-  ordering repair, resolved relay endpoint/VNI transitions, and mandatory
-  inference rules at both validation boundaries.
+  window end, node references first encountered on a paginated page, the
+  irrecoverable schema-v5 deduplication boundary, resolved relay endpoint/VNI
+  transitions, and mandatory inference rules at both validation boundaries.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
@@ -210,11 +217,12 @@ remediation, then rerun the complete repository and browser gates.
 - A two-page 900-event browser fixture renders all 900 events and exposes the
   500-event intermediate loading state without truncation or duplication.
 - The complete repository gate passed: generated-file consistency, shell
-  harnesses, formatting, `go vet`, all Go tests, TypeScript, 83 Vitest tests,
-  and the production Web build.
+  harnesses, formatting, `go vet`, all Go tests, TypeScript, 84 Vitest tests,
+  the production Web build, and the browser matrix.
 - The final review-remediated Chromium browser matrix passed with CI
-  concurrency: 65 passed and 31 intentionally skipped across desktop and mobile
-  projects.
+  concurrency: 68 passed and 32 intentionally skipped across desktop and mobile
+  projects, including the absolute paging boundary, incomplete readiness state,
+  intermediate desktop width, and complete relay observation timestamps.
 - The layout/response/obstacle Chromium gate passed with the same diagnostics
   flags as CI: 23 passed and one desktop-only 320px duplicate intentionally
   skipped. WebKit remains assigned to the hosted layout workflow because it is

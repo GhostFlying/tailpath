@@ -158,6 +158,8 @@ export function useHistoryDetail(
               window,
               cursor,
               controller.signal,
+              500,
+              history.to,
             );
             if (controller.signal.aborted) return;
             if (!cursor && page.anchor) anchor = page.anchor;
