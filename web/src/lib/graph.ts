@@ -108,7 +108,14 @@ export function buildElements(
       if (!edgeIntermediates.length) {
         const segment = edge.directions?.length ? `${route.id}-main` : "main";
         elements.push(
-          routeEdgeElement(edge, route, route.from, route.to, segment, true),
+          routeEdgeElement(
+            edge,
+            route,
+            route.from,
+            route.to,
+            segment,
+            route.showLabel,
+          ),
         );
         continue;
       }
