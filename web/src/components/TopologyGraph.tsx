@@ -1425,12 +1425,22 @@ function routeEdgesAroundObstacles(cy: Core) {
           node.id !== edge.source().id() && node.id !== edge.target().id(),
       )
       .map((node) => node.bodyBounds);
-    const straightPoints = [source, target];
-    const intersectsObstacle = obstacles.some((bounds) =>
-      segmentIntersectsBounds(source, target, bounds),
-    );
+    const hasDirectionalCurve =
+      edge.hasClass("route-a") || edge.hasClass("route-b");
+    const baselineCurve = hasDirectionalCurve
+      ? { weight: 0.5, distance: 28 }
+      : undefined;
+    const baselinePoints = baselineCurve
+      ? curvePoints(
+          source,
+          target,
+          baselineCurve.weight,
+          baselineCurve.distance,
+        )
+      : [source, target];
+    const intersectsObstacle = pointsIntersectBounds(baselinePoints, obstacles);
     const intersectsPath = unrelatedPaths.some((path) =>
-      pathsCross(straightPoints, path.points),
+      pathsCross(baselinePoints, path.points),
     );
     if (!intersectsObstacle && !intersectsPath) {
       const path = {
@@ -1438,7 +1448,8 @@ function routeEdgesAroundObstacles(cy: Core) {
         nodeIDs,
         sourceID: edge.source().id(),
         targetID: edge.target().id(),
-        points: straightPoints,
+        points: baselinePoints,
+        curve: baselineCurve,
       };
       routedPaths.push(path);
       edge.scratch("tailpathRoute", path);
@@ -1485,7 +1496,8 @@ function routeEdgesAroundObstacles(cy: Core) {
         nodeIDs,
         sourceID: edge.source().id(),
         targetID: edge.target().id(),
-        points: straightPoints,
+        points: baselinePoints,
+        curve: baselineCurve,
       };
       routedPaths.push(path);
       edge.scratch("tailpathRoute", path);
