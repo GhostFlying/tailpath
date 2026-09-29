@@ -405,6 +405,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				continue
 			}
 			a.touchObserverLocked(observerID, collectedAt, receivedAt)
+			a.markObserverEdgesTouchedLocked(touchedEdges, observerID)
 			a.withdrawObserverLocked(report.ReporterInstanceID, reporter, observerID, receivedAt)
 			result.CheckpointRequired = true
 		}
@@ -433,6 +434,7 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 				}
 				members[peerID] = struct{}{}
 			}
+			a.markObserverEdgesTouchedLocked(touchedEdges, observerID)
 			a.replaceInventoryLocked(observerState, observerID, observation.InventoryGeneration, members)
 		case domain.ReportTrafficSample:
 			if observerState.InventoryGeneration != observation.InventoryGeneration {
@@ -552,6 +554,24 @@ func (a *Aggregator) applyLocked(report domain.ReportEnvelope, receivedAt time.T
 	}
 	result.Changed = true
 	return result, nil
+}
+
+func (a *Aggregator) markObserverEdgesTouchedLocked(
+	touchedEdges map[string]domain.PathEvidenceState,
+	observerID string,
+) {
+	for edgeID, edge := range a.state.Edges {
+		if _, observed := edge.Observations[observerID]; !observed {
+			continue
+		}
+		if _, touched := touchedEdges[edgeID]; touched {
+			continue
+		}
+		touchedEdges[edgeID] = domain.PathEvidenceState{
+			Path: edge.LastKnownPath, Conflicts: edge.LastKnownConflicts,
+			Directions: domain.CloneDirectionalPaths(edge.LastKnownDirections),
+		}
+	}
 }
 
 func (a *Aggregator) isControlNodeLocked(nodeID string) bool {
