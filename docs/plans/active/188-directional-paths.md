@@ -148,19 +148,22 @@ missing direction unknown, labels evidence, and separates endpoint path
 evidence from relay-session identity evidence. Legacy edges without directions
 retain their compatibility candidate view.
 
-The ready-for-review stack received fifteen actionable inline findings across
-two review passes. The API slice now clears relay inference when a peer
-disappears, freezes pagination boundaries, returns historical node references
-on every page, repairs schema-v5 ordering in migration 6, records resolved relay
-endpoint/VNI changes, and rejects inferred evidence without a versioned rule.
-The Live slice now derives arrows from directional rates, distinguishes partial
-evidence, suppresses recent arrows, exposes relay resolution, renders one total
-rate label per logical relationship, and retains the recent-path inspector.
+The ready-for-review stack has received twenty-two actionable inline findings.
+The API slice now clears relay inference when a peer disappears, freezes
+pagination boundaries at an explicit detail timestamp, returns historical node
+references on every page, preserves the released schema-v5 migration boundary,
+records resolved relay endpoint/VNI changes, and rejects inferred evidence
+without a versioned rule. The Live slice now derives arrows from directional
+rates, distinguishes partial evidence, suppresses recent arrows, exposes relay
+resolution, renders one total rate label per logical relationship, retains the
+recent-path inspector, treats distinct VNIs as distinct directional path
+identities, and separates reciprocal route geometry.
 
 ## Next step
 
 Update PR #190, safely rebase PR #191, retain its completed History review
-fixes, then rerun the complete repository and browser gates.
+fixes, complete its absolute-boundary, loading, responsive-table, and relay
+evidence remediation, then rerun the complete repository and browser gates.
 
 ## Verification
 
@@ -175,13 +178,14 @@ fixes, then rerun the complete repository and browser gates.
   pass.
 - Full `go test ./...` passes.
 - Generated OpenAPI Go and TypeScript types are current.
-- TypeScript check and all 79 current Vitest tests pass.
+- TypeScript check and all 80 current Vitest tests pass.
 - Focused directional Live Playwright coverage passes on desktop Chromium at
   1440x900 and mobile Chromium at Pixel 7 dimensions, including no horizontal
   overflow, single-counted traffic, and no console errors.
-- The full Live browser matrix passes on desktop and mobile: 62 passed and 30
-  intentionally skipped, including one total-rate label and the restored
-  recent-path inspector.
+- The full Live browser matrix passes on desktop and mobile: 64 passed and 30
+  intentionally skipped, including one total-rate label, the restored
+  recent-path inspector, distinct VNI identities, and visibly separated
+  reciprocal relay lanes.
 - The Browser plugin is unavailable in this environment; repository Playwright
   is the recorded browser-validation fallback.
 
