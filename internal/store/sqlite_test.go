@@ -578,11 +578,11 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 	cutoff := now.Add(-7 * 24 * time.Hour)
 	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
 	for _, at := range []time.Time{cutoff.Add(-2 * time.Hour), cutoff.Add(-time.Hour), cutoff.Add(time.Hour)} {
-		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "retained", formatTime(at), path); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "retained", formatPathEventTime(at), path); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "expired", formatTime(cutoff.Add(-time.Hour)), path); err != nil {
+	if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, "expired", formatPathEventTime(cutoff.Add(-time.Hour)), path); err != nil {
 		t.Fatal(err)
 	}
 	for edgeID, edge := range map[string]struct {
@@ -626,7 +626,7 @@ func TestMaintainKeepsOnlyRequiredPathAnchor(t *testing.T) {
 		}
 		retained = append(retained, observedAt)
 	}
-	want := []string{formatTime(cutoff.Add(-time.Hour)), formatTime(cutoff.Add(time.Hour))}
+	want := []string{formatPathEventTime(cutoff.Add(-time.Hour)), formatPathEventTime(cutoff.Add(time.Hour))}
 	if len(retained) != len(want) || retained[0] != want[0] || retained[1] != want[1] {
 		t.Fatalf("retained path events = %#v, want %#v", retained, want)
 	}
@@ -649,7 +649,7 @@ func TestMaintainKeepsLatestPathAnchorAcrossEdgeAliases(t *testing.T) {
 		{"n_b--n_old", cutoff.Add(-time.Hour)},
 		{"n_a--n_b", cutoff.Add(time.Hour)},
 	} {
-		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, event.edgeID, formatTime(event.at), path); err != nil {
+		if _, err := database.db.Exec(`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES (?, ?, ?, '[]')`, event.edgeID, formatPathEventTime(event.at), path); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -692,8 +692,8 @@ func TestMaintainKeepsLatestPathAnchorAcrossEdgeAliases(t *testing.T) {
 		got = append(got, edgeID+"@"+observedAt)
 	}
 	want := []string{
-		"n_b--n_old@" + formatTime(cutoff.Add(-time.Hour)),
-		"n_a--n_b@" + formatTime(cutoff.Add(time.Hour)),
+		"n_b--n_old@" + formatPathEventTime(cutoff.Add(-time.Hour)),
+		"n_a--n_b@" + formatPathEventTime(cutoff.Add(time.Hour)),
 	}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("logical path anchors = %#v, want %#v", got, want)
@@ -950,8 +950,8 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	if err := database.db.QueryRow(`SELECT observed_at FROM path_events`).Scan(&observedAt); err != nil {
 		t.Fatal(err)
 	}
-	if observedAt != formatTime(at) {
-		t.Fatalf("migrated path timestamp = %q, want %q", observedAt, formatTime(at))
+	if observedAt != formatPathEventTime(at) {
+		t.Fatalf("migrated path timestamp = %q, want %q", observedAt, formatPathEventTime(at))
 	}
 }
 

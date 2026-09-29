@@ -353,7 +353,7 @@ func recordPathTransition(ctx context.Context, tx *sql.Tx, transition domain.Pat
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO path_events(edge_id, observed_at, path, conflicts, observations, directions) VALUES (?, ?, ?, ?, ?, ?)`,
-		transition.EdgeID, formatTime(transition.ObservedAt), path, conflicts, observations, directions)
+		transition.EdgeID, formatPathEventTime(transition.ObservedAt), path, conflicts, observations, directions)
 	return err
 }
 
@@ -570,5 +570,9 @@ func (s *SQLite) Maintain(ctx context.Context, now time.Time) error {
 }
 
 func formatTime(value time.Time) string {
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func formatPathEventTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }

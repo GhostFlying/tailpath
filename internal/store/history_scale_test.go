@@ -137,5 +137,5 @@ func scalePathEventSQL(at time.Time) string {
 	return fmt.Sprintf(`
 WITH RECURSIVE edge(i) AS (VALUES(0) UNION ALL SELECT i+1 FROM edge WHERE i<999)
 INSERT INTO path_events(edge_id, observed_at, path, observations)
-SELECT printf('edge_%%04d', i), '%s', '{"kind":"direct"}', '[]' FROM edge;`, formatTime(at))
+SELECT printf('edge_%%04d', i), '%s', '{"kind":"direct"}', '[]' FROM edge;`, formatPathEventTime(at))
 }
