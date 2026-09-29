@@ -311,7 +311,7 @@ describe("buildElements", () => {
     expect(String(rendered[0].classes)).toContain("flow-reverse");
   });
 
-  it("expands different directional primaries and labels each rate once", () => {
+  it("expands different directional primaries with one total-rate label", () => {
     const fixture = topology();
     fixture.edges = [
       withDirections(fixture.edges[0], [
@@ -333,9 +333,9 @@ describe("buildElements", () => {
 
     expect(edgeIsAsymmetric(fixture.edges[0])).toBe(true);
     expect(edges).toHaveLength(4);
-    expect(edges.filter((element) => element.data?.label)).toHaveLength(2);
+    expect(edges.filter((element) => element.data?.label)).toHaveLength(1);
     expect(new Set(edges.map((element) => element.data?.label))).toEqual(
-      new Set(["12 KB/s", "3.0 KB/s", ""]),
+      new Set(["15 KB/s", ""]),
     );
     expect(
       edges.every((element) =>
