@@ -43,6 +43,28 @@ func TestHelloBaselineAllowsZeroSampleDuration(t *testing.T) {
 	}
 }
 
+func TestInferredPathEvidenceRequiresVersionedRule(t *testing.T) {
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	report := ReportEnvelope{
+		Version: ProtocolVersion, ReportID: "hello", ReporterInstanceID: "reporter", Sequence: 1,
+		CollectedAt: at, Kind: ReportObserverHello,
+		Observers: []ObserverReport{{
+			Observer: NodeIdentity{StableNodeID: "a"}, InventoryGeneration: "inventory",
+			Peers: []PeerObservation{{
+				Peer: NodeIdentity{StableNodeID: "b"}, Path: PathObservation{Kind: PathDERP},
+				PathEvidence: PathEvidenceInferred, LastActive: at,
+			}},
+		}},
+	}
+	if err := report.Validate(); err == nil {
+		t.Fatal("inferred evidence without an inference rule was accepted")
+	}
+	report.Observers[0].Peers[0].PathInferenceRule = "tailscale-status-fallback-v1"
+	if err := report.Validate(); err != nil {
+		t.Fatalf("versioned inferred evidence rejected: %v", err)
+	}
+}
+
 func TestIdentityDoesNotRequireHostname(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	report := ReportEnvelope{

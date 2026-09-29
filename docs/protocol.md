@@ -84,8 +84,10 @@ Each traffic-bearing peer may additionally carry `fallbackPath`,
 a Direct or Peer Relay primary. Endpoint evidence selects only that observer's
 outbound direction. `observed` means status reported the primary directly;
 `inferred` names a versioned bounded rule; `legacy` is reserved for History
-reconstructed from pre-directional records. Protocol-v1 senders may omit all
-three fields and are treated as observed primary-only evidence.
+reconstructed from pre-directional records. Inferred evidence must carry a
+non-empty `pathInferenceRule`; both the public exporter and server reject an
+unversioned inference. Protocol-v1 senders may omit all three fields and are
+treated as observed primary-only evidence.
 
 Relay sessions additionally carry a session ID, unsigned 24-bit VNI,
 directional counters, and directional deltas. Each endpoint has a non-empty

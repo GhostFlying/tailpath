@@ -44,3 +44,36 @@ func TestSameDirectionalPathsIgnoresObservationTimeButTracksFallback(t *testing.
 		t.Fatal("fallback region change was ignored")
 	}
 }
+
+func TestSameDirectionalPathsTracksResolvedRelayEndpointAndVNI(t *testing.T) {
+	vni := int64(8)
+	left := []DirectionalPathState{{
+		FromNodeID: "a", ToNodeID: "b", ObserverID: "a", Evidence: PathEvidenceObserved,
+		PrimaryPath: PathObservation{
+			Kind: PathPeerRelay, PeerRelayStableNodeID: "relay-hz",
+			PeerRelayEndpoint: "203.0.113.8:41641", PeerRelayVNI: &vni,
+			PeerRelayResolution: "endpoint_match",
+		},
+	}}
+	right := CloneDirectionalPaths(left)
+	right[0].PrimaryPath.PeerRelayEndpoint = "203.0.113.9:41641"
+	if SameDirectionalPaths(left, right) {
+		t.Fatal("resolved relay endpoint change was ignored")
+	}
+	right = CloneDirectionalPaths(left)
+	changedVNI := int64(4293)
+	right[0].PrimaryPath.PeerRelayVNI = &changedVNI
+	if SameDirectionalPaths(left, right) {
+		t.Fatal("resolved relay VNI change was ignored")
+	}
+
+	directLeft := []DirectionalPathState{{
+		FromNodeID: "a", ToNodeID: "b", ObserverID: "a", Evidence: PathEvidenceObserved,
+		PrimaryPath: PathObservation{Kind: PathDirect, DirectEndpoint: "203.0.113.10:41641"},
+	}}
+	directRight := CloneDirectionalPaths(directLeft)
+	directRight[0].PrimaryPath.DirectEndpoint = "203.0.113.10:54321"
+	if !SameDirectionalPaths(directLeft, directRight) {
+		t.Fatal("temporary direct port change created a logical transition")
+	}
+}

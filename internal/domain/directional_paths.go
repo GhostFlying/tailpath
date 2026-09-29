@@ -69,8 +69,8 @@ func SameDirectionalPaths(left, right []DirectionalPathState) bool {
 		if left[index].FromNodeID != right[index].FromNodeID || left[index].ToNodeID != right[index].ToNodeID ||
 			left[index].ObserverID != right[index].ObserverID || left[index].Evidence != right[index].Evidence ||
 			left[index].InferenceRule != right[index].InferenceRule ||
-			PathEvidenceKey(left[index].PrimaryPath) != PathEvidenceKey(right[index].PrimaryPath) ||
-			optionalPathEvidenceKey(left[index].FallbackPath) != optionalPathEvidenceKey(right[index].FallbackPath) {
+			!sameDirectionalPath(left[index].PrimaryPath, right[index].PrimaryPath) ||
+			!sameOptionalDirectionalPath(left[index].FallbackPath, right[index].FallbackPath) {
 			return false
 		}
 	}
@@ -119,11 +119,30 @@ func cloneDirectionalPath(path *PathObservation) *PathObservation {
 	return &copy
 }
 
-func optionalPathEvidenceKey(path *PathObservation) string {
-	if path == nil {
-		return ""
+func sameDirectionalPath(left, right PathObservation) bool {
+	if PathEvidenceKey(left) != PathEvidenceKey(right) {
+		return false
 	}
-	return PathEvidenceKey(*path)
+	if left.Kind != PathPeerRelay {
+		return true
+	}
+	return strings.TrimSpace(left.PeerRelayEndpoint) == strings.TrimSpace(right.PeerRelayEndpoint) &&
+		sameOptionalVNI(left.PeerRelayVNI, right.PeerRelayVNI) &&
+		left.PeerRelayResolution == right.PeerRelayResolution
+}
+
+func sameOptionalDirectionalPath(left, right *PathObservation) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return sameDirectionalPath(*left, *right)
+}
+
+func sameOptionalVNI(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func resolveDirectionalNodeID(redirects map[string]string, nodeID string) string {

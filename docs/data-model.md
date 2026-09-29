@@ -116,6 +116,9 @@ StableNodeID but cannot select the path. Directional evidence is labeled
 receipt, clock-skew, and versioned inference metadata. Peer Relay identity uses
 StableNodeID when resolved, otherwise selected endpoint, then VNI. Relationship
 traffic stays on the edge and is never copied onto primary or fallback routes.
+For an already resolved relay, a selected endpoint, VNI, or resolution-method
+change writes a new directional event so History can reconstruct those retained
+details. Direct endpoint port churn does not create a logical path transition.
 
 The previous sticky primary, conflicts, `pathState`, and `pathCandidates`
 remain compatibility projections. They are not the source of truth for new
@@ -149,12 +152,14 @@ are equivalent, preserving the earliest event as the window anchor. History
 node, list, and detail queries exclude system telemetry by default; the
 diagnostic query option includes it without changing stored provenance.
 
-Schema migration 6 adds a directional JSON column to path events and derives
-best-effort endpoint directions from retained provenance. Derived rows are
-marked `legacy` and never invent a fallback. New events persist both directions
-and their evidence exactly. A dedicated `(observed_at, id)` keyset-paginated
-endpoint exposes every transition in a selected window; the older embedded
-500-event detail field remains for compatibility.
+Schema migration 6 repairs retained schema-v5 events in parsed chronological
+order without rewriting the released migration, adds a directional JSON column
+to path events, and derives best-effort endpoint directions from retained
+provenance. Derived rows are marked `legacy` and never invent a fallback. New
+events persist both directions and their evidence exactly. A dedicated
+`(observed_at, id)` keyset-paginated endpoint exposes every transition in a
+selected window; the older embedded 500-event detail field remains for
+compatibility.
 
 Canonical merges persist a redirect from the removed opaque ID to the surviving
 ID. History resolves redirects before grouping nodes and edges, including
