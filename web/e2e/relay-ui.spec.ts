@@ -298,6 +298,43 @@ test("keeps a missing reverse direction explicitly unknown", async ({
   await expect(inspector).not.toContainText("Same path both directions");
 });
 
+test("keeps a selected relationship highlighted when route IDs change", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/topology");
+  let expanded = false;
+  let invalidateTopology: (() => void) | undefined;
+  const invalidation = new Promise<void>((resolve) => {
+    invalidateTopology = resolve;
+  });
+  await page.route("**/api/v1/topology", (route) => {
+    const fixture = directionalTopology();
+    if (!expanded)
+      fixture.edges[0].directions = fixture.edges[0].directions.slice(0, 1);
+    return route.fulfill({ json: fixture });
+  });
+  await page.route("**/api/v1/events", async (route) => {
+    await invalidation;
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: 'event: topology\ndata: {"generatedAt":"2026-09-29T06:00:00Z"}\n\n',
+    });
+  });
+
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+  await expect(graph).not.toHaveAttribute("data-selected-edge-count", "0");
+
+  expanded = true;
+  invalidateTopology?.();
+  await expect(page.getByLabel("Topology details")).toContainText(
+    "Asymmetric paths",
+  );
+  await expect(graph).not.toHaveAttribute("data-selected-edge-count", "0");
+});
+
 test("separates reciprocal relay lanes when directional VNIs differ", async ({
   page,
 }) => {
