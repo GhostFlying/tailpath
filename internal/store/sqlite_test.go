@@ -907,7 +907,10 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	if _, err := raw.Exec(`INSERT INTO reports VALUES (?, ?, ?, ?, ?, ?)`, "legacy", "reporter", report.Sequence, formatTime(at), report.Kind, payload); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec(`INSERT INTO path_events(edge_id, observed_at, path) VALUES (?, ?, ?)`, "n_a--n_b", formatTime(at), pathPayload); err != nil {
+	if _, err := raw.Exec(
+		`INSERT INTO path_events(edge_id, observed_at, path) VALUES (?, ?, ?)`,
+		"n_a--n_b", at.Format(time.RFC3339Nano), pathPayload,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.Exec(`INSERT INTO traffic_buckets VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -942,6 +945,13 @@ func TestOpenMigratesDraftSchemaReceiveTimeAndPathProvenance(t *testing.T) {
 	}
 	if physicalID != "n_a--n_b" || logicalID != "n_a--n_b" {
 		t.Fatalf("migrated edge map = %q -> %q", physicalID, logicalID)
+	}
+	var observedAt string
+	if err := database.db.QueryRow(`SELECT observed_at FROM path_events`).Scan(&observedAt); err != nil {
+		t.Fatal(err)
+	}
+	if observedAt != formatTime(at) {
+		t.Fatalf("migrated path timestamp = %q, want %q", observedAt, formatTime(at))
 	}
 }
 

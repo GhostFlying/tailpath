@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"net/netip"
 	"sort"
 	"strings"
 )
@@ -123,12 +124,26 @@ func sameDirectionalPath(left, right PathObservation) bool {
 	if PathEvidenceKey(left) != PathEvidenceKey(right) {
 		return false
 	}
+	if left.Kind == PathDirect {
+		return directEndpointAddress(left.DirectEndpoint) == directEndpointAddress(right.DirectEndpoint)
+	}
 	if left.Kind != PathPeerRelay {
 		return true
 	}
 	return strings.TrimSpace(left.PeerRelayEndpoint) == strings.TrimSpace(right.PeerRelayEndpoint) &&
 		sameOptionalVNI(left.PeerRelayVNI, right.PeerRelayVNI) &&
 		left.PeerRelayResolution == right.PeerRelayResolution
+}
+
+func directEndpointAddress(endpoint string) string {
+	trimmed := strings.TrimSpace(endpoint)
+	if addressPort, err := netip.ParseAddrPort(trimmed); err == nil {
+		return addressPort.Addr().String()
+	}
+	if address, err := netip.ParseAddr(trimmed); err == nil {
+		return address.String()
+	}
+	return trimmed
 }
 
 func sameOptionalDirectionalPath(left, right *PathObservation) bool {

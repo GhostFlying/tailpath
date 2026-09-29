@@ -570,5 +570,5 @@ func (s *SQLite) Maintain(ctx context.Context, now time.Time) error {
 }
 
 func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
+	return value.UTC().Format("2006-01-02T15:04:05.000000000Z")
 }

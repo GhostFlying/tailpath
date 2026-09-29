@@ -348,6 +348,37 @@ func TestEdgePathHistoryWindowPagesEveryTransition(t *testing.T) {
 	}
 }
 
+func TestEdgePathHistoryWindowPreservesNanosecondBounds(t *testing.T) {
+	database, now := seededHistoryDatabase(t)
+	if _, err := database.db.Exec(`DELETE FROM path_events WHERE edge_id IN ('n_a--n_b', 'n_b--n_old')`); err != nil {
+		t.Fatal(err)
+	}
+	to := now.Add(789 * time.Nanosecond)
+	from := to.Add(-domain.History15Minutes.Duration())
+	path, _ := json.Marshal(domain.PathObservation{Kind: domain.PathDirect})
+	for _, at := range []time.Time{from.Add(-time.Nanosecond), from, to.Add(-time.Nanosecond), to} {
+		if _, err := database.db.Exec(
+			`INSERT INTO path_events(edge_id, observed_at, path, observations) VALUES ('n_a--n_b', ?, ?, '[]')`,
+			formatTime(at), path,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, found, err := database.EdgePathHistoryWindow(
+		context.Background(), "n_a--n_b", domain.History15Minutes, to, "", 10, false,
+	)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if page.Anchor == nil || !page.Anchor.ObservedAt.Equal(from.Add(-time.Nanosecond)) {
+		t.Fatalf("anchor = %#v, want %s", page.Anchor, from.Add(-time.Nanosecond))
+	}
+	if len(page.Events) != 2 || !page.Events[0].ObservedAt.Equal(from) || !page.Events[1].ObservedAt.Equal(to.Add(-time.Nanosecond)) {
+		t.Fatalf("events = %#v, want exact half-open nanosecond window", page.Events)
+	}
+}
+
 func TestHistoryWindowResolutionContract(t *testing.T) {
 	for _, item := range []struct {
 		window     domain.HistoryWindow

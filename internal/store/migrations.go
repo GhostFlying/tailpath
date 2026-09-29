@@ -45,22 +45,28 @@ func migrateDirectionalPaths(tx *sql.Tx) error {
 	if err := edgeRows.Close(); err != nil {
 		return err
 	}
-	rows, err := tx.Query(`SELECT id, edge_id, observations FROM path_events ORDER BY id`)
+	rows, err := tx.Query(`SELECT id, edge_id, observed_at, observations FROM path_events ORDER BY id`)
 	if err != nil {
 		return err
 	}
 	type update struct {
 		id         int64
+		observedAt string
 		directions []domain.DirectionalPathState
 	}
 	var updates []update
 	for rows.Next() {
 		var id int64
-		var edgeID string
+		var edgeID, observedAt string
 		var rawObservations []byte
-		if err := rows.Scan(&id, &edgeID, &rawObservations); err != nil {
+		if err := rows.Scan(&id, &edgeID, &observedAt, &rawObservations); err != nil {
 			rows.Close()
 			return err
+		}
+		parsedObservedAt, err := time.Parse(time.RFC3339Nano, observedAt)
+		if err != nil {
+			rows.Close()
+			return fmt.Errorf("decode path event timestamp %d: %w", id, err)
 		}
 		var observations []domain.ObservationProvenance
 		if len(rawObservations) != 0 {
@@ -70,7 +76,10 @@ func migrateDirectionalPaths(tx *sql.Tx) error {
 			}
 		}
 		edge := endpoints[edgeID]
-		updates = append(updates, update{id: id, directions: domain.LegacyDirectionalPaths(edge.source, edge.target, observations)})
+		updates = append(updates, update{
+			id: id, observedAt: formatTime(parsedObservedAt),
+			directions: domain.LegacyDirectionalPaths(edge.source, edge.target, observations),
+		})
 	}
 	if err := rows.Close(); err != nil {
 		return err
@@ -80,7 +89,10 @@ func migrateDirectionalPaths(tx *sql.Tx) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE path_events SET directions = ? WHERE id = ?`, payload, item.id); err != nil {
+		if _, err := tx.Exec(
+			`UPDATE path_events SET observed_at = ?, directions = ? WHERE id = ?`,
+			item.observedAt, payload, item.id,
+		); err != nil {
 			return err
 		}
 	}
