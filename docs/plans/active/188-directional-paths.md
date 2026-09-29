@@ -183,7 +183,9 @@ remediation, then rerun the complete repository and browser gates.
 
 - Review-remediation tests cover a disappearing/reappearing peer, a moving
   wall clock during 900-event pagination, exclusion of events after the frozen
-  window end, and node references first encountered on a paginated page.
+  window end, node references first encountered on a paginated page, v5 event
+  ordering repair, resolved relay endpoint/VNI transitions, and mandatory
+  inference rules at both validation boundaries.
 - Live review-remediation tests cover reverse-only collapsed traffic, partial
   direction copy, exact relay resolution metadata, and desktop/mobile rendering.
 - Focused exporter, adapter, domain, aggregation, store, HTTP, and app Go tests
@@ -208,12 +210,15 @@ remediation, then rerun the complete repository and browser gates.
 - A two-page 900-event browser fixture renders all 900 events and exposes the
   500-event intermediate loading state without truncation or duplication.
 - The complete repository gate passed: generated-file consistency, shell
-  harnesses, formatting, `go vet`, all Go tests, TypeScript, 81 Vitest tests,
+  harnesses, formatting, `go vet`, all Go tests, TypeScript, 83 Vitest tests,
   and the production Web build.
-- The complete Chromium browser matrix passed with CI concurrency: 63 passed
-  and 31 intentionally skipped across desktop and mobile projects. A first
-  non-CI 32-worker run exposed one pre-existing Retry-button DOM replacement
-  race; the CI gate's four-worker run passed the same case without retry.
+- The final review-remediated Chromium browser matrix passed with CI
+  concurrency: 65 passed and 31 intentionally skipped across desktop and mobile
+  projects.
+- The layout/response/obstacle Chromium gate passed with the same diagnostics
+  flags as CI: 23 passed and one desktop-only 320px duplicate intentionally
+  skipped. WebKit remains assigned to the hosted layout workflow because it is
+  not installed in the local browser cache.
 - Final Live and History desktop/mobile screenshots were compared against all
   three accepted concepts with `view_image`; the implemented hierarchy and
   interaction match while code-native copy replaces concept-only labels.

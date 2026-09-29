@@ -76,9 +76,13 @@ function normalizePathEvent(event: NullablePathEvent) {
   };
 }
 
-type NullablePathEventPage = Omit<PathEventPage, "anchor" | "events"> & {
+type NullablePathEventPage = Omit<
+  PathEventPage,
+  "anchor" | "events" | "relatedNodes"
+> & {
   anchor?: NullablePathEvent | null;
   events: NullablePathEvent[] | null;
+  relatedNodes: PathEventPage["relatedNodes"] | null;
 };
 
 export function getEdgePathHistory(
@@ -97,6 +101,7 @@ export function getEdgePathHistory(
     ...page,
     anchor: page.anchor ? normalizePathEvent(page.anchor) : undefined,
     events: (page.events ?? []).map(normalizePathEvent),
+    relatedNodes: page.relatedNodes ?? [],
   }));
 }
 
