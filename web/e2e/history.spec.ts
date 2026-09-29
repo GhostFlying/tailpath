@@ -495,9 +495,18 @@ test("loads all 900 directional path events without truncation", async ({
   await expect(
     page.getByText("Complete · 900 events", { exact: true }),
   ).toBeVisible();
+  const renderedTimelineStates = page
+    .getByRole("list", { name: "Path timeline" })
+    .getByRole("listitem");
+  expect(await renderedTimelineStates.count()).toBeLessThanOrEqual(240);
+  const eventIndex = page.locator(".directional-event-index");
+  await eventIndex.locator("summary").click();
+  await expect(eventIndex).toContainText("States 802–901 of 901");
   await expect(
-    page.getByRole("list", { name: "Path timeline" }).getByRole("listitem"),
-  ).toHaveCount(901);
+    eventIndex.locator(".directional-event-index-list").getByRole("listitem"),
+  ).toHaveCount(100);
+  await eventIndex.getByRole("button", { name: "Previous states" }).click();
+  await expect(eventIndex).toContainText("States 702–801 of 901");
   await expect(page.locator(".history-shell")).toHaveAttribute(
     "data-history-ready",
     "true",
