@@ -344,6 +344,34 @@ describe("buildElements", () => {
     ).toBe(true);
   });
 
+  it("does not duplicate the total label on an asymmetric direct route", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 4293,
+        }),
+        direction("b", "a", {
+          kind: "direct",
+          directEndpoint: "198.51.100.9:41641",
+        }),
+      ]),
+    ];
+
+    const edges = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter((element) => element.group === "edges");
+
+    expect(edges.filter((element) => element.data?.label)).toHaveLength(1);
+    expect(edges.find((element) => element.data?.label)?.data?.label).toBe(
+      "15 KB/s",
+    );
+  });
+
   it("expands the same relay identity when directional VNIs differ", () => {
     const fixture = topology();
     fixture.edges = [
