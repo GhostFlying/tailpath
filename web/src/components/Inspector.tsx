@@ -31,6 +31,11 @@ import {
   peerRelayCandidates,
 } from "../lib/graph";
 import { platformPresentation } from "../lib/platform";
+import {
+  directionCoverage,
+  liveTrafficObservation,
+  unknownPathReason,
+} from "../lib/directionEvidence";
 import { IdentityBadge, unresolvedNodeLabel } from "../lib/identity";
 import { pathIdentityKey } from "../lib/pathIdentity";
 
@@ -256,6 +261,9 @@ function DirectionalEdgeDetails({
   history: EdgeHistory | null;
 }) {
   const directions = edgeDirections(edge);
+  const knownDirectionCount = directions.filter(
+    (direction) => direction.primaryPath.kind !== "unknown",
+  ).length;
   const source = topology.nodes.find((node) => node.id === edge.source);
   const target = topology.nodes.find((node) => node.id === edge.target);
   const endpointEvidence = edge.observations.filter(
@@ -300,18 +308,22 @@ function DirectionalEdgeDetails({
         </span>
         <span>
           <strong>
-            {directions.length === 1
-              ? "Partial path evidence"
-              : edgeIsAsymmetric(edge)
-                ? "Asymmetric paths"
-                : "Same path both directions"}
+            {knownDirectionCount === 0
+              ? "Unknown paths"
+              : knownDirectionCount === 1
+                ? "Partial path evidence"
+                : edgeIsAsymmetric(edge)
+                  ? "Asymmetric paths"
+                  : "Same path both directions"}
           </strong>
           <small>
-            {directions.length === 1
-              ? "One direction has fresh path evidence; the reverse remains unknown."
-              : edgeIsAsymmetric(edge)
-                ? "Each endpoint currently reports a different route."
-                : "Both endpoints report the same logical route."}
+            {knownDirectionCount === 0
+              ? "Neither direction has a usable path observation."
+              : knownDirectionCount === 1
+                ? "One direction has fresh path evidence; the reverse remains unknown."
+                : edgeIsAsymmetric(edge)
+                  ? "Each endpoint currently reports a different route."
+                  : "Both endpoints report the same logical route."}
           </small>
         </span>
         <span className={`state-badge ${edge.state}`}>{edge.state}</span>
@@ -329,6 +341,7 @@ function DirectionalEdgeDetails({
             to={slot.to}
             state={slot.state}
             rate={slot.rate}
+            observations={edge.observations}
           />
         ))}
       </section>
@@ -437,15 +450,25 @@ function DirectionalPathCard({
   to,
   state,
   rate,
+  observations,
 }: {
   topology: Topology;
   from: string;
   to: string;
   state?: DirectionalPathState;
   rate: number;
+  observations: TopologyEdge["observations"];
 }) {
   const fromNode = topology.nodes.find((node) => node.id === from);
   const toNode = topology.nodes.find((node) => node.id === to);
+  const coverage = directionCoverage(from, to, observations);
+  const traffic = liveTrafficObservation(
+    from,
+    to,
+    observations,
+    topology.generatedAt,
+  );
+  const knownPath = state && state.primaryPath.kind !== "unknown";
   return (
     <article
       className={`direction-path-card ${state ? state.primaryPath.kind : "unknown"}`}
@@ -458,7 +481,7 @@ function DirectionalPathCard({
         </span>
         <b>{formatRate(rate)}</b>
       </header>
-      {state ? (
+      {knownPath ? (
         <>
           <div className="direction-primary">
             <span>Primary</span>
@@ -482,9 +505,24 @@ function DirectionalPathCard({
       ) : (
         <div className="direction-unknown">
           <strong>Unknown</strong>
-          <span>No fresh observation from this endpoint.</span>
+          <span>{unknownPathReason(coverage)}</span>
+          {coverage.point === "receiver" ? (
+            <span>Receiver reporting: {toNode ? nodeLabel(toNode) : to}</span>
+          ) : null}
         </div>
       )}
+      {traffic ? (
+        <small className="direction-traffic-source">
+          {traffic.point === "sender"
+            ? "TX counters"
+            : traffic.point === "receiver"
+              ? "RX counters"
+              : "Relay counters"}{" "}
+          reported by {nodeName(topology, traffic.observation.observerId)} ·{" "}
+          {traffic.point === "receiver" ? "receiver" : traffic.point} ·{" "}
+          {formatAgo(traffic.observation.receivedAt)}
+        </small>
+      ) : null}
     </article>
   );
 }

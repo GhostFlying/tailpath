@@ -68,6 +68,17 @@ report 只能选择自己的方向；relay-session observation 可以补充匹�
 以及 `observed`、`inferred` 或 `legacy` 证据。旧客户端仍可使用兼容的顶层主路径、
 冲突、状态和 candidate 字段。
 
+流量 counter 的观测覆盖与路径覆盖是独立的。一个 observer 可以同时上报自己的 TX
+counter 和来自 peer 的 RX counter，不要求该 peer 运行 agent。Live 使用与 aggregator
+相同的十秒服务端接收时间窗口，说明当前方向的 counter 来自发送端、接收端还是 relay。
+只有接收端 report 的方向仍保持路径 unknown，并显示接收端来源；不会复制反方向的路径。
+
+官方 Tailscale 1.102.2/1.102.3 status 暴露每个 peer 的 RX bytes，但没有暴露每个 peer
+的入站路径。入站 transport metrics 是整机汇总，不能归给某个移动端。虽然 daemon 内部
+能够区分收到包的 transport，Tailpath 不使用 tailscaled fork、抓包或 peer 探测取得该
+状态。History 只用每个事件当时保留的 endpoint report 解释缺失路径；这些 report 不能
+证明某一精确时刻的流量，也不会用节点当前的上报状态解释过去。
+
 Tailscale status 不直接暴露 dual-send。Collector 因此用进程本地单调时钟保存最近
 一次明确的 Peer Relay 选择：十二秒内出现 DERP 时，将其记录为该 relay 的 inferred
 fallback；更长的 DERP 区间转为 inferred DERP 主路径。进程启动后首次只看到 DERP

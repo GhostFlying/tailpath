@@ -115,6 +115,22 @@ Each direction records a primary, optional DERP fallback, and
 `observed`, `inferred`, or `legacy` evidence. The compatibility primary,
 conflicts, state, and candidates remain available for older clients.
 
+Traffic counter coverage is separate from path coverage. An observer can report
+both its TX counters and RX counters for incoming peer traffic without that peer
+running an agent.
+Live identifies whether the current directional counters come from the sender,
+receiver, or relay, using the same ten-second server-received traffic window as
+the aggregator. A receiver-only direction keeps its path unknown and names the
+available receiver report. No path is copied from the opposite direction.
+
+Official Tailscale 1.102.2/1.102.3 status exposes per-peer RX bytes but does not
+expose per-peer ingress paths. Its inbound transport metrics are node-wide totals
+and cannot be attributed to one mobile peer. Although the daemon internally
+distinguishes incoming transports, Tailpath does not fork tailscaled, capture
+packets, or probe peers to retrieve that state. History explains missing paths
+from each event's retained endpoint reports; those reports do not prove traffic
+at an exact instant and never use a node's current reporting state.
+
 Tailscale status does not expose dual-send directly. A process-local tracker
 therefore keeps the latest explicit Peer Relay selection using monotonic time.
 A DERP status within twelve seconds is stored as an inferred fallback beside
