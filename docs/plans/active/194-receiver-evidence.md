@@ -63,5 +63,17 @@ historical withdrawal, console health, and horizontal overflow. Screenshots are
 saved outside the repository under the session evidence directory; CI uploads
 the same screenshot names with its existing topology artifact.
 
-Next: commit the reviewable boundary and open a draft PR, run the complete
-`make check`, inspect final screenshots, and mark ready when all gates pass.
+Complete `make check` passes: generated files unchanged, shell harnesses, Go
+format/vet/tests, Web type/format checks, all 115 Web unit tests, production
+builds, and all 79 applicable browser cases (33 configuration skips). Final
+desktop/mobile screenshots were inspected; unknown-path explanations and RX
+counter sources remain visible and readable, with no horizontal overflow or
+application errors. The existing OpenAPI support and Vite chunk-size warnings
+remain non-fatal.
+
+Reviewable implementation: `5a5e6b0`.
+PR: https://github.com/GhostFlying/tailpath/pull/195
+
+Next: finish GitHub checks and attach their screenshot artifact to the PR, then
+mark ready for human review/rebase merge. No live deployment or daemon changes
+were made.
