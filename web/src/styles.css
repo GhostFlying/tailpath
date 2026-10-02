@@ -848,13 +848,15 @@ button {
   color: #69757b;
   background: #f4f6f7;
 }
-.direction-observer {
+.direction-observer,
+.direction-traffic-source {
   display: block;
   border-top: 1px solid #edf0f1;
   padding: 7px 10px;
   color: #77838a;
   font-size: 10px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .direction-unknown {
   display: grid;
@@ -862,6 +864,8 @@ button {
   padding: 13px 10px;
   color: #707c82;
   font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .direction-unknown strong {
   color: #46535a;

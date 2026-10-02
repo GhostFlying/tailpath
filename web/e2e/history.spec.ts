@@ -206,6 +206,102 @@ test("uses list and full-screen detail on mobile", async ({
   await expect(page.getByLabel("History connections")).toBeVisible();
 });
 
+test("explains retained receiver evidence without inventing a mobile path", async ({
+  page,
+}, testInfo) => {
+  const mobile = testInfo.project.name.startsWith("mobile");
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+  const detail = directionalHistoryFor(edgeSummaries[1], 1);
+  detail.source = { ...detail.source, label: "smallbox" };
+  detail.relatedNodes = detail.relatedNodes.map((node) =>
+    node.id === detail.source.id ? detail.source : node,
+  );
+  detail.pathEvents[0].directions = detail.pathEvents[0].directions.slice(0, 1);
+  detail.pathEvents[0].observations = detail.pathEvents[0].observations.filter(
+    (observation) => observation.observerId === detail.source.id,
+  );
+  detail.pathAnchor!.directions = detail.pathAnchor!.directions.slice(0, 1);
+  const withdrawal = {
+    ...detail.pathEvents[0],
+    observedAt: new Date(
+      Date.parse(detail.pathEvents[0].observedAt) + 6 * 60 * 60_000,
+    ).toISOString(),
+    observations: [],
+    directions: [],
+    directionsTracked: true,
+  };
+  detail.pathEvents.push(withdrawal);
+  detail.pathEventsTruncated = false;
+  await page.route("**/api/v1/history/edges/node-mac--node-phone?**", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route(
+    "**/api/v1/history/edges/node-mac--node-phone/paths?**",
+    (route) =>
+      route.fulfill({
+        json: {
+          source: detail.source,
+          target: detail.target,
+          relatedNodes: detail.relatedNodes,
+          anchor: detail.pathAnchor,
+          events: detail.pathEvents,
+        },
+      }),
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/history/edges/node-mac--node-phone?window=24h");
+  await expect(page.locator(".history-shell")).toHaveAttribute(
+    "data-history-ready",
+    "true",
+  );
+  const items = page
+    .getByRole("list", { name: "Path timeline" })
+    .getByRole("listitem");
+  await expect(items).toHaveCount(3);
+  await items.nth(1).click();
+  const snapshot = mobile
+    ? page.getByRole("dialog", { name: "Path evidence" })
+    : page.locator(".directional-snapshot");
+  const reverse = snapshot
+    .getByRole("row")
+    .filter({ hasText: "iPhone → smallbox" });
+  await expect(reverse).toContainText("Unknown");
+  await expect(reverse).toContainText("No sender path observation retained");
+  await expect(reverse).toContainText("Receiver report: smallbox");
+  await expect(reverse).not.toContainText("Observed");
+  await expect(snapshot).toContainText(
+    "Tailscale status does not expose per-peer inbound paths",
+  );
+  await expect(snapshot).toContainText(
+    "does not identify the sender's selected path or prove traffic at this exact time",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  const screenshot = testInfo.outputPath("receiver-evidence-history.png");
+  await snapshot.locator(".receiver-path-explanation").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: screenshot, fullPage: true });
+  await testInfo.attach("Retained receiver evidence with unknown mobile path", {
+    path: screenshot,
+    contentType: "image/png",
+  });
+  if (mobile)
+    await snapshot.getByRole("button", { name: "Close path evidence" }).click();
+  await items.last().click();
+  await expect(snapshot).toContainText(
+    "No retained path state covers this part of the window",
+  );
+  await expect(snapshot).not.toContainText("Receiver report: smallbox");
+  await expect(snapshot.locator(".receiver-path-explanation")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("renders directional history on shared chronological lanes", async ({
   page,
 }, testInfo) => {

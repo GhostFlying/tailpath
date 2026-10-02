@@ -16,6 +16,12 @@ const observedDirection: DirectionalPathState = {
 describe("directionFallbackLabel", () => {
   it("keeps a missing direction unknown", () => {
     expect(directionFallbackLabel(undefined)).toBe("Unknown");
+    expect(
+      directionFallbackLabel({
+        ...observedDirection,
+        primaryPath: { kind: "unknown" },
+      }),
+    ).toBe("Unknown");
   });
 
   it("reserves none for an observed direction without fallback", () => {

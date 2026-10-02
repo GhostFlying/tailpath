@@ -1257,6 +1257,14 @@
   text-transform: uppercase;
 }
 
+.receiver-path-explanation {
+  margin: 10px 0;
+  color: var(--history-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .directional-state-evidence {
   display: grid;
   min-width: 0;

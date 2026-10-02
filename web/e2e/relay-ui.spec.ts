@@ -307,6 +307,9 @@ test("keeps a missing reverse direction explicitly unknown", async ({
 }) => {
   const fixture = directionalTopology();
   fixture.edges[0].directions = fixture.edges[0].directions.slice(0, 1);
+  fixture.edges[0].observations = fixture.edges[0].observations.filter(
+    (observation) => observation.observerId === "client-a",
+  );
   await page.unroute("**/api/v1/topology");
   await page.route("**/api/v1/topology", (route) =>
     route.fulfill({ json: fixture }),
@@ -320,8 +323,99 @@ test("keeps a missing reverse direction explicitly unknown", async ({
   const inspector = page.getByLabel("Topology details");
   await expect(inspector).toContainText("Partial path evidence");
   await expect(inspector).toContainText("reverse remains unknown");
-  await expect(inspector).toContainText("No fresh observation");
+  await expect(inspector).toContainText("No sender path observation");
   await expect(inspector).not.toContainText("Same path both directions");
+});
+
+test("keeps an explicit unknown sender path distinct from observed routes", async ({
+  page,
+}) => {
+  const fixture = directionalTopology();
+  fixture.edges[0].directions[1] = {
+    ...fixture.edges[0].directions[1],
+    primaryPath: { kind: "unknown" },
+  };
+  fixture.edges[0].observations[1] = {
+    ...fixture.edges[0].observations[1],
+    path: { kind: "unknown" },
+  };
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+  const inspector = page.getByLabel("Topology details");
+  await expect(inspector).toContainText("Partial path evidence");
+  const reverse = inspector.locator(".direction-path-card").nth(1);
+  await expect(reverse).toContainText("The sender reported no usable path");
+  await expect(reverse.locator(".direction-primary")).toHaveCount(0);
+  await expect(reverse.locator(".evidence-badge")).toHaveCount(0);
+});
+
+test("explains receiver RX counters for a mobile sender with an unknown path", async ({
+  page,
+}, testInfo) => {
+  if (testInfo.project.name.startsWith("mobile")) {
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
+  const fixture = directionalTopology();
+  fixture.nodes[0].hostname = "smallbox";
+  fixture.nodes[0].observable = true;
+  fixture.nodes[0].online = true;
+  fixture.nodes[1].hostname = "iPhone";
+  fixture.nodes[1].os = "ios";
+  fixture.edges[0].directions = fixture.edges[0].directions.slice(0, 1);
+  fixture.edges[0].observations = fixture.edges[0].observations.filter(
+    (observation) => observation.observerId === "client-a",
+  );
+  await page.route("**/api/v1/topology", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/");
+  const graph = page.getByLabel("Live Tailnet topology");
+  await expect(graph).toHaveAttribute("data-ready", "true");
+  await clickGraphSegment(page, graph, "client-a", "relay-node");
+  const inspector = page.getByLabel("Topology details");
+  const reverse = inspector.locator(".direction-path-card").nth(1);
+  await expect(reverse).toContainText("iPhone");
+  await expect(reverse).toContainText("Unknown");
+  await expect(reverse).toContainText(
+    "Tailscale status does not expose per-peer inbound paths",
+  );
+  await expect(reverse).toContainText("RX counters reported by smallbox");
+  await expect(reverse).toContainText("1.14 MB/s");
+  await expect(reverse.locator(".direction-primary")).toHaveCount(0);
+  await expect(reverse.locator(".direction-fallback")).toHaveCount(0);
+  await expect(inspector.locator(".direction-path-card").first()).toContainText(
+    "TX counters reported by smallbox",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    await reverse.evaluate(
+      (element) => element.scrollWidth - element.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  const screenshot = testInfo.outputPath("receiver-traffic-live.png");
+  await reverse.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: screenshot, fullPage: true });
+  await testInfo.attach("Receiver traffic with unknown mobile path", {
+    path: screenshot,
+    contentType: "image/png",
+  });
+  await inspector.getByRole("button", { name: "Close details" }).click();
+  await expect(inspector).not.toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test("keeps a selected relationship highlighted when route IDs change", async ({

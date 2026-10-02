@@ -29,6 +29,12 @@ import type {
 import { pathLabel, unresolvedPeerRelayLabel } from "../lib/format";
 import { identityPresentation } from "../lib/identity";
 import {
+  directionCoverage,
+  inboundPathLimit,
+  unknownPathReason,
+  type DirectionCoverage,
+} from "../lib/directionEvidence";
+import {
   buildPathTimeline,
   buildDirectionalTimeline,
   compatibilityPathEvidenceKey,
@@ -642,10 +648,20 @@ function DirectionalSnapshotContent({
     {
       label: `${history.source.label} → ${history.target.label}`,
       state: selected.aToB,
+      coverage: directionCoverage(
+        history.source.id,
+        history.target.id,
+        selected.event.observations,
+      ),
     },
     {
       label: `${history.target.label} → ${history.source.label}`,
       state: selected.bToA,
+      coverage: directionCoverage(
+        history.target.id,
+        history.source.id,
+        selected.event.observations,
+      ),
     },
   ];
   const observations = selected.event.observations;
@@ -697,17 +713,17 @@ function DirectionalSnapshotContent({
             <span>Fallback</span>
             <span>Evidence</span>
           </div>
-          {directions.map(({ label, state }) => (
+          {directions.map(({ label, state, coverage }) => (
             <div role="row" className="directional-state-row" key={label}>
               <strong>{label}</strong>
               <span>
                 {state
                   ? displayPathLabel(state.primaryPath, nodes.byStableID)
                   : "Unknown"}
-                {state ? (
+                {state && state.primaryPath.kind !== "unknown" ? (
                   <small>{directionPathMetadata(state.primaryPath)}</small>
                 ) : (
-                  <small>No fresh observation</small>
+                  <small>{unknownPathReason(coverage, true)}</small>
                 )}
               </span>
               <span>
@@ -716,11 +732,27 @@ function DirectionalSnapshotContent({
                   <code>{state.inferenceRule}</code>
                 ) : null}
               </span>
-              <DirectionEvidence state={state} nodes={nodes} />
+              <DirectionEvidence
+                state={state}
+                nodes={nodes}
+                coverage={coverage}
+              />
             </div>
           ))}
         </div>
       )}
+      {!selected.noEvidence &&
+      directions.some(
+        ({ state, coverage }) =>
+          (!state || state.primaryPath.kind === "unknown") &&
+          coverage.point === "receiver",
+      ) ? (
+        <p className="receiver-path-explanation">
+          {inboundPathLimit} A retained receiver report does not identify the
+          sender's selected path or prove traffic at this exact time. Traffic
+          totals are shown in the chart above.
+        </p>
+      ) : null}
       <h2>Evidence retained at this event</h2>
       {observations.length ? (
         <div className="directional-history-evidence">
@@ -776,7 +808,7 @@ function DirectionalSnapshotContent({
 export function directionFallbackLabel(
   state: DirectionalPathState | undefined,
 ): string {
-  if (!state) return "Unknown";
+  if (!state || state.primaryPath.kind === "unknown") return "Unknown";
   return state.fallbackPath ? pathLabel(state.fallbackPath) : "None";
 }
 
@@ -952,15 +984,35 @@ function peerRelayResolutionLabel(
 function DirectionEvidence({
   state,
   nodes,
+  coverage,
 }: {
   state?: DirectionalPathState;
   nodes: HistoryNodeMaps;
+  coverage: DirectionCoverage;
 }) {
-  if (!state) {
+  if (!state || state.primaryPath.kind === "unknown") {
+    const receiver =
+      coverage.point === "receiver" ? coverage.observation : undefined;
     return (
       <span className="directional-state-evidence">
         <span className="history-evidence-badge unknown">Unknown</span>
-        <small>No fresh observation</small>
+        {receiver ? (
+          <>
+            <small>
+              Receiver report:{" "}
+              {nodes.byID.get(receiver.observerId)?.label ??
+                receiver.observerId}
+            </small>
+            <small>
+              Received{" "}
+              <time dateTime={receiver.receivedAt}>
+                {formatTimelineTime(receiver.receivedAt, true)}
+              </time>
+            </small>
+          </>
+        ) : (
+          <small>No usable path observation</small>
+        )}
       </span>
     );
   }

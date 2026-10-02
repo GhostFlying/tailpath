@@ -98,6 +98,18 @@ public exporter and server reject legacy live evidence and unversioned
 inference. Protocol-v1 senders may omit all three fields and are treated as
 observed primary-only evidence.
 
+An observer's RX counters describe traffic from the peer to that observer; they
+do not describe the peer's selected outbound path. A mobile endpoint therefore
+needs no Tailpath agent for bidirectional byte accounting, but its path may remain
+unknown. Live labels current sender TX, receiver RX, or relay counter provenance
+independently of path state. These labels use `receivedAt` and topology
+`generatedAt`, not collector wall clocks, to match the ten-second traffic window.
+Official Tailscale status does not expose per-peer incoming path state, and
+node-wide inbound path metrics are never used to fill a missing direction.
+Historical receiver coverage is explained only from observations retained at
+that event; it is not a claim of traffic at the selected instant or a recovery of
+the remote endpoint's primary/fallback selection.
+
 Relay sessions additionally carry a session ID, unsigned 24-bit VNI,
 directional counters, and directional deltas. Each endpoint has a non-empty
 `sessionClientId` plus optional full identity, short disco hint, and underlay
