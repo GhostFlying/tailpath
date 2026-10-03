@@ -404,6 +404,37 @@ describe("buildElements", () => {
     ).toBe(true);
   });
 
+  it("shares one graph relay node when directional VNIs differ", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(fixture.edges[0], [
+        direction("a", "b", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 4293,
+        }),
+        direction("b", "a", {
+          kind: "peer_relay",
+          peerRelayStableNodeId: "c",
+          peerRelayVni: 8,
+        }),
+      ]),
+    ];
+
+    const relayNodes = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter(
+      (element) =>
+        element.group === "nodes" &&
+        String(element.classes).includes("relay-node peer-relay"),
+    );
+
+    expect(relayNodes).toHaveLength(1);
+    expect(relayNodes[0].data?.id).toBe("c");
+  });
+
   it("renders DERP fallback as an unmetered dashed route", () => {
     const fixture = topology();
     const relay = {
@@ -436,12 +467,12 @@ describe("buildElements", () => {
         (element) => element.data?.trafficWidth === minimumTrafficWidth,
       ),
     ).toBe(true);
-    expect(
-      rendered.some((element) => element.data?.label === "DERP fallback · tok"),
-    ).toBe(true);
+    expect(rendered.some((element) => element.data?.label === "DERP tok")).toBe(
+      true,
+    );
   });
 
-  it("keeps directional DERP markers scoped to their relationship", () => {
+  it("shares one DERP node across directional relationships", () => {
     const fixture = topology();
     const relay = { kind: "peer_relay" as const, peerRelayVni: 8 };
     const fallback = { kind: "derp" as const, derpRegion: "hkg" };
@@ -461,19 +492,38 @@ describe("buildElements", () => {
     }).filter(
       (element) =>
         element.group === "nodes" &&
-        String(element.classes).includes("fallback-node"),
+        String(element.classes).includes("relay-node derp"),
     );
 
-    expect(fallbackNodes).toHaveLength(2);
-    expect(new Set(fallbackNodes.map((node) => node.data?.id))).toEqual(
-      new Set([
-        "derp:first:hkg:combined-fallback",
-        "derp:second:hkg:combined-fallback",
+    expect(fallbackNodes).toHaveLength(1);
+    expect(fallbackNodes[0].data?.id).toBe("derp:hkg");
+    expect(fallbackNodes[0].data?.logicalEdgeId).toBeUndefined();
+  });
+
+  it("normalizes DERP region identity while retaining its display spelling", () => {
+    const fixture = topology();
+    fixture.edges = [
+      withDirections(edge("first", "a", "b", "peer_relay"), [
+        direction("a", "b", { kind: "derp", derpRegion: " HKG " }),
       ]),
+      withDirections(edge("second", "c", "d", "peer_relay"), [
+        direction("c", "d", { kind: "derp", derpRegion: "hkg" }),
+      ]),
+    ];
+
+    const derpNodes = buildElements(fixture, {
+      pathFilter: "all",
+      showRecent: true,
+      query: "",
+    }).filter(
+      (element) =>
+        element.group === "nodes" &&
+        String(element.classes).includes("relay-node derp"),
     );
-    expect(
-      new Set(fallbackNodes.map((node) => node.data?.logicalEdgeId)),
-    ).toEqual(new Set(["first", "second"]));
+
+    expect(derpNodes).toHaveLength(1);
+    expect(derpNodes[0].data?.id).toBe("derp:hkg");
+    expect(derpNodes[0].data?.label).toBe("DERP HKG");
   });
 
   it("matches filters against either primary or fallback without double counting", () => {

@@ -313,17 +313,18 @@ function intermediatesForRoute(
   const path = route.path;
   const routeSuffix = route.directional || route.fallback ? `:${route.id}` : "";
   if (path.kind === "derp") {
-    const region = path.derpRegion || "unknown";
-    const id = routeSuffix
-      ? `derp:${edge.id}:${region}${routeSuffix}`
-      : `derp:${region}`;
+    const region = path.derpRegion?.trim() || "unknown";
+    // A DERP region is a shared intermediate, even when opposite directions
+    // use it through separate rendered routes. Direction belongs to the
+    // parallel edges; putting the route ID in the node ID invents duplicate
+    // DERP nodes for one relay.
+    const id = pathIdentityKey(path);
     return [
       {
         id,
-        label: route.fallback ? `DERP fallback · ${region}` : `DERP ${region}`,
+        label: `DERP ${region}`,
         kind: "derp",
-        classes: `relay-node derp ${route.fallback ? "fallback-node" : ""}`,
-        logicalEdgeId: routeSuffix ? edge.id : undefined,
+        classes: "relay-node derp",
       },
     ];
   }
