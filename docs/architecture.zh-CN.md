@@ -2,6 +2,8 @@
 
 [English version](architecture.md)
 
+原生与嵌入式 Tailscale source 只有在 WireGuard `LastHandshake` 非零时才上报所选 Direct、DERP 或 Peer Relay 路径。Home DERP、所选发送端点、`Active` 和 TX 计数增长本身不能确认会话成功或数据送达。缺少握手确认时，source 保留原始计数，但将路径上报为 `Unknown` 并清除 fallback 推断连续性。WireGuard 清理空闲 peer 时可能清除握手证据，因此该规则采用保守判断。历史握手不保证当前可达或应用数据送达。已有历史按原样保留，collector 需升级才能应用该规则。
+
 ```text
 tailscaled collector --\
 tsnet exporter --------+--> Tailnet HTTP ingest --> aggregator --> SQLite

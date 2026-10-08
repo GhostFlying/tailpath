@@ -31,7 +31,7 @@ func TestSnapshotNormalizesIdentityCountersAndPaths(t *testing.T) {
 			peerKey: {
 				ID: "peer-stable", NodeID: tailcfg.NodeID(202), PublicKey: peerKey,
 				HostName: "peer", OS: "linux", RxBytes: 123, TxBytes: 456,
-				PeerRelay: "203.0.113.8:40000:vni:7", CurAddr: "192.0.2.5:41641", Relay: "hkg",
+				LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:7", CurAddr: "192.0.2.5:41641", Relay: "hkg",
 			},
 		},
 	}
@@ -108,9 +108,9 @@ func TestPathPrecedenceAndUnknown(t *testing.T) {
 		peer ipnstate.PeerStatus
 		want exporter.PathKind
 	}{
-		{name: "peer relay", peer: ipnstate.PeerStatus{PeerRelay: "100.64.0.8:41641:vni:7", CurAddr: "192.0.2.1:1", Relay: "hkg"}, want: exporter.PathPeerRelay},
-		{name: "direct", peer: ipnstate.PeerStatus{CurAddr: "192.0.2.1:1", Relay: "hkg"}, want: exporter.PathDirect},
-		{name: "derp", peer: ipnstate.PeerStatus{Relay: "hkg"}, want: exporter.PathDERP},
+		{name: "peer relay", peer: ipnstate.PeerStatus{LastHandshake: time.Unix(1, 0), PeerRelay: "100.64.0.8:41641:vni:7", CurAddr: "192.0.2.1:1", Relay: "hkg"}, want: exporter.PathPeerRelay},
+		{name: "direct", peer: ipnstate.PeerStatus{LastHandshake: time.Unix(1, 0), CurAddr: "192.0.2.1:1", Relay: "hkg"}, want: exporter.PathDirect},
+		{name: "derp", peer: ipnstate.PeerStatus{LastHandshake: time.Unix(1, 0), Relay: "hkg"}, want: exporter.PathDERP},
 		{name: "unknown", want: exporter.PathUnknown},
 	}
 	for _, test := range tests {
@@ -137,7 +137,7 @@ func TestTrackerInfersShortDERPFallbackAndExpiresIt(t *testing.T) {
 	status := &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "self"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:4293"},
 		},
 	}
 	first, err := tracker.Snapshot(status, at)
@@ -179,7 +179,7 @@ func TestTrackerDoesNotGuessStartupDERPAndReplacesRelay(t *testing.T) {
 	status := &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "self"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", Relay: "hgh-custom"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), Relay: "hgh-custom"},
 		},
 	}
 	startup, err := tracker.Snapshot(status, at)
@@ -209,7 +209,7 @@ func TestTrackerClearsRelayWhenPeerDisappears(t *testing.T) {
 	status := &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "self"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:4293"},
 		},
 	}
 	if _, err := tracker.Snapshot(status, at); err != nil {
@@ -221,7 +221,7 @@ func TestTrackerClearsRelayWhenPeerDisappears(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status.Peer[peerKey] = &ipnstate.PeerStatus{ID: "peer", Relay: "hgh-custom"}
+	status.Peer[peerKey] = &ipnstate.PeerStatus{ID: "peer", LastHandshake: time.Unix(1, 0), Relay: "hgh-custom"}
 	reappeared, err := tracker.Snapshot(status, at.Add(2*time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +240,7 @@ func TestTrackerResetBreaksRelayInferenceContinuity(t *testing.T) {
 	status := &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "self"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:4293"},
 		},
 	}
 	if _, err := tracker.Snapshot(status, at); err != nil {
@@ -258,5 +258,67 @@ func TestTrackerResetBreaksRelayInferenceContinuity(t *testing.T) {
 	if peer.Path.Kind != exporter.PathDERP || peer.FallbackPath != nil ||
 		peer.PathEvidence != exporter.PathEvidenceObserved || peer.PathInferenceRule != "" {
 		t.Fatalf("DERP after reset = %#v", peer)
+	}
+}
+
+func TestUnconfirmedPathsKeepCountersWithoutRouteClaims(t *testing.T) {
+	at := time.Date(2026, 10, 8, 4, 51, 3, 0, time.UTC)
+	for _, candidate := range []ipnstate.PeerStatus{
+		{Relay: "sin"},
+		{Relay: "sin", CurAddr: "192.0.2.1:41641"},
+		{Relay: "sin", PeerRelay: "100.64.0.8:40000:vni:7"},
+	} {
+		peerKey := key.NewNode().Public()
+		candidate.ID = "peer"
+		candidate.Online = true
+		candidate.Active = true
+		candidate.LastWrite = at
+		candidate.TxBytes = 3276
+		status := &ipnstate.Status{Self: &ipnstate.PeerStatus{ID: "self"},
+			Peer: map[key.NodePublic]*ipnstate.PeerStatus{peerKey: &candidate}}
+		tracker := NewTracker()
+		for i := range 2 {
+			snapshot, err := tracker.Snapshot(status, at.Add(time.Duration(i)*time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+			peer := snapshot.Peers[0]
+			if peer.Path != (exporter.Path{Kind: exporter.PathUnknown}) || peer.FallbackPath != nil ||
+				peer.PathInferenceRule != "" || peer.TxBytes != candidate.TxBytes || peer.RxBytes != candidate.RxBytes {
+				t.Fatalf("unconfirmed route/counters = %#v", peer)
+			}
+			candidate.TxBytes += 148
+		}
+	}
+}
+
+func TestHandshakeLossClearsFallbackContinuity(t *testing.T) {
+	at := time.Date(2026, 10, 8, 4, 0, 0, 0, time.UTC)
+	peerKey := key.NewNode().Public()
+	peer := &ipnstate.PeerStatus{ID: "peer", LastHandshake: at,
+		PeerRelay: "100.64.0.8:40000:vni:7", Relay: "sin", TxBytes: 3276}
+	status := &ipnstate.Status{Self: &ipnstate.PeerStatus{ID: "self"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{peerKey: peer}}
+	tracker := NewTracker()
+	if _, err := tracker.Snapshot(status, at); err != nil {
+		t.Fatal(err)
+	}
+	peer.LastHandshake = time.Time{}
+	peer.PeerRelay = ""
+	lost, err := tracker.Snapshot(status, at.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := lost.Peers[0]; p.Path.Kind != exporter.PathUnknown || p.FallbackPath != nil || len(tracker.lastRelay) != 0 {
+		t.Fatalf("lost handshake retained route = %#v", p)
+	}
+	peer.LastHandshake = at.Add(2 * time.Second)
+	recovered, err := tracker.Snapshot(status, at.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := recovered.Peers[0]; p.Path.Kind != exporter.PathDERP || p.Path.DERPRegion != "sin" ||
+		p.FallbackPath != nil || p.PathEvidence != exporter.PathEvidenceObserved {
+		t.Fatalf("confirmed DERP inherited old relay = %#v", p)
 	}
 }

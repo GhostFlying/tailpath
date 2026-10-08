@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
@@ -45,7 +46,7 @@ func TestLocalSourceBreaksFallbackInferenceAcrossStatusError(t *testing.T) {
 	transport := &statusFailureTransport{status: &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "runtime"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:4293"},
 		},
 	}}
 	source := NewLocalSourceWithClient(&local.Client{Transport: transport, OmitAuth: true})

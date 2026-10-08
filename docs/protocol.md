@@ -1,5 +1,16 @@
 # Observer protocol
 
+Native and embedded Tailscale sources require a nonzero WireGuard
+`LastHandshake` before reporting a selected Direct, DERP, or Peer Relay path.
+The peer home DERP and selected send endpoints alone are candidates; `Active`
+and increasing TX counters do not confirm a session or delivery. Without
+handshake confirmation, sources preserve identity and raw RX/TX counters but
+report `Unknown`, and clear Peer Relay fallback inference continuity. Idle
+WireGuard peer eviction can clear handshake evidence, so this boundary is
+deliberately conservative. A prior handshake does not guarantee current
+reachability or application delivery. Existing historical reports are retained
+as recorded; collectors must be upgraded to apply this normalization.
+
 `api/openapi.yaml` owns JSON shapes. This document owns timing and meaning.
 
 ## Capabilities
