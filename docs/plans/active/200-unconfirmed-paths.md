@@ -22,8 +22,10 @@ No active probes, packet capture, network/grant/config changes, production deplo
 
 ## Current state / next step
 
-Investigation complete; implementation pending. Next: shared normalization gate and regressions, followed by browser verification and PR.
+Implemented and verified in PR #201. Next: human review/rebase merge, then a separately authorized collector rollout. Existing production/history unchanged.
 
 ## Verification
 
-Pending.
+Canonical dev-container make check passed, including 117 web unit tests and browser suite: 81 passed, 33 conditional skips. New desktop/mobile Unknown Live/History regression passes; all four screenshots visually inspected and saved in docs/verification/200-unconfirmed-paths. Focused normalization/native/embedded tests pass, including confirmation acquisition/loss and fallback continuity reset. No API schema or migration changes. PR: https://github.com/GhostFlying/tailpath/pull/201.
+
+Upstream references: [PeerStatusLite handshake semantics](https://github.com/tailscale/tailscale/blob/v1.102.2/ipn/ipnstate/ipnstate.go), [selected send endpoint/home DERP population](https://github.com/tailscale/tailscale/blob/v1.102.2/wgengine/magicsock/endpoint.go).
