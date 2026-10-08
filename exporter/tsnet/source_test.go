@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
@@ -48,7 +49,7 @@ func TestLocalClientSourceReadsOnlyPassiveStatus(t *testing.T) {
 			TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
 		},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", HostName: "peer", RxBytes: 12, TxBytes: 34, CurAddr: "192.0.2.10:41641"},
+			peerKey: {ID: "peer", HostName: "peer", RxBytes: 12, TxBytes: 34, LastHandshake: time.Unix(1, 0), CurAddr: "192.0.2.10:41641"},
 		},
 	}}
 	client := &local.Client{Transport: transport, OmitAuth: true}
@@ -97,7 +98,7 @@ func TestSourceBreaksFallbackInferenceAcrossStatusError(t *testing.T) {
 	transport := &statusTransport{status: &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{ID: "runtime"},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			peerKey: {ID: "peer", PeerRelay: "203.0.113.8:40000:vni:4293"},
+			peerKey: {ID: "peer", LastHandshake: time.Unix(1, 0), PeerRelay: "203.0.113.8:40000:vni:4293"},
 		},
 	}}
 	source, err := tailpathtsnet.NewLocalClient(&local.Client{Transport: transport, OmitAuth: true})
@@ -152,5 +153,39 @@ func TestServerConstructorHasPublicSignature(t *testing.T) {
 	var constructor func(*tailscaletsnet.Server) (*tailpathtsnet.Source, error) = tailpathtsnet.New
 	if constructor == nil {
 		t.Fatal("server constructor is nil")
+	}
+}
+
+func TestSourceDoesNotPromoteHomeDERPBeforeHandshake(t *testing.T) {
+	peerKey := key.NewNode().Public()
+	peer := &ipnstate.PeerStatus{ID: "peer", Relay: "sin", Active: true, Online: true, TxBytes: 3276}
+	transport := &statusTransport{status: &ipnstate.Status{
+		Self: &ipnstate.PeerStatus{ID: "runtime"},
+		Peer: map[key.NodePublic]*ipnstate.PeerStatus{peerKey: peer},
+	}}
+	source, err := tailpathtsnet.NewLocalClient(&local.Client{Transport: transport, OmitAuth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := before.Peers[0]; p.Path.Kind != exporter.PathUnknown || p.TxBytes != 3276 || p.RxBytes != 0 || p.FallbackPath != nil {
+		t.Fatalf("unconfirmed snapshot = %#v", p)
+	}
+	peer.LastHandshake = time.Now()
+	peer.RxBytes = 92
+	after, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := after.Peers[0]; p.Path.Kind != exporter.PathDERP || p.Path.DERPRegion != "sin" || p.RxBytes != 92 {
+		t.Fatalf("confirmed snapshot = %#v", p)
+	}
+	for _, request := range transport.requests {
+		if request.Method != http.MethodGet || request.URL.Path != "/localapi/v0/status" {
+			t.Fatalf("non-passive request: %s %s", request.Method, request.URL)
+		}
 	}
 }

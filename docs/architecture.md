@@ -2,6 +2,16 @@
 
 [中文版](architecture.zh-CN.md)
 
+Native and embedded Tailscale sources require a nonzero WireGuard
+`LastHandshake` before reporting a selected Direct, DERP, or Peer Relay path.
+Home DERP, selected send endpoints, `Active`, and TX growth alone do not confirm
+a session or delivery. Without confirmation, sources preserve raw counters but
+report `Unknown` and clear fallback inference continuity. Idle peer eviction can
+clear handshake evidence; this rule is deliberately conservative. A prior
+handshake does not guarantee current reachability or application delivery.
+Existing history remains unchanged, and collectors must be upgraded to apply
+this rule.
+
 ```text
 tailscaled collector --\
 tsnet exporter --------+--> Tailnet HTTP ingest --> aggregator --> SQLite

@@ -167,6 +167,13 @@ type RelayIdentity struct {
 }
 
 func Path(peer *ipnstate.PeerStatus, relayByIP map[string]RelayIdentity) exporter.Path {
+	// Relay is the peer's home DERP, and send endpoints can be selected before
+	// WireGuard confirms the session. TX counters and Active include attempts;
+	// neither proves a handshake succeeded. Idle peer eviction can also clear
+	// handshake evidence, so conservatively return Unknown in that case.
+	if peer.LastHandshake.IsZero() {
+		return exporter.Path{Kind: exporter.PathUnknown}
+	}
 	if peer.PeerRelay != "" {
 		endpoint, relayIP, vni := ParsePeerRelay(peer.PeerRelay)
 		relay := relayByIP[relayIP]

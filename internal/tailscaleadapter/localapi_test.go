@@ -2,6 +2,7 @@ package tailscaleadapter
 
 import (
 	"testing"
+	"time"
 
 	"tailscale.com/ipn/ipnstate"
 
@@ -47,7 +48,7 @@ func TestPeerRelayEndpointParsesBoundedVNI(t *testing.T) {
 }
 
 func TestPathObservationCarriesPeerRelayVNI(t *testing.T) {
-	path := pathObservation(&ipnstate.PeerStatus{PeerRelay: "100.64.0.8:41641:vni:7"}, map[string]tailscalestatus.RelayIdentity{
+	path := pathObservation(&ipnstate.PeerStatus{LastHandshake: time.Unix(1, 0), PeerRelay: "100.64.0.8:41641:vni:7"}, map[string]tailscalestatus.RelayIdentity{
 		"100.64.0.8": {StableNodeID: "relay-stable-id", Resolution: "tailscale_ip"},
 	})
 	if path.PeerRelayStableNodeID != "relay-stable-id" || path.PeerRelayEndpoint != "100.64.0.8:41641" ||
